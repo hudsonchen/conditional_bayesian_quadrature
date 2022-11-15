@@ -18,7 +18,7 @@
 ## Say we want bash to sh.
 #$ -S /bin/bash
 ## Write both stderr and stdout to a log file.
-#$ -wd /home/ucabzc9/Scratch/log.txt
+#$ -wd /home/ucabzc9/Scratch/
 ## Can't remember what this does.
 #$ -j y
 ## This is an array job, and we want to run elements 1,2,3,4 of the array.
