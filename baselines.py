@@ -1,0 +1,41 @@
+import numpy as np
+import torch
+from torch.autograd import grad
+from torch import optim
+
+
+def polynommial(X, Y, gY, g, x_prime, sigma, poly=3):
+    Nx = X.shape[0]
+    Ny = Y.shape[1]
+    gY_mean = gY.mean()
+    gY_std = gY.std()
+    gY_standardized = (gY - gY_mean) / gY_std
+    X_mean = X.mean()
+    X_std = X.std()
+    X_standardized = (X - X_mean) / X_std
+    x_prime_standardized = (x_prime - X_mean) / X_std
+
+    theta = torch.tensor([[1.0] * (poly + 1)], requires_grad=True, dtype=torch.double)
+    optimizer = optim.Adam([theta], lr=0.01)
+    v = torch.tensor([10.0])
+    v_old = torch.tensor([-10.0])
+    while torch.abs(v - v_old) > 0.01:
+        optimizer.zero_grad()
+        X_poly = np.ones_like(X_standardized)
+        for i in range(1, poly + 1):
+            X_poly = np.concatenate((X_poly, X_standardized ** i), axis=1)
+        X_poly_tensor = torch.tensor(X_poly)
+        gY_tensor = torch.tensor(gY_standardized)
+        v_old = v
+        v = torch.mean((X_poly_tensor @ theta.T - gY_tensor.mean(1)) ** 2)
+        v.backward()
+        optimizer.step()
+
+    theta_array = theta.detach().numpy()
+    x_prime_poly = np.ones_like(x_prime_standardized)
+    for i in range(1, poly + 1):
+        x_prime_poly = np.concatenate((x_prime_poly, x_prime_standardized ** i), axis=1)
+    phi = (theta_array * x_prime_poly).sum()
+    phi_original = phi * gY_std + gY_mean
+    std = 0
+    return phi_original, std

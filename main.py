@@ -5,6 +5,7 @@ from scipy.spatial.distance import cdist
 from scipy import integrate
 from functools import partial
 from tqdm import tqdm
+from baselines import *
 
 plt.rcParams['axes.grid'] = True
 plt.rcParams['font.family'] = 'DeJavu Serif'
@@ -61,7 +62,7 @@ def BSM_butterfly_analytic():
     return
 
 
-def GP(X, Y, gY, g, x_prime, kernel_x, kernel_y, compute_phi='empirical', eps = 1e-3):
+def GP(X, Y, gY, g, x_prime, kernel_x, kernel_y, compute_phi='empirical', eps=1e-3):
     Nx = X.shape[0]
     Ny = Y.shape[1]
 
@@ -77,11 +78,12 @@ def GP(X, Y, gY, g, x_prime, kernel_x, kernel_y, compute_phi='empirical', eps = 
         Ky = RBF(length_scale=0.1)
     elif kernel_y == 'matern':
         Ky = 1.0 * Matern(length_scale=0.3, nu=3.5)
-    elif kernel_y == 'exponential':  ## Currently the best one for piece-wise function
+    elif kernel_y == 'exponential':  # Currently the best one for piece-wise function
         def exponential(X1, X2, length_scale):
             dists = cdist(X1 / length_scale, X2 / length_scale, metric="euclidean")
             K = np.exp(- dists / length_scale)
             return K
+
         Ky = partial(exponential, length_scale=1.)
     else:
         raise NotImplementedError
@@ -90,13 +92,13 @@ def GP(X, Y, gY, g, x_prime, kernel_x, kernel_y, compute_phi='empirical', eps = 
         Yi = Y[i, :][:, None]
         Yi_mean = Yi.mean()
         Yi_std = Yi.std()
-        Yi_std = 1.0 if Yi_std == 0.0 else Yi_std   # To prevent numerical issue
+        Yi_std = 1.0 if Yi_std == 0.0 else Yi_std  # To prevent numerical issue
         Yi_standardized = (Yi - Yi_mean) / Yi_std
 
         gYi = gY[i, :][:, None]
         gYi_mean = gYi.mean()
         gYi_std = gYi.std()
-        gYi_std = 1.0 if gYi_std == 0.0 else gYi_std   # To prevent numerical issue
+        gYi_std = 1.0 if gYi_std == 0.0 else gYi_std  # To prevent numerical issue
         gYi_standardized = (gYi - gYi_mean) / gYi_std
         # \mu = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
         y_prime = np.linspace(-3, 3, 100)[:, None]
@@ -137,7 +139,7 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
     from sklearn.gaussian_process.kernels import RBF
     from sklearn.gaussian_process.kernels import Matern
 
-    if kernel_x == 'rbf': # This is the best kernel for x
+    if kernel_x == 'rbf':  # This is the best kernel for x
         Kx = RBF(length_scale=1.0)
     elif kernel_x == 'matern':
         Kx = 1.0 * Matern(length_scale=0.3, nu=3.5)
@@ -146,6 +148,7 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
             dists = cdist(X1 / length_scale, X2 / length_scale, metric="euclidean")
             K = np.exp(- dists / length_scale)
             return K
+
         Kx = partial(exponential, length_scale=1.)
     else:
         raise NotImplementedError
@@ -159,6 +162,7 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
             dists = cdist(X1 / length_scale, X2 / length_scale, metric="euclidean")
             K = np.exp(- dists / length_scale)
             return K
+
         Ky = partial(exponential, length_scale=1.)
     else:
         raise NotImplementedError
@@ -169,13 +173,13 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
         Yi = Y[i, :][:, None]
         Yi_mean = Yi.mean()
         Yi_std = Yi.std()
-        Yi_std = 1.0 if Yi_std == 0.0 else Yi_std   # To prevent numerical issue
+        Yi_std = 1.0 if Yi_std == 0.0 else Yi_std  # To prevent numerical issue
         Yi_standardized = (Yi - Yi_mean) / Yi_std
 
         gYi = gY[i, :][:, None]
         gYi_mean = gYi.mean()
         gYi_std = gYi.std()
-        gYi_std = 1.0 if gYi_std == 0.0 else gYi_std   # To prevent numerical issue
+        gYi_std = 1.0 if gYi_std == 0.0 else gYi_std  # To prevent numerical issue
         gYi_standardized = (gYi - gYi_mean) / gYi_std
         # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
         if compute_phi == 'empirical':
@@ -187,8 +191,6 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
             # Note that we have standardization, so take mean and std into account.
             def log_normal(y, x):
                 y = y * Yi_std + Yi_mean
-                # part1 = (x ** 2 / y) * (1. / (np.sqrt(2 * math.pi) * sigma))
-                # part2 = np.exp(-0.5 / (sigma ** 2) * (np.log(y / x) + sigma ** 2 / 2) ** 2)
                 normal_samples = (np.log(y) - np.log(x) + 0.5 * (sigma ** 2)) / sigma
                 density = norm.pdf(normal_samples)
                 return density
@@ -236,7 +238,9 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
 
     Kx_inv = np.linalg.inv(Kx(X_standardized, X_standardized) + Sigma_standardized)
     mu_y_x_prime = Kx(x_prime_standardized, X_standardized) @ Kx_inv @ Mu_standardized
-    var_y_x_prime = Kx(x_prime_standardized, x_prime_standardized) - Kx(x_prime_standardized, X_standardized) @ Kx_inv @ Kx(X_standardized, x_prime_standardized)
+    var_y_x_prime = Kx(x_prime_standardized, x_prime_standardized) - Kx(x_prime_standardized,
+                                                                        X_standardized) @ Kx_inv @ Kx(X_standardized,
+                                                                                                      x_prime_standardized)
     std_y_x_prime = np.sqrt(var_y_x_prime)
 
     mu_y_x_prime_original = mu_y_x_prime * std_Mu + mean_Mu
@@ -252,8 +256,8 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
     # mu_y_x_test_original = mu_y_x_test * std_Mu + mean_Mu
     # std_y_x_test_original = std_y_x_test * std_Mu
     #
-    # true_X = np.load('./finance_X.npy')
-    # true_EgY_X = np.load('./finance_EgY_X.npy')
+    # true_X = np.load('./data/finance_X.npy')
+    # true_EgY_X = np.load('./data/finance_EgY_X.npy')
     #
     # plt.figure()
     # plt.scatter(X.squeeze(), gY.mean(1))
@@ -265,7 +269,7 @@ def cbq(X, Y, gY, g, x_prime, sigma, kernel_x, kernel_y, compute_phi='empirical'
     # plt.legend()
     # plt.show()
     pause = True
-    return mu_y_x_prime_original, std_y_x_prime_original
+    return mu_y_x_prime_original[0][0], std_y_x_prime_original[0][0]
 
 
 def price(St, N, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1, visualize=False):
@@ -332,15 +336,15 @@ def save_true_value():
     St = St.squeeze()
     ind = np.argsort(St)
     value = loss.mean(1)
-    np.save('./finance_X.npy', St[ind])
-    np.save('./finance_EgY_X.npy', value[ind])
+    np.save('./data/finance_X.npy', St[ind])
+    np.save('./data/finance_EgY_X.npy', value[ind])
     plt.figure()
     plt.plot(St[ind], value[ind])
     plt.xlabel(r"$X$")
     plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
     plt.title("True value for finance experiment")
+    plt.savefig("./data/true_distribution.pdf")
     plt.show()
-    plt.savefig("./true_distribution.pdf")
     return
 
 
@@ -352,15 +356,17 @@ def cbq_option_pricing(visualize=False):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = np.array([1, 3, 5, 10, 20, 100])
-    Ny_array = np.arange(1, 100, 2)
-    BMC_dict = {}
+    Nx_array = np.array([3, 5, 10, 20, 50, 100])
+    Ny_array = np.arange(2, 100, 2)
+    cbq_mean_dict = {}
+    cbq_std_dict = {}
+    poly_mean_dict = {}
+    poly_std_dict = {}
     MC_list = []
 
     St_prime = np.array([[50.0]])
     if visualize:
         price(St_prime, N=1, visualize=True)
-
 
     # True value with standard MC
     for _ in range(1):
@@ -368,7 +374,10 @@ def cbq_option_pricing(visualize=False):
         print('True Value is:', true_value)
 
     for Nx in Nx_array:
-        BMC_array = np.array([])
+        cbq_mean_array = np.array([])
+        cbq_std_array = np.array([])
+        poly_mean_array = np.array([])
+        poly_std_array = np.array([])
         for Ny in tqdm(Ny_array):
             epsilon = np.random.normal(0, 1, size=(Nx, 1))
             St = S0 * np.exp(sigma * np.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
@@ -377,10 +386,17 @@ def cbq_option_pricing(visualize=False):
             # This is use standard GP to fit loss at a given St, mainly used for choosing kernel on Y.
             # GP(St, ST, loss, price, St_prime, kernel_x='rbf', kernel_y='exponential')
 
-            mu_y_x_prime, std_y_x_prime = cbq(St, ST, loss, price, St_prime, sigma=sigma,
-                                              kernel_x='rbf', kernel_y='exponential')
-            BMC_array = np.append(BMC_array, mu_y_x_prime[0][0])
-        BMC_dict[f"{Nx}"] = BMC_array
+            mu_y_x_prime_cbq, std_y_x_prime_cbq = cbq(St, ST, loss, price, St_prime, sigma=sigma,
+                                                      kernel_x='rbf', kernel_y='exponential')
+            mu_y_x_prime_poly, std_y_x_prime_poly = polynommial(St, ST, loss, price, St_prime, sigma=sigma)
+            cbq_mean_array = np.append(cbq_mean_array, mu_y_x_prime_cbq)
+            cbq_std_array = np.append(cbq_std_array, std_y_x_prime_cbq)
+            poly_mean_array = np.append(poly_mean_array, mu_y_x_prime_poly)
+            poly_std_array = np.append(poly_std_array, std_y_x_prime_poly)
+        cbq_mean_dict[f"{Nx}"] = cbq_mean_array
+        cbq_std_dict[f"{Nx}"] = cbq_std_array
+        poly_mean_dict[f"{Nx}"] = poly_mean_array
+        poly_std_dict[f"{Nx}"] = poly_std_array
 
     for Ny in Ny_array:
         MC_list.append(price(St_prime, Ny)[1].mean())
@@ -391,9 +407,13 @@ def cbq_option_pricing(visualize=False):
         axs[i].set_ylim(1, 7)
         axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
         axs[i].plot(Ny_array, MC_list, color='b', label='MC')
-        axs[i].plot(Ny_array, BMC_dict[f"{Nx}"], color='r', label=f'BMC Nx = {Nx}')
+        axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
+        axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='orange', label=f'Polynomial Nx = {Nx}')
+        axs[i].fill_between(Ny_array, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
+                            cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
         axs[i].legend()
         # axs[i].set_xscale('log')
+    plt.tight_layout()
     plt.show()
     return
 
