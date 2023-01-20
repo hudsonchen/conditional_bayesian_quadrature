@@ -81,7 +81,7 @@ def dxdy_Matern(x, y, l):
     part1 = const * const * jnp.exp(-const * r)
     part2 = -const * const * jnp.exp(-const * r) * (1 + const * r)
     part3 = const * jnp.exp(-const * r) * const
-    return part1 + part2 + part3
+    return -(part1 + part2 + part3)
 
 
 # @jax.jit
@@ -131,8 +131,8 @@ def main():
     rng_key = jax.random.PRNGKey(seed)
     C = 5
     # n_list = [200]
-    # n_list = jnp.concatenate((jnp.arange(3, 9), jnp.arange(1, 20) * 10))
-    n_list = jnp.array([20])
+    n_list = jnp.concatenate((jnp.arange(3, 9), jnp.arange(1, 20) * 10))
+    # n_list = jnp.array([200])
     eps = 1e-6
 
     l_list = jnp.array([])
@@ -145,7 +145,7 @@ def main():
     fx = jnp.exp(jnp.sin(C * 2 * x) ** 2 - (2 * x) ** 2)
     true_value = fx.mean()
 
-    learning_rate = 1e-3
+    learning_rate = 1e-2
     optimizer = optax.adam(learning_rate)
 
     for n in tqdm(n_list):
@@ -176,28 +176,28 @@ def main():
             # log_l = jnp.log(0.3)
             return log_l, c, A, opt_state, nllk_value
 
-        # Debug code
-        log_l_debug_list = []
-        c_debug_list = []
-        A_debug_list = []
-        nll_debug_list = []
+        # # Debug code
+        # log_l_debug_list = []
+        # c_debug_list = []
+        # A_debug_list = []
+        # nll_debug_list = []
 
         for _ in range(1000):
             rng_key, _ = jax.random.split(rng_key)
             log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
-            # Debug code
-            log_l_debug_list.append(log_l)
-            c_debug_list.append(c)
-            A_debug_list.append(A)
-            nll_debug_list.append(nllk_value)
-        # Debug code
-        fig = plt.figure(figsize=(15, 6))
-        ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-        ax_1.plot(log_l_debug_list)
-        ax_2.plot(c_debug_list)
-        ax_3.plot(A_debug_list)
-        ax_4.plot(nll_debug_list)
-        plt.show()
+        #     # Debug code
+        #     log_l_debug_list.append(log_l)
+        #     c_debug_list.append(c)
+        #     A_debug_list.append(A)
+        #     nll_debug_list.append(nllk_value)
+        # # Debug code
+        # fig = plt.figure(figsize=(15, 6))
+        # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+        # ax_1.plot(log_l_debug_list)
+        # ax_2.plot(c_debug_list)
+        # ax_3.plot(A_debug_list)
+        # ax_4.plot(nll_debug_list)
+        # plt.show()
 
         l = jnp.exp(log_l)
         final_K = A * stein_kernel(x, x, l) + c
