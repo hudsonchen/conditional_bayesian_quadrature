@@ -74,6 +74,7 @@ def dy_Matern(x, y, l):
     return part1 + part2
 
 
+### Important! Be caution about the gradient here, the derivative of the absolute value is taken to be 0 at 0.
 # @jax.jit
 def dxdy_Matern(x, y, l):
     r = distance(x, y).squeeze()
@@ -81,7 +82,7 @@ def dxdy_Matern(x, y, l):
     part1 = const * const * jnp.exp(-const * r)
     part2 = -const * const * jnp.exp(-const * r) * (1 + const * r)
     part3 = const * jnp.exp(-const * r) * const
-    return -(part1 + part2 + part3)
+    return part1 + part2 + part3
 
 
 # @jax.jit
@@ -124,16 +125,26 @@ def GP():
     plt.show()
     return
 
+@jax.jit
+def f(x):
+    return 2 * jnp.exp(2 * jnp.sin(10 * x) ** 2 - 4 * x ** 2)
+
 
 def main():
     seed = int(time.time())
     # seed = 0
     rng_key = jax.random.PRNGKey(seed)
-    C = 5
     # n_list = [200]
     n_list = jnp.concatenate((jnp.arange(3, 9), jnp.arange(1, 20) * 10))
     # n_list = jnp.array([200])
     eps = 1e-6
+
+    x = jnp.linspace(-5, 5, 100)
+    fx = f(x)
+    plt.figure()
+    plt.plot(x, fx)
+    plt.title("This is the function that we want to integrate.")
+    plt.show()
 
     l_list = jnp.array([])
     c_list = jnp.array([])
@@ -142,7 +153,7 @@ def main():
     BMC_std_list = jnp.array([])
 
     x = jax.random.normal(rng_key, shape=(100000,))
-    fx = jnp.exp(jnp.sin(C * 2 * x) ** 2 - (2 * x) ** 2)
+    fx = f(x)
     true_value = fx.mean()
 
     learning_rate = 1e-2
@@ -150,7 +161,7 @@ def main():
 
     for n in tqdm(n_list):
         x = jax.random.normal(rng_key, shape=(n,))[:, None]
-        fx = jnp.exp(jnp.sin(C * 2 * x) ** 2 - (2 * x) ** 2)
+        fx = f(x)
         MC_list = jnp.append(MC_list, fx.mean())
 
         c_init = c = 1.0
@@ -172,8 +183,6 @@ def main():
             nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, c, A)
             updates, opt_state = optimizer.update(grads, opt_state, (log_l, c, A))
             log_l, c, A = optax.apply_updates((log_l, c, A), updates)
-            # A = 1.0 / jnp.sqrt(n)
-            # log_l = jnp.log(0.3)
             return log_l, c, A, opt_state, nllk_value
 
         # # Debug code
@@ -228,7 +237,7 @@ def main():
     ax_1.legend()
     ax_1.set_xlabel("The number of observations.")
     ax_1.set_ylabel("Estimated Integral")
-    ax_1.set_ylim([-1, 1])
+    ax_1.set_ylim([0., 3.])
     plt.show()
 
     pause = True
