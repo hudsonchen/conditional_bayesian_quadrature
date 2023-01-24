@@ -503,7 +503,8 @@ def main():
 
 
 if __name__ == '__main__':
+    save_true_value()
     main()
-    # save_true_value()
+
 #
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
