@@ -13,8 +13,16 @@ from finance_baselines import *
 from kernels import *
 from utils import finance_utils
 import os
-os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
+import pwd
+import argparse
 
+
+if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
+    os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
+elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
+    os.chdir("/home/zongchen/CBQ")
+else:
+    pass
 
 plt.rcParams['axes.grid'] = True
 plt.rcParams['font.family'] = 'DeJavu Serif'
@@ -24,57 +32,14 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 
 
-def Geometric_Brownian(n, dt, rng_key, sigma=0.3, S0=1):
-    rng_key, _ = jax.random.split(rng_key)
-    dWt = jax.random.normal(rng_key, shape=(int(n),)) * jnp.sqrt(dt)
-    dlnSt = sigma * dWt - 0.5 * (sigma ** 2) * dt
-    St = jnp.exp(jnp.cumsum(dlnSt) + jnp.log(S0))
-    return St
+def get_config():
+    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for finance data')
 
-
-def callBS(t, s, K, sigma):
-    part_one = jnp.log(s / K) / (sigma * jnp.sqrt(t)) + 0.5 * sigma * jnp.sqrt(t)
-    part_two = jnp.log(s / K) / (sigma * jnp.sqrt(t)) - 0.5 * sigma * jnp.sqrt(t)
-    return s * norm.cdf(part_one) - K * norm.cdf(part_two)
-
-
-def BSM_butterfly_analytic():
-    seed = int(time.time())
-    # seed = 0
-    rng_key = jax.random.PRNGKey(seed)
-    rng_key, _ = jax.random.split(rng_key)
-    K1 = 50
-    K2 = 150
-    s = -0.2
-    t = 1
-    T = 2
-    sigma = 0.3
-    S0 = 50
-
-    # St = Geometric_Brownian(100, t / 100, sigma=sigma, S0=S0)[-1]
-
-    epsilon = jax.random.normal(rng_key)
-    St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-    psiST_St_1 = callBS(T - t, St, K1, sigma) + callBS(T - t, St, K2, sigma) \
-                 - 2 * callBS(T - t, St, (K1 + K2) / 2, sigma)
-    psiST_St_2 = callBS(T - t, (1 + s) * St, K1, sigma) + callBS(T - t, (1 + s) * St, K2, sigma) \
-                 - 2 * callBS(T - t, (1 + s) * St, (K1 + K2) / 2, sigma)
-    L_inner = psiST_St_1 - psiST_St_2
-    # print(max(L_inner, 0))
-    print(L_inner)
-
-    # Verifies the result from BSM agree with standard Monte Carlo
-    # iter_num = 10000
-    # L_MC = 0
-    # for i in range(iter_num):
-    #     epsilon = np.random.normal(0, 1)
-    #     ST = St * np.exp(sigma * np.sqrt((T-t)) * epsilon - 0.5 * (sigma ** 2) * (T-t))
-    #     psi_ST_1 = max(ST - K1, 0) + max(ST - K2, 0) - 2 * max(ST - (K1+K2) / 2, 0)
-    #     psi_ST_2 = max((1+s) * ST - K1, 0) + max((1+s) * ST - K2, 0) - 2 * max((1+s) * ST - (K1+K2) / 2, 0)
-    #     L_MC += (psi_ST_1 - psi_ST_2)
-    # print(L_MC / iter_num)
-    return
-
+    # Data settings
+    parser.add_argument('--kernel_x', type=str)
+    parser.add_argument('--kernel_y', type=str)
+    args = parser.parse_args()
+    return args
 
 @jax.jit
 def dx_log_px(x, sigma, T, t, scale, St):
@@ -185,108 +150,163 @@ def train(y, y_scale, gy, rng_key, sigma, T, t, St):
     return jnp.exp(log_l), c, A
 
 
-def cbq(X, Y, gY, x_prime, rng_key, sigma, kernel_y, compute_phi='empirical'):
-    """
-    :param X: X is of size Nx
-    :param Y: Y is of size Nx * Ny
-    :param gY: gY is g(Y)
-    :param x_prime: is the target conditioning value of x, should be of shape [1, 1]
-    :param compute_phi: choose the mode to compute kernel mean embedding phi.
-    :return: return the expectation E[g(Y)|X=x_prime]
-    """
+class CBQ:
+    def __init__(self, kernel_x, kernel_y):
+        if kernel_y == 'rbf':
+            self.Ky = my_RBF
+            self.ly = 0.5
+        elif kernel_y == 'matern':
+            self.Ky = my_Matern
+            self.ly = 0.5
+        elif kernel_y == 'laplace':
+            self.Ky = my_Laplace
+            self.ly = 0.5
+        elif kernel_y == 'stein_matern':
+            self.Ky = stein_Matern
+        elif kernel_y == 'stein_laplace':
+            self.Ky = stein_Laplace
+        else:
+            raise NotImplementedError
 
-    Nx = X.shape[0]
-    Ny = Y.shape[1]
-    eps = 1e-6
+        if 'stein' not in kernel_y:
+            self.cbq = self.cbq_no_stein
+        elif 'stein' in kernel_y:
+            self.cbq = self.cbq_stein
+        else:
+            pass
 
-    if kernel_y == 'rbf':
-        Ky = my_RBF
-        ly = 0.5
-    elif kernel_y == 'matern':
-        Ky = my_Matern
-        ly = 0.5
-    elif kernel_y == 'laplace':
-        Ky = my_Laplace
-        ly = 0.5
-    elif kernel_y == 'stein_matern':
-        Ky = stein_Matern
-    elif kernel_y == 'stein_laplace':
-        Ky = stein_Laplace
-    else:
-        raise NotImplementedError
+        if kernel_x == 'rbf':  # This is the best kernel for x
+            self.Kx = my_RBF
+            self.one_d_Kx = one_d_my_RBF
+            self.lx = 1.0
+        elif kernel_x == 'matern':
+            self.Kx = my_Matern
+            self.one_d_Kx = one_d_my_Matern
+            self.lx = 0.5
+        else:
+            raise NotImplementedError
+        return
 
-    mu_list = []
-    std_list = []
-    for i in range(Nx):
-        x = X[i]
-        Yi = Y[i, :][:, None]
-        Yi_standardized, Yi_scale = finance_utils.scale(Yi)
-        gYi = gY[i, :][:, None]
+    # @partial(jax.jit, static_argnums=(0,))
+    def cbq_no_stein(self, X, Y, gY, rng_key, sigma):
+        Nx = X.shape[0]
+        Ny = Y.shape[1]
+        eps = 1e-6
+        Sigma = jnp.zeros(Nx)
+        Mu = jnp.zeros(Nx)
+        for i in range(Nx):
+            x = X[i]
+            Yi = Y[i, :][:, None]
+            Yi_standardized, Yi_scale = finance_utils.scale(Yi)
+            gYi = gY[i, :][:, None]
 
-        ly, c, A = train(Yi_standardized, Yi_scale, gYi, rng_key, sigma, T=2, t=1, St=x)
-        # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
+            # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
 
-        # Ky_inv = jnp.linalg.inv(Ky(Yi_standardized, Yi_standardized, ly) + eps * jnp.eye(Ny))
-        K = A * Ky(Yi_standardized, Yi_standardized, ly, sigma, T=2, t=1, scale=Yi_scale, St=x)
-        K_inv = jnp.linalg.inv(A * Ky(Yi_standardized, Yi_standardized, ly, sigma, T=2, t=1, scale=Yi_scale, St=x) +
-                              c + eps * jnp.eye(Ny))
-        mu_standardized = c * (K_inv @ gYi).sum()
-        std_standardized = jnp.sqrt(c - K_inv.sum() * c ** 2)
+            K = self.Ky(Yi_standardized, Yi_standardized, self.ly) + eps * jnp.eye(Ny)
+            K_inv = jnp.linalg.inv(K)
+            phi = K.mean(1)
+            varphi = K.mean()
+            mu_standardized = phi.T @ K_inv @ gYi
+            std_standardized = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
 
-        mu_list.append(mu_standardized.squeeze())
-        std_list.append(std_standardized.squeeze())
+            Sigma = Sigma.at[i].set(std_standardized.squeeze())
+            Mu = Mu.at[i].set(mu_standardized.squeeze())
 
-        # Large sample mu
-        # print(price(X[i], 10000, rng_key)[1].mean())
-    Sigma = jnp.array(std_list)
-    Mu = jnp.array(mu_list)
-    return Mu, Sigma
+        return Mu, Sigma
 
+    def cbq_stein(self, X, Y, gY, rng_key, sigma):
+        """
+        :param X: X is of size Nx
+        :param Y: Y is of size Nx * Ny
+        :param gY: gY is g(Y)
+        :param x_prime: is the target conditioning value of x, should be of shape [1, 1]
+        :param compute_phi: choose the mode to compute kernel mean embedding phi.
+        :return: return the expectation E[g(Y)|X=x_prime]
+        """
 
-@partial(jax.jit, static_argnums=(4, 5))
-def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, Kx, one_d_Kx, lx):
-    Nx = psi_y_x_mean.shape[0]
+        Nx = X.shape[0]
+        Ny = Y.shape[1]
+        eps = 1e-6
+        Sigma = jnp.zeros(Nx)
+        Mu = jnp.zeros(Nx)
+        for i in range(Nx):
+            x = X[i]
+            Yi = Y[i, :][:, None]
+            Yi_standardized, Yi_scale = finance_utils.scale(Yi)
+            gYi = gY[i, :][:, None]
 
-    Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
-    Sigma_standardized = psi_y_x_std / Mu_std
-    X_standardized, X_mean, X_std = finance_utils.standardize(X)
-    x_prime_standardized = (x_prime - X_mean) / X_std
-    noise = 0.1
+            ly, c, A = train(Yi_standardized, Yi_scale, gYi, rng_key, sigma, T=2, t=1, St=x)
+            # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
 
-    K_train_train = Kx(X_standardized, X_standardized, lx) + jnp.diag(Sigma_standardized) + noise * jnp.eye(Nx)
-    K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = one_d_Kx(x_prime_standardized, X_standardized, lx)
-    K_test_test = one_d_Kx(x_prime_standardized, x_prime_standardized, lx) + noise
-    mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
-    var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    std_y_x_prime = jnp.sqrt(var_y_x_prime)
+            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, sigma, T=2, t=1, scale=Yi_scale, St=x) + c + eps * jnp.eye(Ny)
+            K_inv = jnp.linalg.inv(K)
+            mu_standardized = c * (K_inv @ gYi).sum()
+            std_standardized = jnp.sqrt(c - K_inv.sum() * c ** 2)
 
-    mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-    std_y_x_prime_original = std_y_x_prime * Mu_std
+            Sigma = Sigma.at[i].set(std_standardized.squeeze())
+            Mu = Mu.at[i].set(mu_standardized.squeeze())
 
-    # x_debug = jnp.linspace(20, 120, 100)[:, None]
-    # x_debug_standardized = (x_debug - X_mean) / X_std
-    # K_train_debug = Kx(X_standardized, x_debug_standardized, lx)
-    # mu_y_x_debug = K_train_debug.T @ K_train_train_inv @ Mu_standardized
-    # var_y_x_debug = Kx(x_debug_standardized, x_debug_standardized, lx) - K_train_debug.T @ K_train_train_inv @ K_train_debug
-    # std_y_x_debug = jnp.sqrt(jnp.diag(var_y_x_debug))
-    # mu_y_x_debug_original = mu_y_x_debug * Mu_std + Mu_mean
-    # std_y_x_debug_original = std_y_x_debug * Mu_std
-    #
-    # true_X = jnp.load('./data/finance_X.npy')
-    # true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
+            # Large sample mu
+            # print(price(X[i], 10000, rng_key)[1].mean())
 
-    # plt.figure()
-    # plt.plot(x_debug.squeeze(), mu_y_x_debug_original.squeeze(), label='predict')
-    # plt.plot(true_X, true_EgY_X, label='true')
-    # plt.scatter(X.squeeze(), psi_y_x_mean.squeeze())
-    # plt.fill_between(x_debug.squeeze(), mu_y_x_debug_original.squeeze() - std_y_x_debug_original,
-    #                  mu_y_x_debug_original.squeeze() + std_y_x_debug_original, alpha=0.5)
-    # plt.plot()
-    # plt.legend()
-    # plt.savefig(f"./results/GP_finance_{Nx}.pdf")
-    # plt.show()
-    return mu_y_x_prime_original, std_y_x_prime_original
+        return Mu, Sigma
+
+    @partial(jax.jit, static_argnums=(0,))
+    def GP(self, psi_y_x_mean, psi_y_x_std, X, x_prime):
+        Nx = psi_y_x_mean.shape[0]
+        Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
+        Sigma_standardized = psi_y_x_std / Mu_std
+        X_standardized, X_mean, X_std = finance_utils.standardize(X)
+        x_prime_standardized = (x_prime - X_mean) / X_std
+        noise = 0.1
+
+        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(Sigma_standardized) + noise * jnp.eye(Nx)
+        K_train_train_inv = jnp.linalg.inv(K_train_train)
+        K_test_train = self.one_d_Kx(x_prime_standardized, X_standardized, self.lx)
+        K_test_test = self.one_d_Kx(x_prime_standardized, x_prime_standardized, self.lx) + noise
+        mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
+        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+        std_y_x_prime = jnp.sqrt(var_y_x_prime)
+
+        mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
+        std_y_x_prime_original = std_y_x_prime * Mu_std
+        return mu_y_x_prime_original, std_y_x_prime_original
+
+    # GP for debugging purposes, not it can only run without jax.jit
+    def GP_debug(self, psi_y_x_mean, psi_y_x_std, X, ny):
+        Nx = psi_y_x_mean.shape[0]
+        Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
+        Sigma_standardized = psi_y_x_std / Mu_std
+        X_standardized, X_mean, X_std = finance_utils.standardize(X)
+        noise = 0.01
+        x_debug = jnp.linspace(20, 120, 100)[:, None]
+        x_debug_standardized = (x_debug - X_mean) / X_std
+
+        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(Sigma_standardized) + noise * jnp.eye(Nx)
+        K_train_train_inv = jnp.linalg.inv(K_train_train)
+        K_train_debug = self.Kx(X_standardized, x_debug_standardized, self.lx)
+        mu_y_x_debug = K_train_debug.T @ K_train_train_inv @ Mu_standardized
+        var_y_x_debug = self.Kx(x_debug_standardized, x_debug_standardized, self.lx) + noise - K_train_debug.T @ K_train_train_inv @ K_train_debug
+        std_y_x_debug = jnp.sqrt(jnp.diag(var_y_x_debug))
+        mu_y_x_debug_original = mu_y_x_debug * Mu_std + Mu_mean
+        std_y_x_debug_original = std_y_x_debug * Mu_std
+
+        true_X = jnp.load('./data/finance_X.npy')
+        true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
+
+        plt.figure()
+        plt.plot(x_debug.squeeze(), mu_y_x_debug_original.squeeze(), color='blue', label='predict')
+        plt.plot(true_X, true_EgY_X, color='red', label='true')
+        plt.scatter(X.squeeze(), psi_y_x_mean.squeeze())
+        plt.fill_between(x_debug.squeeze(), mu_y_x_debug_original.squeeze() - std_y_x_debug_original,
+                         mu_y_x_debug_original.squeeze() + std_y_x_debug_original, color='blue', alpha=0.2)
+        plt.plot()
+        plt.legend()
+        plt.title(f"GP_finance_X_{Nx}_y_{ny}")
+        plt.savefig(f"./results/GP_finance_X_{Nx}_y_{ny}.pdf")
+        plt.show()
+        pause = True
+        return
 
 
 def price(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1, visualize=False):
@@ -343,8 +363,8 @@ def price(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1, visualize=
 
 
 def save_true_value():
-    seed = int(time.time())
-    # seed = 0
+    # seed = int(time.time())
+    seed = 0
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
 
@@ -369,11 +389,11 @@ def save_true_value():
     plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
     plt.title("True value for finance experiment")
     plt.savefig("./data/true_distribution.pdf")
-    plt.show()
+    # plt.show()
     return
 
 
-def cbq_option_pricing(visualize=False):
+def cbq_option_pricing(args):
     seed = int(time.time())
     # seed = 0
     rng_key = jax.random.PRNGKey(seed)
@@ -386,9 +406,9 @@ def cbq_option_pricing(visualize=False):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = jnp.array([5, 10, 20])
+    Nx_array = jnp.array([5, 10])
     # Ny_array = jnp.arange(2, 100, 2)
-    Ny_array = jnp.array([3, 5, 10, 30, 50, 70, 90, 110])
+    Ny_array = jnp.array([3, 5, 10, 50])
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -396,28 +416,15 @@ def cbq_option_pricing(visualize=False):
     MC_list = []
 
     St_prime = jnp.array([[70.0]])
-    if visualize:
-        rng_key, _ = jax.random.split(rng_key)
-        price(St_prime, N=1, rng_key=rng_key, visualize=True)
-
     # True value with standard MC
     for _ in range(1):
         rng_key, _ = jax.random.split(rng_key)
         true_value = price(St_prime, 1000000, rng_key)[1].mean()
         print('True Value is:', true_value)
 
-    kernel_x = 'rbf'
-    if kernel_x == 'rbf':  # This is the best kernel for x
-        Kx = my_RBF
-        one_d_Kx = one_d_my_RBF
-        lx = 1.0
-    elif kernel_x == 'matern':
-        Kx = my_Matern
-        one_d_Kx = one_d_my_Matern
-        lx = 0.5
-    else:
-        raise NotImplementedError
-
+    kernel_x = args.kernel_x
+    kernel_y = args.kernel_y
+    CBQ_class = CBQ(kernel_x=kernel_x, kernel_y=kernel_y)
     for Nx in Nx_array:
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
@@ -429,14 +436,10 @@ def cbq_option_pricing(visualize=False):
             St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
             ST, loss = price(St, Ny, rng_key, K1=K1, K2=K2, s=s, sigma=sigma, T=T, t=t)
 
-            # This is use standard GP to fit loss at a given St, mainly used for choosing kernel on Y.
-            # GP(St, ST, loss, price, St_prime, kernel_x='rbf', kernel_y='exponential')
-
-            psi_x_mean, psi_x_std = cbq(St, ST, loss, St_prime, rng_key, sigma=sigma,
-                                                      kernel_y='stein_matern')
-            psi_x_std = np.nan_to_num(psi_x_std, nan=1.0)
-            mu_y_x_prime_cbq, std_y_x_prime_cbq = GP(psi_x_mean, psi_x_std, St, St_prime, Kx, one_d_Kx, lx)
-
+            psi_x_mean, psi_x_std = CBQ_class.cbq(St, ST, loss, rng_key, sigma=sigma)
+            psi_x_std = np.nan_to_num(psi_x_std, nan=0.3)
+            mu_y_x_prime_cbq, std_y_x_prime_cbq = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
+            CBQ_class.GP_debug(psi_x_mean, psi_x_std, St, Ny)
             mu_y_x_prime_poly, std_y_x_prime_poly = polynommial(St, ST, loss, St_prime, sigma=sigma)
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq)
             cbq_std_array = jnp.append(cbq_std_array, std_y_x_prime_cbq)
@@ -464,6 +467,7 @@ def cbq_option_pricing(visualize=False):
         axs[i].legend()
         # axs[i].set_xscale('log')
     plt.tight_layout()
+    plt.title("Finance Dataset")
     plt.savefig("./results/CBQ_results_finance.pdf")
     # plt.show()
     return
@@ -476,22 +480,21 @@ def main():
 
     visualize_brownian = False
     debug_BSM = False
-    debug_cbq = True
     if visualize_brownian:
         n = 100.
         T = 1.
         dt = T / n
         plt.figure()
         for i in range(10):
-            St = Geometric_Brownian(n, dt, rng_key)
+            St = finance_utils.Geometric_Brownian(n, dt, rng_key)
             plt.plot(St)
         plt.show()
     elif debug_BSM:
-        BSM_butterfly_analytic()
-    elif debug_cbq:
-        cbq_option_pricing(visualize=False)
+        finance_utils.BSM_butterfly_analytic()
     else:
         pass
+    args = get_config()
+    cbq_option_pricing(args)
     return
 
 

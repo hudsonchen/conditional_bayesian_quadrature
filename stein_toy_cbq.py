@@ -154,7 +154,7 @@ def true_value():
     return
 
 
-def GP(x_test, x, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
+def GP(x_test, x, ny, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     """
     :param x_test: The value of x to evaluate
     :param x: The observed x
@@ -239,7 +239,7 @@ def GP(x_test, x, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     plt.plot(x_debug.squeeze(), mean, color='b')
     plt.plot(x_debug.squeeze(), y_true, color='red')
     plt.fill_between(x_debug.squeeze(), mean - std, mean + std, alpha=0.2, color='b')
-    plt.savefig(f"./results/GP_toy_{n}.pdf")
+    plt.savefig(f"./results/GP_toy_X_{n}_Y_{ny}.pdf")
     # plt.show()
     pause = True
     return mean_true, std_true
@@ -341,7 +341,7 @@ def main():
                 BMC_std_x_list = jnp.append(BMC_std_x_list, BMC_std)
 
             # The second GP - regress BMC_mean_x to x_obs
-            mean, std = GP(jnp.array([[x_pred]]), x_obs, BMC_mean_x_list[:, None], BMC_std_x_list[:, None], rng_key)
+            mean, std = GP(jnp.array([[x_pred]]), x_obs, ny, BMC_mean_x_list[:, None], BMC_std_x_list[:, None], rng_key)
             temp_mean_list = jnp.append(temp_mean_list, mean)
             temp_std_list = jnp.append(temp_std_list, std)
 

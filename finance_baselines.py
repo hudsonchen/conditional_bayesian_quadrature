@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.autograd import grad
 from torch import optim
-
+from utils import finance_utils
 
 def polynommial(X, Y, gY, x_prime, sigma, poly=3):
     X = torch.tensor(np.asarray(X), dtype=torch.double)
@@ -10,12 +10,8 @@ def polynommial(X, Y, gY, x_prime, sigma, poly=3):
     gY = torch.tensor(np.asarray(gY), dtype=torch.double)
     x_prime = torch.tensor(np.asarray(x_prime), dtype=torch.double)
 
-    gY_mean = gY.mean()
-    gY_std = gY.std()
-    gY_standardized = (gY - gY_mean) / gY_std
-    X_mean = X.mean()
-    X_std = X.std()
-    X_standardized = (X - X_mean) / X_std
+    gY_standardized, gY_mean, gY_std = finance_utils.standardize(gY)
+    X_standardized, X_mean, X_std = finance_utils.standardize(X)
     x_prime_standardized = (x_prime - X_mean) / X_std
 
     theta = torch.tensor([[1.0] * (poly + 1)], requires_grad=True, dtype=torch.double)
