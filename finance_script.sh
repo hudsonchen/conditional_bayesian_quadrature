@@ -7,7 +7,7 @@
 #$ -j y
 #$ -N cbq_finance
 
-source /share/apps/source_files/python/python-3.8.5.source
+#source /share/apps/source_files/python/python-3.8.5.source
 conda activate cbq
 
 date
