@@ -16,6 +16,7 @@ elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
 else:
     pass
+
 plt.rcParams["figure.figsize"] = (6, 4)
 plt.rcParams["axes.titlesize"] = 28
 plt.rcParams["font.size"] = 28

@@ -19,8 +19,10 @@ import argparse
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
+    print(os.getcwd())
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
+    print(os.getcwd())
 else:
     pass
 
