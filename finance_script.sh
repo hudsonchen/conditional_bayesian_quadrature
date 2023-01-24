@@ -18,4 +18,4 @@ which pip
 which python3
 
 pwd
-python3 /home/zongchen/CBQ/cbq_finance.py --kernel_x rbf --kernel_y stein_matern
+python3 /home/zongchen/CBQ/finance.py --kernel_x rbf --kernel_y stein_matern

@@ -1,0 +1,1 @@
+rsync -avzh --progress cs-cluster:/home/zongchen/CBQ/results /Users/hudsonchen/research/fx_bayesian_quaduature/CBQ/results
