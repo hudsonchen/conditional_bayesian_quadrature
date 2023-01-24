@@ -258,7 +258,7 @@ class CBQ:
         Sigma_standardized = psi_y_x_std / Mu_std
         X_standardized, X_mean, X_std = finance_utils.standardize(X)
         x_prime_standardized = (x_prime - X_mean) / X_std
-        noise = 0.1
+        noise = 0.01
 
         K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(Sigma_standardized) + noise * jnp.eye(Nx)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
@@ -269,7 +269,8 @@ class CBQ:
         std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
         mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-        std_y_x_prime_original = std_y_x_prime * Mu_std
+        # TODO: Adding jnp.mean(Sigma_standardized) is a bit suspicious here.
+        std_y_x_prime_original = std_y_x_prime * Mu_std + jnp.mean(psi_y_x_std)
         return mu_y_x_prime_original, std_y_x_prime_original
 
     # GP for debugging purposes, not it can only run without jax.jit
@@ -289,7 +290,8 @@ class CBQ:
         var_y_x_debug = self.Kx(x_debug_standardized, x_debug_standardized, self.lx) + noise - K_train_debug.T @ K_train_train_inv @ K_train_debug
         std_y_x_debug = jnp.sqrt(jnp.diag(var_y_x_debug))
         mu_y_x_debug_original = mu_y_x_debug * Mu_std + Mu_mean
-        std_y_x_debug_original = std_y_x_debug * Mu_std
+        # TODO: Adding jnp.mean(Sigma_standardized) is a bit suspicious here.
+        std_y_x_debug_original = std_y_x_debug * Mu_std + jnp.mean(psi_y_x_std)
 
         true_X = jnp.load('./data/finance_X.npy')
         true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
@@ -363,8 +365,8 @@ def price(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1, visualize=
 
 
 def save_true_value():
-    # seed = int(time.time())
-    seed = 0
+    seed = int(time.time())
+    # seed = 0
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
 
