@@ -309,7 +309,7 @@ class CBQ:
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"./results/GP_finance_X_{Nx}_y_{ny}.pdf")
         # plt.show()
-        pause = True
+        plt.close()
         return
 
 
@@ -358,6 +358,7 @@ def save_true_value():
     plt.title("True value for finance experiment")
     plt.savefig("./data/true_distribution.pdf")
     # plt.show()
+    plt.close()
     return
 
 
@@ -438,6 +439,7 @@ def cbq_option_pricing(args):
     plt.title("Finance Dataset")
     plt.savefig("./results/CBQ_results_finance.pdf")
     # plt.show()
+    plt.close()
     return
 
 

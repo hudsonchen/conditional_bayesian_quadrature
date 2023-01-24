@@ -151,6 +151,7 @@ def true_value():
     plt.title("True value for toy experiment")
     plt.savefig("./data/true_distribution_toy.pdf")
     # plt.show()
+    plt.close()
     pause = True
     return
 
@@ -242,6 +243,7 @@ def GP(x_test, x, ny, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     plt.fill_between(x_debug.squeeze(), mean - std, mean + std, alpha=0.2, color='b')
     plt.savefig(f"./results/GP_toy_X_{n}_Y_{ny}.pdf")
     # plt.show()
+    plt.close()
     pause = True
     return mean_true, std_true
 
@@ -366,6 +368,7 @@ def main():
         axs[i].legend()
     plt.savefig("./results/CBQ_results_toy.pdf")
     # plt.show()
+    plt.close()
     return
 
 
