@@ -8,8 +8,14 @@ import time
 from kernels import *
 from functools import partial
 import os
+import pwd
 
-os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
+if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
+    os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
+elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
+    os.chdir("/home/zongchen/CBQ")
+else:
+    pass
 plt.rcParams["figure.figsize"] = (6, 4)
 plt.rcParams["axes.titlesize"] = 28
 plt.rcParams["font.size"] = 28
