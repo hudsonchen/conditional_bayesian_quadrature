@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import optax
 from functools import partial
 from tqdm import tqdm
-from baselines import *
+from finance_baselines import *
 from kernels import *
 from utils import finance_utils
 import os
@@ -76,6 +76,7 @@ def BSM_butterfly_analytic():
     return
 
 
+@jax.jit
 def dx_log_px(x, sigma, T, t, scale, St):
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
     x *= scale
@@ -83,6 +84,7 @@ def dx_log_px(x, sigma, T, t, scale, St):
     return (-1. / x - part1) * scale
 
 
+@jax.jit
 def stein_Matern(x, y, l, sigma, T, t, scale, St):
     d_log_px = dx_log_px(x, sigma, T, t, scale, St)
     d_log_py = dx_log_px(y, sigma, T, t, scale, St)
@@ -98,6 +100,7 @@ def stein_Matern(x, y, l, sigma, T, t, scale, St):
     return part1 + part2 + part3 + part4
 
 
+@jax.jit
 def stein_Laplace(x, y, l, sigma, T, t, scale, St):
     d_log_px = dx_log_px(x, sigma, T, t, scale, St)
     d_log_py = dx_log_px(y, sigma, T, t, scale, St)
@@ -240,18 +243,8 @@ def cbq(X, Y, gY, x_prime, rng_key, sigma, kernel_y, compute_phi='empirical'):
     return Mu, Sigma
 
 
-def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, kernel_x):
-    if kernel_x == 'rbf':  # This is the best kernel for x
-        Kx = my_RBF
-        one_d_Kx = one_d_my_RBF
-        lx = 1.0
-    elif kernel_x == 'matern':
-        Kx = my_Matern
-        one_d_Kx = one_d_my_Matern
-        lx = 0.5
-    else:
-        raise NotImplementedError
-
+@partial(jax.jit, static_argnums=(4, 5))
+def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, Kx, one_d_Kx, lx):
     Nx = psi_y_x_mean.shape[0]
 
     Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
@@ -271,29 +264,28 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, kernel_x):
     mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
     std_y_x_prime_original = std_y_x_prime * Mu_std
 
-    x_debug = jnp.linspace(20, 120, 100)[:, None]
-    x_debug_standardized = (x_debug - X_mean) / X_std
-    K_train_debug = Kx(X_standardized, x_debug_standardized, lx)
-    mu_y_x_debug = K_train_debug.T @ K_train_train_inv @ Mu_standardized
-    var_y_x_debug = Kx(x_debug_standardized, x_debug_standardized, lx) - K_train_debug.T @ K_train_train_inv @ K_train_debug
-    std_y_x_debug = jnp.sqrt(jnp.diag(var_y_x_debug))
-    mu_y_x_debug_original = mu_y_x_debug * Mu_std + Mu_mean
-    std_y_x_debug_original = std_y_x_debug * Mu_std
+    # x_debug = jnp.linspace(20, 120, 100)[:, None]
+    # x_debug_standardized = (x_debug - X_mean) / X_std
+    # K_train_debug = Kx(X_standardized, x_debug_standardized, lx)
+    # mu_y_x_debug = K_train_debug.T @ K_train_train_inv @ Mu_standardized
+    # var_y_x_debug = Kx(x_debug_standardized, x_debug_standardized, lx) - K_train_debug.T @ K_train_train_inv @ K_train_debug
+    # std_y_x_debug = jnp.sqrt(jnp.diag(var_y_x_debug))
+    # mu_y_x_debug_original = mu_y_x_debug * Mu_std + Mu_mean
+    # std_y_x_debug_original = std_y_x_debug * Mu_std
+    #
+    # true_X = jnp.load('./data/finance_X.npy')
+    # true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
 
-    true_X = jnp.load('./data/finance_X.npy')
-    true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
-
-    plt.figure()
-    plt.plot(x_debug.squeeze(), mu_y_x_debug_original.squeeze(), label='predict')
-    plt.plot(true_X, true_EgY_X, label='true')
-    plt.scatter(X.squeeze(), psi_y_x_mean.squeeze())
-    plt.fill_between(x_debug.squeeze(), mu_y_x_debug_original.squeeze() - std_y_x_debug_original,
-                     mu_y_x_debug_original.squeeze() + std_y_x_debug_original, alpha=0.5)
-    plt.plot()
-    plt.legend()
-    plt.savefig(f"./results/GP_finance_{Nx}.pdf")
+    # plt.figure()
+    # plt.plot(x_debug.squeeze(), mu_y_x_debug_original.squeeze(), label='predict')
+    # plt.plot(true_X, true_EgY_X, label='true')
+    # plt.scatter(X.squeeze(), psi_y_x_mean.squeeze())
+    # plt.fill_between(x_debug.squeeze(), mu_y_x_debug_original.squeeze() - std_y_x_debug_original,
+    #                  mu_y_x_debug_original.squeeze() + std_y_x_debug_original, alpha=0.5)
+    # plt.plot()
+    # plt.legend()
+    # plt.savefig(f"./results/GP_finance_{Nx}.pdf")
     # plt.show()
-    pause = True
     return mu_y_x_prime_original, std_y_x_prime_original
 
 
@@ -414,6 +406,18 @@ def cbq_option_pricing(visualize=False):
         true_value = price(St_prime, 1000000, rng_key)[1].mean()
         print('True Value is:', true_value)
 
+    kernel_x = 'rbf'
+    if kernel_x == 'rbf':  # This is the best kernel for x
+        Kx = my_RBF
+        one_d_Kx = one_d_my_RBF
+        lx = 1.0
+    elif kernel_x == 'matern':
+        Kx = my_Matern
+        one_d_Kx = one_d_my_Matern
+        lx = 0.5
+    else:
+        raise NotImplementedError
+
     for Nx in Nx_array:
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
@@ -431,7 +435,7 @@ def cbq_option_pricing(visualize=False):
             psi_x_mean, psi_x_std = cbq(St, ST, loss, St_prime, rng_key, sigma=sigma,
                                                       kernel_y='stein_matern')
             psi_x_std = np.nan_to_num(psi_x_std, nan=1.0)
-            mu_y_x_prime_cbq, std_y_x_prime_cbq = GP(psi_x_mean, psi_x_std, St, St_prime, kernel_x='rbf')
+            mu_y_x_prime_cbq, std_y_x_prime_cbq = GP(psi_x_mean, psi_x_std, St, St_prime, Kx, one_d_Kx, lx)
 
             mu_y_x_prime_poly, std_y_x_prime_poly = polynommial(St, ST, loss, St_prime, sigma=sigma)
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq)
@@ -485,7 +489,7 @@ def main():
     elif debug_BSM:
         BSM_butterfly_analytic()
     elif debug_cbq:
-        cbq_option_pricing(visualize=True)
+        cbq_option_pricing(visualize=False)
     else:
         pass
     return
