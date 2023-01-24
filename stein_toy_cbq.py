@@ -7,7 +7,9 @@ import optax
 import time
 from kernels import *
 from functools import partial
+import os
 
+os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
 plt.rcParams["figure.figsize"] = (6, 4)
 plt.rcParams["axes.titlesize"] = 28
 plt.rcParams["font.size"] = 28
@@ -32,19 +34,14 @@ plt.rcParams['text.usetex'] = True
 plt.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath, amssymb}']
 
 
+@jax.jit
+def g(y):
+    return jnp.exp(jnp.sin(10 * y) ** 2 - 4 * y ** 2)
+
+
 ### Important! Be caution about the gradient here, the derivative of the absolute value is taken to be 0 at 0.
 # @jax.jit
-def dxdy_Matern(x, y, l):
-    r = distance(x, y).squeeze()
-    const = math.sqrt(3) / l
-    part1 = const * const * jnp.exp(-const * r)
-    part2 = -const * const * jnp.exp(-const * r) * (1 + const * r)
-    part3 = const * jnp.exp(-const * r) * const
-    return part1 + part2 + part3
-
-
-# @jax.jit
-def stein_kernel(x, y, l, mean, std):
+def stein_Matern(x, y, l, mean, std):
     d_log_px = -1. / (std ** 2) * (x - mean)
     d_log_py = -1. / (std ** 2) * (y - mean)
 
@@ -57,11 +54,6 @@ def stein_kernel(x, y, l, mean, std):
     part3 = d_log_px * dy_K
     part4 = dxdy_K
     return part1 + part2 + part3 + part4
-
-
-@jax.jit
-def g(y):
-    return jnp.exp(jnp.sin(10 * y) ** 2 - 4 * y ** 2)
 
 
 def CBQ(x, y, gy, mean, std, rng_key):
@@ -87,7 +79,7 @@ def CBQ(x, y, gy, mean, std, rng_key):
     def nllk_func(log_l, c, A, mean, std):
         l = jnp.exp(log_l)
         n = y.shape[0]
-        K = A * stein_kernel(y, y, l, mean, std) + c
+        K = A * stein_Matern(y, y, l, mean, std) + c
         K_inv = jnp.linalg.inv(K)
         nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
         return nll[0][0]
@@ -122,11 +114,11 @@ def CBQ(x, y, gy, mean, std, rng_key):
     # plt.show()
 
     l = jnp.exp(log_l)
-    final_K = A * stein_kernel(y, y, l, mean, std) + c
+    final_K = A * stein_Matern(y, y, l, mean, std) + c
     final_K_inv = jnp.linalg.inv(final_K)
     BMC_mean = c * (final_K_inv @ gy).sum()
     BMC_std = jnp.sqrt(c - final_K_inv.sum() * c * c)
-    if np.isnan(BMC_std):
+    if jnp.isnan(BMC_std):
         BMC_std = 0.3
     return BMC_mean, BMC_std
 
@@ -171,7 +163,7 @@ def GP(x_test, x, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     learning_rate = 1e-2
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
-    noise = 0.03  # This is used when we do not have BMC std.
+    noise = 0.001  # This is used when we do not have BMC std.
 
     log_l_init = log_l = jnp.log(0.5)
     A_init = A = 1.0  # / jnp.sqrt(n)
@@ -181,7 +173,7 @@ def GP(x_test, x, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     @jax.jit
     def nllk_func(log_l, c, A):
         l = jnp.exp(log_l)
-        l = 1.0
+        l = 0.5
         n = x.shape[0]
         K = 1 * my_RBF(x, x, l) + jnp.diag(BMC_x_std_orig ** 2) + noise * jnp.eye(n)
         K_inv = jnp.linalg.inv(K)
@@ -218,7 +210,7 @@ def GP(x_test, x, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     # plt.show()
 
     l = jnp.exp(log_l)
-    K_train_train = A * my_RBF(x, x, l) + jnp.diag(BMC_x_std_orig ** 2)
+    K_train_train = A * my_RBF(x, x, l) + jnp.diag(BMC_x_std_orig ** 2) + c * jnp.eye(n)
     K_test_train = A * one_d_my_RBF(x_test, x, l)[None, :]
     K_test_test = A * one_d_my_RBF(x_test, x_test, l)[None][None] + c
     K_inv = jnp.linalg.inv(K_train_train)
@@ -235,13 +227,14 @@ def GP(x_test, x, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     mean = (K_test_train_debug @ K_inv_debug @ BMC_x).squeeze()
     mean += BMC_mean
     std = jnp.diag(jnp.sqrt(K_test_test_debug - K_test_train_debug @ K_inv_debug @ K_test_train_debug.T)).squeeze()
-    y_true = np.load('./data/toy_EgY_X.npy')
+    y_true = jnp.load('./data/toy_EgY_X.npy')
     plt.figure()
     plt.scatter(x.squeeze(), BMC_x_mean_orig.squeeze())
     plt.plot(x_debug.squeeze(), mean, color='b')
     plt.plot(x_debug.squeeze(), y_true, color='red')
     plt.fill_between(x_debug.squeeze(), mean - std, mean + std, alpha=0.2, color='b')
-    plt.show()
+    plt.savefig(f"./results/GP_toy_{n}.pdf")
+    # plt.show()
     pause = True
     return mean_true, std_true
 
@@ -256,9 +249,9 @@ def main():
     cov = 0.8
 
     # This is the number of x that we observe
-    Nx_list = jnp.array([10])
+    Nx_list = jnp.array([3, 10, 30, 50])
     # Nx_list = jnp.array([30])
-    Ny_list = jnp.array([3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90])
+    Ny_list = jnp.array([10, 30, 50, 70, 90])
     # This is the value of x that we want to predict
     x_pred = 0.5
 
@@ -291,10 +284,9 @@ def main():
     mu_y_x_pred = cov * x_pred
     cov_y_x_pred = 1 - cov * cov
 
-    mu_y_x_obs = []
-    cov_y_x_obs = []
-
     for nx in Nx_list:
+        mu_y_x_obs = []
+        cov_y_x_obs = []
         importance_sampling_MC_list = []
         rng_key, _ = jax.random.split(rng_key)
         x_obs = jax.random.normal(rng_key, shape=(nx, 1))
@@ -349,7 +341,7 @@ def main():
 
         BMC_mean_dict[f"{nx}"] = temp_mean_list
         BMC_std_dict[f"{nx}"] = temp_std_list
-
+        pause = True
     # ------------- This is where Conditional Bayesian Quadrature ends --------------#
 
     fig, axs = plt.subplots(len(Nx_list), 1, figsize=(20, 40))
@@ -361,10 +353,12 @@ def main():
         axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
         axs[i].plot(Ny_list, MC_list, color='b', label='MC')
         axs[i].plot(Ny_list, BMC_mean_dict[f"{Nx}"], color='r', label=f'BMC Nx = {Nx}')
+        axs[i].fill_between(Ny_list, BMC_mean_dict[f"{Nx}"] - 2 * BMC_std_dict[f"{Nx}"],
+                            BMC_mean_dict[f"{Nx}"] + 2 * BMC_std_dict[f"{Nx}"], color='r', alpha=0.2)
         axs[i].plot(Ny_list, Importance_dict[f"{Nx}"], color='g', label=f'IS Nx = {Nx}')
         axs[i].legend()
-    plt.show()
-
+    plt.savefig("./results/CBQ_results_toy.pdf")
+    # plt.show()
     return
 
 

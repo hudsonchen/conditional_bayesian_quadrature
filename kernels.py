@@ -45,17 +45,47 @@ def dy_Matern(x, y, l):
 
 
 # @jax.jit
+def dxdy_Matern(x, y, l):
+    r = distance(x, y).squeeze()
+    const = math.sqrt(3) / l
+    part1 = const * const * jnp.exp(-const * r)
+    part2 = -const * const * jnp.exp(-const * r) * (1 + const * r)
+    part3 = const * jnp.exp(-const * r) * const
+    return part1 + part2 + part3
+
+
+# @jax.jit
 def my_RBF(x, y, l):
     r = distance(x, y).squeeze()
     return jnp.exp(- r ** 2 / 2 / (l ** 2))
 
 
-def my_laplace_kernel(x, y, l):
+def my_Laplace(x, y, l):
     r = distance(x, y).squeeze()
     return jnp.exp(- r / l)
 
 
-def one_d_my_laplace_kernel(x, y, l):
+def dx_Laplace(x, y, l):
+    sign = sign_func(x, y).squeeze().astype(float) * 2 - 1
+    r = distance(x, y).squeeze()
+    part1 = jnp.exp(- r / l) * (-sign)
+    return part1
+
+
+def dy_Laplace(x, y, l):
+    sign = sign_func(x, y).squeeze().astype(float) * 2 - 1
+    r = distance(x, y).squeeze()
+    part1 = jnp.exp(- r / l) * sign
+    return part1
+
+
+def dxdy_Laplace(x, y, l):
+    r = distance(x, y).squeeze()
+    part1 = jnp.exp(- r / l) * (-1)
+    return part1
+
+
+def one_d_my_Laplace(x, y, l):
     r = jax_dist(x, y).squeeze()
     return jnp.exp(- r / l)
 

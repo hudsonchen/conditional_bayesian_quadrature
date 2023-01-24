@@ -4,9 +4,12 @@ from torch.autograd import grad
 from torch import optim
 
 
-def polynommial(X, Y, gY, g, x_prime, sigma, poly=3):
-    Nx = X.shape[0]
-    Ny = Y.shape[1]
+def polynommial(X, Y, gY, x_prime, sigma, poly=3):
+    X = torch.tensor(np.asarray(X), dtype=torch.double)
+    Y = torch.tensor(np.asarray(Y), dtype=torch.double)
+    gY = torch.tensor(np.asarray(gY), dtype=torch.double)
+    x_prime = torch.tensor(np.asarray(x_prime), dtype=torch.double)
+
     gY_mean = gY.mean()
     gY_std = gY.std()
     gY_standardized = (gY - gY_mean) / gY_std
@@ -25,7 +28,7 @@ def polynommial(X, Y, gY, g, x_prime, sigma, poly=3):
         for i in range(1, poly + 1):
             X_poly = np.concatenate((X_poly, X_standardized ** i), axis=1)
         X_poly_tensor = torch.tensor(X_poly)
-        gY_tensor = torch.tensor(gY_standardized)
+        gY_tensor = gY_standardized
         v_old = v
         v = torch.mean((X_poly_tensor @ theta.T - gY_tensor.mean(1)) ** 2)
         v.backward()
@@ -38,4 +41,4 @@ def polynommial(X, Y, gY, g, x_prime, sigma, poly=3):
     phi = (theta_array * x_prime_poly).sum()
     phi_original = phi * gY_std + gY_mean
     std = 0
-    return phi_original, std
+    return phi_original.numpy(), std
