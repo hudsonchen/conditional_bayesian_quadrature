@@ -19,7 +19,7 @@ os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
 plt.rcParams['axes.grid'] = True
 plt.rcParams['font.family'] = 'DeJavu Serif'
 plt.rcParams['font.serif'] = ['Times New Roman']
-plt.rc('text', usetex=True)
+plt.rc('text', usetex=False)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 

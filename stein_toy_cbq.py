@@ -36,7 +36,7 @@ plt.rcParams['axes.grid'] = True
 plt.rcParams['font.family'] = 'DeJavu Serif'
 plt.rcParams['font.serif'] = ['Times New Roman']
 # plt.rcParams["font.family"] = "Times New Roman"
-plt.rcParams['text.usetex'] = True
+plt.rcParams['text.usetex'] = False
 plt.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath, amssymb}']
 
 
