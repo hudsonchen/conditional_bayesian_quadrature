@@ -216,6 +216,7 @@ class CBQ:
 
         return Mu, Sigma
 
+    # @partial(jax.jit, static_argnums=(0,))
     def cbq_stein(self, X, Y, gY, rng_key, sigma):
         """
         :param X: X is of size Nx
@@ -426,7 +427,7 @@ def cbq_option_pricing(args):
     fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
     for i, ax in enumerate(axs):
         Nx = Nx_array[i]
-        # axs[i].set_ylim(1, 7)
+        axs[i].set_ylim(2, 16)
         axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
         axs[i].plot(Ny_array, MC_list, color='b', label='MC')
         axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
