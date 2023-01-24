@@ -15,7 +15,7 @@ nvidia-smi
 
 ## Check if the environment is correct.
 which pip
-which python3
+which python
 
 pwd
-python3 /home/zongchen/CBQ/finance.py --kernel_x rbf --kernel_y stein_matern
+python /home/zongchen/CBQ/finance.py --kernel_x rbf --kernel_y stein_matern
