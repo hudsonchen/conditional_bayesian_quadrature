@@ -1,4 +1,6 @@
 data/
 notes/
 .ipynb_checkpoints/
-results/
+results
+__pycache/
+utils/__pycache
