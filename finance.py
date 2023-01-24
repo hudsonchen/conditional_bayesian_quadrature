@@ -308,7 +308,7 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"./results/GP_finance_X_{Nx}_y_{ny}.pdf")
-        plt.show()
+        # plt.show()
         pause = True
         return
 
