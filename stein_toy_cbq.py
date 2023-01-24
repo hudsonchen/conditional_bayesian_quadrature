@@ -223,7 +223,7 @@ def GP(x_test, x, ny, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     K_inv = jnp.linalg.inv(K_train_train)
     mean_true = (K_test_train @ K_inv @ BMC_x).squeeze()
     mean_true += BMC_mean
-    std_true = jnp.sqrt(K_test_test - K_test_train @ K_inv @ K_test_train.T).squeeze()
+    std_true = jnp.sqrt(K_test_test + jnp.mean(BMC_x_std_orig ** 2) - K_test_train @ K_inv @ K_test_train.T).squeeze()
 
     # Debug code
     x_debug = jnp.linspace(-2, 2, 200)[:, None]
@@ -233,7 +233,7 @@ def GP(x_test, x, ny, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     K_inv_debug = jnp.linalg.inv(K_train_train_debug)
     mean = (K_test_train_debug @ K_inv_debug @ BMC_x).squeeze()
     mean += BMC_mean
-    std = jnp.diag(jnp.sqrt(K_test_test_debug - K_test_train_debug @ K_inv_debug @ K_test_train_debug.T)).squeeze()
+    std = jnp.diag(jnp.sqrt(K_test_test_debug + jnp.mean(BMC_x_std_orig ** 2) - K_test_train_debug @ K_inv_debug @ K_test_train_debug.T)).squeeze()
     y_true = jnp.load('./data/toy_EgY_X.npy')
     plt.figure()
     plt.scatter(x.squeeze(), BMC_x_mean_orig.squeeze())
@@ -256,9 +256,9 @@ def main():
     cov = 0.8
 
     # This is the number of x that we observe
-    Nx_list = jnp.array([10, 30, 50])
+    Nx_list = jnp.array([3, 5, 10, 30, 50])
     # Nx_list = jnp.array([30])
-    Ny_list = jnp.array([10, 30, 50, 70, 90])
+    Ny_list = jnp.array([3, 5, 10, 30, 50, 70, 90])
     # This is the value of x that we want to predict
     x_pred = 0.5
 
