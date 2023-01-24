@@ -15,6 +15,7 @@ from utils import finance_utils
 import os
 import pwd
 import argparse
+import pickle
 
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
@@ -378,7 +379,7 @@ def cbq_option_pricing(args):
     S0 = 50
     Nx_array = jnp.array([3, 5, 10, 20, 30])
     # Ny_array = jnp.arange(2, 100, 2)
-    Ny_array = jnp.array([3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90])
+    Ny_array = jnp.array([3, 5, 7, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -424,6 +425,14 @@ def cbq_option_pricing(args):
         rng_key, _ = jax.random.split(rng_key)
         MC_list.append(price(St_prime, jnp.zeros(Ny), rng_key)[1].mean())
 
+    with open('./results/finance/BMC_mean', 'wb') as f:
+        pickle.dump(cbq_mean_dict, f)
+    with open('./results/finance/BMC_std', 'wb') as f:
+        pickle.dump(cbq_std_dict, f)
+    with open('./results/finance/poly', 'wb') as f:
+        pickle.dump(poly_mean_dict, f)
+    jnp.save('./results/finance/MC', jnp.array(MC_list))
+
     fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
     for i, ax in enumerate(axs):
         Nx = Nx_array[i]
@@ -437,8 +446,8 @@ def cbq_option_pricing(args):
         axs[i].legend()
         # axs[i].set_xscale('log')
     plt.tight_layout()
-    plt.title("Finance Dataset")
-    plt.savefig("./results/CBQ_results_finance.pdf")
+    plt.suptitle("Finance Dataset")
+    plt.savefig("./results/finance/figures/all_methods.pdf")
     # plt.show()
     plt.close()
     return

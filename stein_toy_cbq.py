@@ -9,6 +9,7 @@ from kernels import *
 from functools import partial
 import os
 import pwd
+import pickle
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
@@ -241,7 +242,7 @@ def GP(x_test, x, ny, BMC_x_mean_orig, BMC_x_std_orig, rng_key):
     plt.plot(x_debug.squeeze(), mean, color='b')
     plt.plot(x_debug.squeeze(), y_true, color='red')
     plt.fill_between(x_debug.squeeze(), mean - std, mean + std, alpha=0.2, color='b')
-    plt.savefig(f"./results/GP_toy_X_{n}_Y_{ny}.pdf")
+    plt.savefig(f"./results/toy/figures/GP_toy_X_{n}_Y_{ny}.pdf")
     # plt.show()
     plt.close()
     pause = True
@@ -258,9 +259,9 @@ def main():
     cov = 0.8
 
     # This is the number of x that we observe
-    Nx_list = jnp.array([3, 5, 10, 30, 50])
+    Nx_list = jnp.array([3, 5])
     # Nx_list = jnp.array([30])
-    Ny_list = jnp.array([3, 5, 10, 30, 50, 70, 90])
+    Ny_list = jnp.array([3, 5])
     # This is the value of x that we want to predict
     x_pred = 0.5
 
@@ -353,6 +354,14 @@ def main():
         pause = True
     # ------------- This is where Conditional Bayesian Quadrature ends --------------#
 
+    with open('./results/toy/BMC_mean', 'wb') as f:
+        pickle.dump(BMC_mean_dict, f)
+    with open('./results/toy/BMC_std', 'wb') as f:
+        pickle.dump(BMC_std_dict, f)
+    with open('./results/toy/importance_sampling', 'wb') as f:
+        pickle.dump(Importance_dict, f)
+    jnp.save('./results/toy/MC', jnp.array(MC_list))
+
     fig, axs = plt.subplots(len(Nx_list), 1, figsize=(20, 40))
     # axs = axs.flatten()
 
@@ -366,7 +375,7 @@ def main():
                             BMC_mean_dict[f"{Nx}"] + 2 * BMC_std_dict[f"{Nx}"], color='r', alpha=0.2)
         axs[i].plot(Ny_list, Importance_dict[f"{Nx}"], color='g', label=f'IS Nx = {Nx}')
         axs[i].legend()
-    plt.savefig("./results/CBQ_results_toy.pdf")
+    plt.savefig("./results/toy/figures/all_methods.pdf")
     # plt.show()
     plt.close()
     return
