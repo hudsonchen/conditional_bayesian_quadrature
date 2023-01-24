@@ -149,7 +149,7 @@ def true_value():
     plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
     plt.title("True value for toy experiment")
     plt.savefig("./data/true_distribution_toy.pdf")
-    plt.show()
+    # plt.show()
     pause = True
     return
 
@@ -370,5 +370,5 @@ def main():
 
 if __name__ == '__main__':
     # GP()
-    main()
-    # true_value()
+    # main()
+    true_value()
