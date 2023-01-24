@@ -308,7 +308,7 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"./results/GP_finance_X_{Nx}_y_{ny}.pdf")
-        plt.show()
+        # plt.show()
         pause = True
         return
 
@@ -505,6 +505,3 @@ def main():
 if __name__ == '__main__':
     save_true_value()
     main()
-
-#
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
