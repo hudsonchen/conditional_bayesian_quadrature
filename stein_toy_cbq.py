@@ -259,9 +259,9 @@ def main():
     cov = 0.8
 
     # This is the number of x that we observe
-    Nx_list = jnp.array([3, 5])
+    Nx_list = jnp.array([3, 5, 10, 20, 30])
     # Nx_list = jnp.array([30])
-    Ny_list = jnp.array([3, 5])
+    Ny_list = jnp.array([3, 5, 7, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
     # This is the value of x that we want to predict
     x_pred = 0.5
 
