@@ -369,6 +369,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # GP()
-    # main()
-    true_value()
+    main()
+    # true_value()
