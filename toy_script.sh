@@ -5,7 +5,7 @@
 
 #$ -S /bin/bash
 #$ -j y
-#$ -N cbq_finance
+#$ -N cbq_toy
 
 #source /share/apps/source_files/python/python-3.8.5.source
 conda activate cbq

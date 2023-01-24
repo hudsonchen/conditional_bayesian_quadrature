@@ -308,61 +308,25 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"./results/GP_finance_X_{Nx}_y_{ny}.pdf")
-        # plt.show()
+        plt.show()
         pause = True
         return
 
 
-def price(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1, visualize=False):
+@jax.jit
+def price(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1):
     """
     :param St: the price St at time t
     :return: The function returns the price ST at time T sampled from the conditional
     distribution p(ST|St), and the loss \psi(ST) - \psi((1+s)ST) due to the shock. Their shape is Nx * Ny
     """
-    output_shape = (St.shape[0], N)
+    output_shape = (St.shape[0], N.shape[0])
     rng_key, _ = jax.random.split(rng_key)
     epsilon = jax.random.normal(rng_key, shape=output_shape)
     ST = St * jnp.exp(sigma * jnp.sqrt((T - t)) * epsilon - 0.5 * (sigma ** 2) * (T - t))
     psi_ST_1 = jnp.maximum(ST - K1, 0) + jnp.maximum(ST - K2, 0) - 2 * jnp.maximum(ST - (K1 + K2) / 2, 0)
     psi_ST_2 = jnp.maximum((1 + s) * ST - K1, 0) + jnp.maximum((1 + s) * ST - K2, 0) - 2 * jnp.maximum(
         (1 + s) * ST - (K1 + K2) / 2, 0)
-
-    if visualize:
-        loss_list = []
-        ST_list = []
-        fig, axs = plt.subplots(1, 2, figsize=(10, 6))
-        axs = axs.flatten()
-
-        St_dummy = St[0]
-        log_ST_min = jnp.log(St_dummy) + sigma * jnp.sqrt((T - t)) * (-3) - 0.5 * (sigma ** 2) * (T - t)
-        log_ST_max = jnp.log(St_dummy) + sigma * jnp.sqrt((T - t)) * (+3) - 0.5 * (sigma ** 2) * (T - t)
-        ST_min = jnp.exp(log_ST_min)
-        ST_max = jnp.exp(log_ST_max)
-        ST_samples = jnp.linspace(ST_min, ST_max, 100)
-        normal_samples = (jnp.log(ST_samples) - jnp.log(St_dummy) + 0.5 * (sigma ** 2) * (T - t)) / sigma
-        density = norm.pdf(normal_samples)
-        axs[0].plot(ST_samples, density)
-        axs[0].set_title(r"The pdf for $p(S_T|S_t)$")
-        axs[0].set_xlabel(r"$S_T$")
-
-        for _ in range(1000):
-            rng_key, _ = jax.random.split(rng_key)
-            epsilon = jax.random.normal(rng_key, shape=(1, 1))
-            ST = St_dummy * jnp.exp(sigma * jnp.sqrt((T - t)) * epsilon - 0.5 * (sigma ** 2) * (T - t))
-            psi_ST_1 = jnp.maximum(ST - K1, 0) + jnp.maximum(ST - K2, 0) - 2 * jnp.maximum(ST - (K1 + K2) / 2, 0)
-            psi_ST_2 = jnp.maximum((1 + s) * ST - K1, 0) + jnp.maximum((1 + s) * ST - K2, 0) - 2 * np.maximum(
-                (1 + s) * ST - (K1 + K2) / 2, 0)
-            loss_list.append(psi_ST_1 - psi_ST_2)
-            ST_list.append(ST)
-
-        ST_dummy = jnp.array(ST_list).squeeze()
-        loss_dummy = jnp.array(loss_list).squeeze()
-        axs[1].scatter(ST_dummy, loss_dummy)
-        axs[1].set_title(r"$\psi(S_T) - \psi((1+s)S_T)$")
-        axs[1].set_xlabel(r"$S_T$")
-        plt.suptitle(rf"$S_t$ is {St_dummy[0]}")
-        plt.savefig(f"./results/finance_dummy.pdf")
-        # plt.show()
     return ST, psi_ST_1 - psi_ST_2
 
 
@@ -381,7 +345,7 @@ def save_true_value():
     S0 = 50
     epsilon = jax.random.normal(rng_key, shape=(1000, 1))
     St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-    _, loss = price(St, 100000, rng_key, K1=K1, K2=K2, s=s, sigma=sigma, T=T, t=t)
+    _, loss = price(St, jnp.zeros(100000), rng_key, K1=K1, K2=K2, s=s, sigma=sigma, T=T, t=t)
     St = St.squeeze()
     ind = jnp.argsort(St)
     value = loss.mean(1)
@@ -423,7 +387,7 @@ def cbq_option_pricing(args):
     # True value with standard MC
     for _ in range(1):
         rng_key, _ = jax.random.split(rng_key)
-        true_value = price(St_prime, 1000000, rng_key)[1].mean()
+        true_value = price(St_prime, jnp.zeros(100000), rng_key)[1].mean()
         print('True Value is:', true_value)
 
     kernel_x = args.kernel_x
@@ -438,7 +402,7 @@ def cbq_option_pricing(args):
             rng_key, _ = jax.random.split(rng_key)
             epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
             St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-            ST, loss = price(St, Ny, rng_key, K1=K1, K2=K2, s=s, sigma=sigma, T=T, t=t)
+            ST, loss = price(St, jnp.zeros(Ny), rng_key, K1=K1, K2=K2, s=s, sigma=sigma, T=T, t=t)
 
             psi_x_mean, psi_x_std = CBQ_class.cbq(St, ST, loss, rng_key, sigma=sigma)
             psi_x_std = np.nan_to_num(psi_x_std, nan=0.3)
@@ -456,7 +420,7 @@ def cbq_option_pricing(args):
 
     for Ny in Ny_array:
         rng_key, _ = jax.random.split(rng_key)
-        MC_list.append(price(St_prime, Ny, rng_key)[1].mean())
+        MC_list.append(price(St_prime, jnp.zeros(Ny), rng_key)[1].mean())
 
     fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
     for i, ax in enumerate(axs):
