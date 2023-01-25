@@ -1,6 +1,7 @@
 #$ -l tmem=10G
 #$ -l gpu=true
 #$ -pe gpu 1
+#$ -l h_rt=5:0:0
 #$ -R y
 
 #$ -S /bin/bash
