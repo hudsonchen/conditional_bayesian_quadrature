@@ -116,7 +116,7 @@ def scale(Z):
 
 
 def standardize(Z):
-    mean = Z.mean()
-    std = Z.std()
+    mean = Z.mean(0)
+    std = Z.std(0)
     standardized = (Z - mean) / std
     return standardized, mean, std
