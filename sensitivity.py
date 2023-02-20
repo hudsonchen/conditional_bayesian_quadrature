@@ -13,6 +13,9 @@ from tensorflow_probability.substrates import jax as tfp
 from kernels import *
 import optax
 from utils import finance_utils
+import time
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
@@ -60,20 +63,42 @@ def MCMC(rng_key, nsamples, init_params, log_prob):
 
     @jax.jit
     def run_chain(rng_key, state):
-        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-3)
+        num_burnin_steps = int(100)
+        # kernel = tfp.mcmc.SimpleStepSizeAdaptation(
+        #     tfp.mcmc.HamiltonianMonteCarlo(
+        #         target_log_prob_fn=log_prob,
+        #         num_leapfrog_steps=3,
+        #         step_size=1.0),
+        #         num_adaptation_steps=int(num_burnin_steps * 0.8))
+
+        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-1)
         return tfp.mcmc.sample_chain(num_results=nsamples,
+                                     num_burnin_steps=num_burnin_steps,
                                      current_state=state,
                                      kernel=kernel,
                                      trace_fn=None,
                                      seed=rng_key)
     states = run_chain(rng_key, init_params)
     # Debug code
-    # x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
-    # beta_1_post = states[:, 1, :]
-    # plt.figure()
-    # plt.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
-    # plt.hist(np.array(beta_1_post), bins=10, alpha=0.8, density=True)
-    # plt.show()
+
+    fig = plt.figure(figsize=(15, 6))
+    ax_0, ax_1, ax_2 = fig.subplots(1, 3)
+
+    x = jnp.linspace(-3 * 10, 3 * 10, 100)
+    beta_0_post = states[:, 0, :]
+    ax_0.plot(x, jax.scipy.stats.norm.pdf(x, 0, 10), color='black', linewidth=5)
+    ax_0.hist(np.array(beta_0_post), bins=10, alpha=0.8, density=True)
+
+    x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
+    beta_1_post = states[:, 1, :]
+    ax_1.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
+    ax_1.hist(np.array(beta_1_post), bins=10, alpha=0.8, density=True)
+
+    x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
+    beta_2_post = states[:, 2, :]
+    ax_2.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
+    ax_2.hist(np.array(beta_2_post), bins=10, alpha=0.8, density=True)
+    plt.show()
     return states
 
 
@@ -100,7 +125,7 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
     N, D = x.shape
     M = y.shape[0]
 
-    batch_kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
+    batch_kernel = tfp.math.psd_kernels.ExponentiatedQuadratic(amplitude=1., length_scale=l)
     grad_x_K_fn = jax.grad(batch_kernel.apply, argnums=0)
     vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
     grad_y_K_fn = jax.grad(batch_kernel.apply, argnums=1)
@@ -145,7 +170,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     eps = 1e-6
 
     c_init = c = 1.0
-    log_l_init = log_l = jnp.log(0.3)
+    log_l_init = log_l = jnp.log(0.5)
     A_init = A = 1.0 / jnp.sqrt(n)
     opt_state = optimizer.init((log_l_init, c_init, A_init))
 
@@ -155,7 +180,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
         n = y.shape[0]
         K = A * stein_Matern(y, y, l, d_log_py, d_log_py) + c
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
-        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
+        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps))
         return nll
 
     @jax.jit
@@ -170,7 +195,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     c_debug_list = []
     A_debug_list = []
     nll_debug_list = []
-    for _ in range(2000):
+    for _ in range(3000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
         # Debug code
@@ -199,27 +224,36 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
 
 
 def main():
-    seed = 0
+    seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    generate_date(rng_key, 4)
+    # generate_date(rng_key, 30)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
     N_alpha_list = [3]
-    N_beta_list = [3000]
+    N_beta_list = [300]
 
     for n_alpha in N_alpha_list:
         rng_key, _ = jax.random.split(rng_key)
         alpha = jax.random.uniform(rng_key, shape=(3, 1))
         log_prob = partial(log_posterior, x=X, y=Y, alpha=alpha)
         grad_log_prob = jax.grad(log_prob, argnums=0)
+
+        init_params = jnp.array([[0., 0., 0.]]).T
+        states_true = MCMC(rng_key, 4000, init_params, log_prob)
+        states_true = jnp.unique(states_true, axis=0)
+        rng_key, _ = jax.random.split(rng_key)
+        states_true = jax.random.permutation(rng_key, states_true)
+        print(g(states_true).mean())
+
         for n_beta in N_beta_list:
-            init_params = jnp.array([[0., 0., 0.]]).T
-            states = MCMC(rng_key, n_beta, init_params, log_prob)
+            states = states_true[:n_beta, :]
             g_states = g(states)
             d_log_pstates = grad_log_prob(states)
 
+            # True value
             MC = Monte_Carlo(g_states)
+            print(MC)
             states_standardized, states_mean, state_std = finance_utils.standardize(states)
             BMC_mean, BMC_std = Bayesian_Monte_Carlo(rng_key, states, g_states, d_log_pstates)
     pause = True
