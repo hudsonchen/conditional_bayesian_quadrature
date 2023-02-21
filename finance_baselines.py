@@ -4,6 +4,7 @@ from torch.autograd import grad
 from torch import optim
 from utils import finance_utils
 
+
 def polynommial(X, Y, gY, x_prime, sigma, poly=3):
     X = torch.tensor(np.asarray(X), dtype=torch.double)
     Y = torch.tensor(np.asarray(Y), dtype=torch.double)
@@ -38,3 +39,7 @@ def polynommial(X, Y, gY, x_prime, sigma, poly=3):
     phi_original = phi * gY_std + gY_mean
     std = 0
     return phi_original.numpy(), std
+
+
+def importance_sampling():
+    pass

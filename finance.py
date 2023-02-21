@@ -16,6 +16,8 @@ import os
 import pwd
 import argparse
 import pickle
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
@@ -44,35 +46,62 @@ def get_config():
     args = parser.parse_args()
     return args
 
+
 @jax.jit
-def dx_log_px(x, sigma, T, t, scale, St):
+def grad_y_log_py_x(y, x, y_scale, sigma, T, t):
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
-    x *= scale
-    part1 = (jnp.log(x) + sigma ** 2 * (T - t) / 2 - jnp.log(St)) / x / (sigma ** 2 * (T - t))
-    return (-1. / x - part1) * scale
+    y *= y_scale
+    part1 = (jnp.log(y) + sigma ** 2 * (T - t) / 2 - jnp.log(x)) / y / (sigma ** 2 * (T - t))
+    return (-1. / y - part1) * y_scale
+
+
+# @jax.jit
+# def py_x(x, sigma, T, t, scale, St):
+#     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
+#     x *= scale
+#     z = (jnp.log(x / St) + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
+#     return jax.scipy.stats.norm.pdf(z)
 
 
 @jax.jit
-def stein_Matern(x, y, l, sigma, T, t, scale, St):
-    d_log_px = dx_log_px(x, sigma, T, t, scale, St)
-    d_log_py = dx_log_px(y, sigma, T, t, scale, St)
+def log_py_x(y, x, y_scale, sigma, T, t):
+    # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
+    y = y * y_scale
+    z = (jnp.log(y / x) + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
+    return jax.scipy.stats.norm.logpdf(z).sum()
 
+
+@jax.jit
+def stein_Matern(x, y, l, d_log_px, d_log_py):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :param d_log_px: N*D
+    :param d_log_py: M*D
+    :return: N*M
+    """
     K = my_Matern(x, y, l)
     dx_K = dx_Matern(x, y, l)
     dy_K = dy_Matern(x, y, l)
     dxdy_K = dxdy_Matern(x, y, l)
     part1 = d_log_px @ d_log_py.T * K
-    part2 = d_log_py.T * dx_K
-    part3 = d_log_px * dy_K
+    part2 = (d_log_py[None, :] * dx_K).sum(-1)
+    part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
     part4 = dxdy_K
     return part1 + part2 + part3 + part4
 
 
 @jax.jit
-def stein_Laplace(x, y, l, sigma, T, t, scale, St):
-    d_log_px = dx_log_px(x, sigma, T, t, scale, St)
-    d_log_py = dx_log_px(y, sigma, T, t, scale, St)
-
+def stein_Laplace(x, y, l, d_log_px, d_log_py):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :param d_log_px: N*D
+    :param d_log_py: M*D
+    :return: N*M
+    """
     K = my_Laplace(x, y, l)
     dx_K = dx_Laplace(x, y, l)
     dy_K = dy_Laplace(x, y, l)
@@ -84,11 +113,14 @@ def stein_Laplace(x, y, l, sigma, T, t, scale, St):
     return part1 + part2 + part3 + part4
 
 
-def train(y, y_scale, gy, rng_key, sigma, T, t, St):
+def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     """
     :param y:
     :param gy:
-    :return: the hyperparamter for stein kernel
+    :param d_log_py:
+    :param dy_log_py_fn:
+    :param rng_key:
+    :return:
     """
     rng_key, _ = jax.random.split(rng_key)
     n = y.shape[0]
@@ -97,7 +129,7 @@ def train(y, y_scale, gy, rng_key, sigma, T, t, St):
     eps = 1e-6
 
     c_init = c = 1.0
-    log_l_init = log_l = jnp.log(0.3)
+    log_l_init = log_l = jnp.log(1.0)
     A_init = A = 1.0 / jnp.sqrt(n)
     opt_state = optimizer.init((log_l_init, c_init, A_init))
 
@@ -105,8 +137,8 @@ def train(y, y_scale, gy, rng_key, sigma, T, t, St):
     def nllk_func(log_l, c, A):
         l = jnp.exp(log_l)
         n = y.shape[0]
-        K = A_init * stein_Laplace(y, y, l, sigma, T, t, y_scale, St) + c + eps * jnp.eye(n)
-        K_inv = jnp.linalg.inv(K)
+        K = A * Ky(y, y, l, d_log_py, d_log_py) + c
+        K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
         nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
         return nll[0][0]
 
@@ -118,32 +150,34 @@ def train(y, y_scale, gy, rng_key, sigma, T, t, St):
         return log_l, c, A, opt_state, nllk_value
 
     # # Debug code
-    # log_l_debug_list = []
-    # c_debug_list = []
-    # A_debug_list = []
-    # nll_debug_list = []
+    log_l_debug_list = []
+    c_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
     for _ in range(2000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
-    #     # Debug code
-    #     log_l_debug_list.append(log_l)
-    #     c_debug_list.append(c)
-    #     A_debug_list.append(A)
-    #     nll_debug_list.append(nllk_value)
-    # # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    # ax_1.plot(log_l_debug_list)
-    # ax_2.plot(c_debug_list)
-    # ax_3.plot(A_debug_list)
-    # ax_4.plot(nll_debug_list)
-    # plt.show()
+        # Debug code
+        log_l_debug_list.append(log_l)
+        c_debug_list.append(c)
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
+    # Debug code
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(log_l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
 
     # l = jnp.exp(log_l)
+    # A = jnp.exp(log_A)
     # y_debug = jnp.linspace(20, 160, 100)[:, None] / y_scale
-    # K_train_train = stein_Laplace(y, y, l, sigma, T=2, t=1, scale=y_scale, St=St) + eps * jnp.eye(n) + c
-    # K_train_train_inv = jnp.linalg.inv(K_train_train)
-    # K_test_train = stein_Laplace(y_debug, y, l, sigma, T=2, t=1, scale=y_scale, St=St) + c
+    # d_log_py_debug = dy_log_py_fn(y_debug, x)
+    # K_train_train = stein_Laplace(y, y, l, d_log_py, d_log_py) + c
+    # K_train_train_inv = jnp.linalg.inv(K_train_train + eps * jnp.eye(n))
+    # K_test_train = stein_Laplace(y_debug, y, l, d_log_py_debug, d_log_py) + c
     # gy_debug = K_test_train @ K_train_train_inv @ gy
     # plt.figure()
     # plt.scatter(y * y_scale, gy)
@@ -180,11 +214,11 @@ class CBQ:
 
         if kernel_x == 'rbf':  # This is the best kernel for x
             self.Kx = my_RBF
-            self.one_d_Kx = one_d_my_RBF
+            self.one_d_Kx = my_RBF
             self.lx = 1.0
         elif kernel_x == 'matern':
             self.Kx = my_Matern
-            self.one_d_Kx = one_d_my_Matern
+            self.one_d_Kx = my_Matern
             self.lx = 0.5
         else:
             raise NotImplementedError
@@ -218,13 +252,12 @@ class CBQ:
         return Mu, Sigma
 
     # @partial(jax.jit, static_argnums=(0,))
-    def cbq_stein(self, X, Y, gY, rng_key, sigma):
+    def cbq_stein(self, X, Y, gY, rng_key):
         """
         :param X: X is of size Nx
         :param Y: Y is of size Nx * Ny
         :param gY: gY is g(Y)
-        :param x_prime: is the target conditioning value of x, should be of shape [1, 1]
-        :return: return the expectation E[g(Y)|X=x_prime]
+        :return: return the expectation E[g(Y)|X=x] of size Nx
         """
 
         Nx = X.shape[0]
@@ -238,17 +271,24 @@ class CBQ:
             Yi_standardized, Yi_scale = finance_utils.scale(Yi)
             gYi = gY[i, :][:, None]
 
-            ly, c, A = train(Yi_standardized, Yi_scale, gYi, rng_key, sigma, T=2, t=1, St=x)
+            # log_py_x_fn = partial(log_py_x, sigma=0.3, T=2, t=1, y_scale=Yi_scale)
+            # dy_log_py_x_fn = jax.grad(log_py_x_fn, argnums=0)
+            # dy_log_py_x = dy_log_py_x_fn(Yi_standardized, x)
+
+            grad_y_log_py_x_fn = partial(grad_y_log_py_x, sigma=0.3, T=2, t=1, y_scale=Yi_scale)
+            dy_log_py_x = grad_y_log_py_x_fn(Yi_standardized, x)
+            ly, c, A = train(x, Yi_standardized, Yi_scale, gYi,
+                             dy_log_py_x, grad_y_log_py_x_fn, rng_key, self.Ky)
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
 
-            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, sigma, T=2, t=1, scale=Yi_scale, St=x) + c + eps * jnp.eye(Ny)
-            K_inv = jnp.linalg.inv(K)
-            mu_standardized = c * (K_inv @ gYi).sum()
-            std_standardized = jnp.sqrt(c - K_inv.sum() * c ** 2)
+            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, dy_log_py_x, dy_log_py_x) + c
+            K_inv = jnp.linalg.inv(K + eps * jnp.eye(Ny))
+            mu = c * (K_inv @ gYi).sum()
+            std = jnp.sqrt(c - K_inv.sum() * c ** 2)
 
-            Sigma = Sigma.at[i].set(std_standardized.squeeze())
-            Mu = Mu.at[i].set(mu_standardized.squeeze())
-
+            Sigma = Sigma.at[i].set(std.squeeze())
+            Mu = Mu.at[i].set(mu.squeeze())
+            pause = True
             # Large sample mu
             # print(price(X[i], 10000, rng_key)[1].mean())
 
@@ -263,7 +303,8 @@ class CBQ:
         x_prime_standardized = (x_prime - X_mean) / X_std
         noise = 0.01
 
-        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(Sigma_standardized) + noise * jnp.eye(Nx)
+        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(
+            Sigma_standardized) + noise * jnp.eye(Nx)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
         K_test_train = self.one_d_Kx(x_prime_standardized, X_standardized, self.lx)
         K_test_test = self.one_d_Kx(x_prime_standardized, x_prime_standardized, self.lx) + noise
@@ -286,11 +327,13 @@ class CBQ:
         x_debug = jnp.linspace(20, 120, 100)[:, None]
         x_debug_standardized = (x_debug - X_mean) / X_std
 
-        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(Sigma_standardized) + noise * jnp.eye(Nx)
+        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(
+            Sigma_standardized) + noise * jnp.eye(Nx)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
         K_train_debug = self.Kx(X_standardized, x_debug_standardized, self.lx)
         mu_y_x_debug = K_train_debug.T @ K_train_train_inv @ Mu_standardized
-        var_y_x_debug = self.Kx(x_debug_standardized, x_debug_standardized, self.lx) + noise - K_train_debug.T @ K_train_train_inv @ K_train_debug
+        var_y_x_debug = self.Kx(x_debug_standardized, x_debug_standardized,
+                                self.lx) + noise - K_train_debug.T @ K_train_train_inv @ K_train_debug
         std_y_x_debug = jnp.sqrt(jnp.diag(var_y_x_debug))
         mu_y_x_debug_original = mu_y_x_debug * Mu_std + Mu_mean
         # TODO: Adding jnp.mean(Sigma_standardized) is a bit suspicious here.
@@ -309,19 +352,27 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"./results/GP_finance_X_{Nx}_y_{ny}.pdf")
-        # plt.show()
-        plt.close()
+        plt.show()
+        # plt.close()
+        pause = True
         return
 
 
-@jax.jit
-def price(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1):
+@partial(jax.jit, static_argnums=(1,))
+def price(St, N, rng_key):
     """
     :param St: the price St at time t
     :return: The function returns the price ST at time T sampled from the conditional
     distribution p(ST|St), and the loss \psi(ST) - \psi((1+s)ST) due to the shock. Their shape is Nx * Ny
     """
-    output_shape = (St.shape[0], N.shape[0])
+    K1 = 50
+    K2 = 150
+    s = -0.2
+    sigma = 0.3
+    T = 2
+    t = 1
+
+    output_shape = (St.shape[0], N)
     rng_key, _ = jax.random.split(rng_key)
     epsilon = jax.random.normal(rng_key, shape=output_shape)
     ST = St * jnp.exp(sigma * jnp.sqrt((T - t)) * epsilon - 0.5 * (sigma ** 2) * (T - t))
@@ -346,7 +397,7 @@ def save_true_value():
     S0 = 50
     epsilon = jax.random.normal(rng_key, shape=(1000, 1))
     St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-    _, loss = price(St, jnp.zeros(100000), rng_key, K1=K1, K2=K2, s=s, sigma=sigma, T=T, t=t)
+    _, loss = price(St, 100000, rng_key)
     St = St.squeeze()
     ind = jnp.argsort(St)
     value = loss.mean(1)
@@ -376,9 +427,9 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = jnp.array([3, 5, 10, 20, 30])
+    Nx_array = [3, 5, 10, 20, 30]
     # Ny_array = jnp.arange(2, 100, 2)
-    Ny_array = jnp.array([3, 5, 7, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+    Ny_array = [100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -389,7 +440,7 @@ def cbq_option_pricing(args):
     # True value with standard MC
     for _ in range(1):
         rng_key, _ = jax.random.split(rng_key)
-        true_value = price(St_prime, jnp.zeros(100000), rng_key)[1].mean()
+        true_value = price(St_prime, 100000, rng_key)[1].mean()
         print('True Value is:', true_value)
 
     kernel_x = args.kernel_x
@@ -404,12 +455,14 @@ def cbq_option_pricing(args):
             rng_key, _ = jax.random.split(rng_key)
             epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
             St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-            ST, loss = price(St, jnp.zeros(Ny), rng_key, K1=K1, K2=K2, s=s, sigma=sigma, T=T, t=t)
+            ST, loss = price(St, Ny, rng_key)
 
-            psi_x_mean, psi_x_std = CBQ_class.cbq(St, ST, loss, rng_key, sigma=sigma)
+            # St is X, ST is Y, loss is g(Y)
+            psi_x_mean, psi_x_std = CBQ_class.cbq(St, ST, loss, rng_key)
             psi_x_std = np.nan_to_num(psi_x_std, nan=0.3)
             mu_y_x_prime_cbq, std_y_x_prime_cbq = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
             CBQ_class.GP_debug(psi_x_mean, psi_x_std, St, Ny)
+
             mu_y_x_prime_poly, std_y_x_prime_poly = polynommial(St, ST, loss, St_prime, sigma=sigma)
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq)
             cbq_std_array = jnp.append(cbq_std_array, std_y_x_prime_cbq)

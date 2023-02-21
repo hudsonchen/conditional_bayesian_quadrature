@@ -144,7 +144,7 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
     K = batch_kernel.matrix(x, y)
     dx_K = vec_grad_x_K_fn(x_dummy, y_dummy).reshape(N, M, D)
     dy_K = vec_grad_y_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, N)
+    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, M)
 
     part1 = d_log_px @ d_log_py.T * K
     part2 = (d_log_py[None, :] * dx_K).sum(-1)

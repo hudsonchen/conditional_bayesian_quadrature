@@ -4,61 +4,98 @@ import math
 from tensorflow_probability.substrates import jax as tfp
 
 
+def my_Matern(x, y, l):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :return: N*M
+    """
+    kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
+    K = kernel.matrix(x, y)
+    return K
+
+
+# @jax.jit
+def dx_Matern(x, y, l):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :return: N*M*D
+    """
+    N, D = x.shape
+    M = y.shape[0]
+    kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
+    grad_x_K_fn = jax.grad(kernel.apply, argnums=0)
+    vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
+    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
+    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
+    dx_K = vec_grad_x_K_fn(x_dummy, y_dummy).reshape(N, M, D)
+    return dx_K
+
+
+# @jax.jit
+def dy_Matern(x, y, l):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :return: N*M*D
+    """
+    N, D = x.shape
+    M = y.shape[0]
+    kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
+    grad_y_K_fn = jax.grad(kernel.apply, argnums=1)
+    vec_grad_y_K_fn = jax.vmap(grad_y_K_fn, in_axes=(0, 0), out_axes=0)
+    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
+    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
+    dy_K = vec_grad_y_K_fn(x_dummy, y_dummy).reshape(N, M, D)
+    return dy_K
+
+
+# @jax.jit
+def dxdy_Matern(x, y, l):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :return: N*M
+    """
+    N, D = x.shape
+    M = y.shape[0]
+
+    kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
+    grad_xy_K_fn = jax.jacfwd(jax.jacrev(kernel.apply, argnums=1), argnums=0)
+
+    def diag_sum_grad_xy_K_fn(x, y):
+        return jnp.diag(grad_xy_K_fn(x, y)).sum()
+
+    vec_grad_xy_K_fn = jax.vmap(diag_sum_grad_xy_K_fn, in_axes=(0, 0), out_axes=0)
+    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
+    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
+    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, M)
+    return dxdy_K
+
+
+# @jax.jit
+def my_RBF(x, y, l):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :return: N*M
+    """
+    kernel = tfp.math.psd_kernels.ExponentiatedQuadratic(amplitude=1., length_scale=l)
+    K = kernel.matrix(x, y)
+    return K
+
+
 def jax_dist(x, y):
     return jnp.sqrt(((x - y) ** 2).sum(-1)).squeeze()
 
 distance = jax.vmap(jax_dist, in_axes=(None, 0), out_axes=1)
 sign_func = jax.vmap(jnp.greater, in_axes=(None, 0), out_axes=1)
-
-
-# @jax.jit
-def my_Matern(x, y, l):
-    r = distance(x, y).squeeze()
-    part1 = 1 + math.sqrt(3) * r / l
-    part2 = jnp.exp(-math.sqrt(3) * r / l)
-    return part1 * part2
-
-
-# @jax.jit
-def one_d_my_Matern(x, y, l):
-    r = jax_dist(x, y).squeeze()
-    part1 = 1 + math.sqrt(3) * r / l
-    part2 = jnp.exp(-math.sqrt(3) * r / l)
-    return part1 * part2
-
-
-# @jax.jit
-def dx_Matern(x, y, l):
-    sign = sign_func(x, y).squeeze().astype(float) * 2 - 1
-    r = distance(x, y).squeeze()
-    part1 = jnp.exp(-math.sqrt(3) / l * r) * (math.sqrt(3) / l * sign)
-    part2 = (-math.sqrt(3) / l * sign) * jnp.exp(-math.sqrt(3) / l * r) * (1 + math.sqrt(3) / l * r)
-    return part1 + part2
-
-
-# @jax.jit
-def dy_Matern(x, y, l):
-    sign = -(sign_func(x, y).squeeze().astype(float) * 2 - 1)
-    r = distance(x, y).squeeze()
-    part1 = jnp.exp(-math.sqrt(3) / l * r) * (math.sqrt(3) / l * sign)
-    part2 = (-math.sqrt(3) / l * sign) * jnp.exp(-math.sqrt(3) / l * r) * (1 + math.sqrt(3) / l * r)
-    return part1 + part2
-
-
-# @jax.jit
-def dxdy_Matern(x, y, l):
-    r = distance(x, y).squeeze()
-    const = math.sqrt(3) / l
-    part1 = const * const * jnp.exp(-const * r)
-    part2 = -const * const * jnp.exp(-const * r) * (1 + const * r)
-    part3 = const * jnp.exp(-const * r) * const
-    return part1 + part2 + part3
-
-
-# @jax.jit
-def my_RBF(x, y, l):
-    r = distance(x, y).squeeze()
-    return jnp.exp(- r ** 2 / 2 / (l ** 2))
 
 
 def my_Laplace(x, y, l):
@@ -89,12 +126,6 @@ def dxdy_Laplace(x, y, l):
 def one_d_my_Laplace(x, y, l):
     r = jax_dist(x, y).squeeze()
     return jnp.exp(- r / l)
-
-
-# @jax.jit
-def one_d_my_RBF(x, y, l):
-    r = jax_dist(x, y).squeeze()
-    return jnp.exp(- r ** 2 / 2 / (l ** 2))
 
 
 def main():
