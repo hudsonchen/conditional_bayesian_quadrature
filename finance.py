@@ -363,8 +363,8 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"./results/finance/GP_finance_X_{Nx}_y_{ny}.pdf")
-        plt.show()
-        # plt.close()
+        # plt.show()
+        plt.close()
         pause = True
         return
 
@@ -439,9 +439,9 @@ def cbq_option_pricing(args):
     sigma = 0.3
     S0 = 50
     # Nx_array = [3, 5, 10, 20, 30]
-    Nx_array = [3, 5]
+    Nx_array = [3, 5, 10, 20, 30]
     # Ny_array = jnp.arange(2, 100, 2)
-    Ny_array = [100]
+    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -506,6 +506,8 @@ def cbq_option_pricing(args):
         pickle.dump(cbq_std_dict, f)
     with open('./results/finance/poly', 'wb') as f:
         pickle.dump(poly_mean_dict, f)
+    with open('./results/finance/importance_sampling', 'wb') as f:
+        pickle.dump(IS_mean_dict, f)
     jnp.save('./results/finance/MC', jnp.array(MC_list))
 
     fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
@@ -544,7 +546,7 @@ def main():
         for i in range(10):
             St = finance_utils.Geometric_Brownian(n, dt, rng_key)
             plt.plot(St)
-        plt.show()
+        # plt.show()
     elif debug_BSM:
         finance_utils.BSM_butterfly_analytic()
     else:
