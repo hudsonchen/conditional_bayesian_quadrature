@@ -42,16 +42,16 @@ def generate_date(rng_key, num):
     return
 
 
-def log_posterior(beta, x, y, alpha):
+def log_posterior(beta, x, y, prior_cov):
     """
-    :param alpha: 3*1 array
+    :param prior_cov: 3*1 array
     :param beta: 3*1 array
     :param x: N*2 array
     :param y: N*1 array
     :return:
     """
-    sigma = jnp.diag(jnp.array([10, 2.5, 2.5]))
-    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(), mean=alpha.squeeze(), cov=sigma ** 2).sum()
+    prior_cov = jnp.diag(prior_cov.squeeze())
+    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(), mean=jnp.zeros([3]), cov=prior_cov).sum()
     x_with_one = jnp.hstack([x, jnp.ones([x.shape[0], 1])])
     p = jax.nn.sigmoid(x_with_one @ beta)
     log_bern_llk = (y * jnp.log(p + eps) + (1 - y) * jnp.log(1 - p + eps)).sum()
@@ -231,12 +231,15 @@ def main():
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
     N_alpha_list = [3]
-    N_beta_list = [300]
+    N_beta_list = [30]
+
+    alpha_test = jax.random.uniform(rng_key, shape=(3, 1), minval=-1.0, maxval=1.0)
 
     for n_alpha in N_alpha_list:
         rng_key, _ = jax.random.split(rng_key)
-        alpha = jax.random.uniform(rng_key, shape=(3, 1))
-        log_prob = partial(log_posterior, x=X, y=Y, alpha=alpha)
+        alpha = jax.random.uniform(rng_key, shape=(3, 1), minval=-1.0, maxval=1.0)
+        cov = jnp.array([[10, 2.5, 2.5]]).T + alpha
+        log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
         grad_log_prob = jax.grad(log_prob, argnums=0)
 
         init_params = jnp.array([[0., 0., 0.]]).T

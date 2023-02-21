@@ -224,7 +224,6 @@ class CBQ:
         :param Y: Y is of size Nx * Ny
         :param gY: gY is g(Y)
         :param x_prime: is the target conditioning value of x, should be of shape [1, 1]
-        :param compute_phi: choose the mode to compute kernel mean embedding phi.
         :return: return the expectation E[g(Y)|X=x_prime]
         """
 
