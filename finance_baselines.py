@@ -1,45 +1,59 @@
 import numpy as np
-import torch
-from torch.autograd import grad
-from torch import optim
 from utils import finance_utils
+from functools import partial
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
 
 
-def polynommial(X, Y, gY, x_prime, sigma, poly=3):
-    X = torch.tensor(np.asarray(X), dtype=torch.double)
-    Y = torch.tensor(np.asarray(Y), dtype=torch.double)
-    gY = torch.tensor(np.asarray(gY), dtype=torch.double)
-    x_prime = torch.tensor(np.asarray(x_prime), dtype=torch.double)
-
-    gY_standardized, gY_mean, gY_std = finance_utils.standardize(gY)
+def polynomial(X, Y, gY, x_prime, sigma, poly=3):
     X_standardized, X_mean, X_std = finance_utils.standardize(X)
     x_prime_standardized = (x_prime - X_mean) / X_std
+    X_poly = np.ones_like(X_standardized)
+    for i in range(1, poly + 1):
+        X_poly = np.concatenate((X_poly, X_standardized ** i), axis=1)
+    eps = 1e-6
+    theta = np.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
 
-    theta = torch.tensor([[1.0] * (poly + 1)], requires_grad=True, dtype=torch.double)
-    optimizer = optim.Adam([theta], lr=0.01)
-    v = torch.tensor([10.0])
-    v_old = torch.tensor([-10.0])
-    while torch.abs(v - v_old) > 0.01:
-        optimizer.zero_grad()
-        X_poly = np.ones_like(X_standardized)
-        for i in range(1, poly + 1):
-            X_poly = np.concatenate((X_poly, X_standardized ** i), axis=1)
-        X_poly_tensor = torch.tensor(X_poly)
-        gY_tensor = gY_standardized
-        v_old = v
-        v = torch.mean((X_poly_tensor @ theta.T - gY_tensor.mean(1)) ** 2)
-        v.backward()
-        optimizer.step()
-
-    theta_array = theta.detach().numpy()
     x_prime_poly = np.ones_like(x_prime_standardized)
     for i in range(1, poly + 1):
         x_prime_poly = np.concatenate((x_prime_poly, x_prime_standardized ** i), axis=1)
-    phi = (theta_array * x_prime_poly).sum()
-    phi_original = phi * gY_std + gY_mean
+    phi = (theta * x_prime_poly).sum()
     std = 0
-    return phi_original.numpy(), std
+
+    # Debugging code
+    # true_X = jnp.load('./data/finance_X.npy')
+    # true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
+    #
+    # x_debug = np.linspace(20, 100, 100)[:, None]
+    # x_debug_standardized = (x_debug - X_mean) / X_std
+    # x_debug_poly = np.ones_like(x_debug_standardized)
+    # for i in range(1, poly + 1):
+    #     x_debug_poly = np.concatenate((x_debug_poly, x_debug_standardized ** i), axis=1)
+    # mu_y_x_debug = (theta * x_debug_poly).sum(1)
+    #
+    # plt.figure()
+    # plt.plot(x_debug.squeeze(), mu_y_x_debug.squeeze(), color='blue', label='predict')
+    # plt.plot(true_X, true_EgY_X, color='red', label='true')
+    # plt.scatter(X.squeeze(), gY.mean(1).squeeze())
+    # plt.legend()
+    # plt.show()
+    pause = True
+    return phi, std
 
 
-def importance_sampling():
-    pass
+def importance_sampling(py_x_fn, x_prime, X, Y, gY):
+    Nx, Ny = Y.shape
+    IS_list = []
+    for i in range(Nx):
+        x = X[i]
+        Yi = Y[i, :][:, None]
+        Yi_standardized, Yi_scale = finance_utils.scale(Yi)
+        gYi = gY[i, :][:, None]
+
+        py_x_standardized_fn = partial(py_x_fn, sigma=0.3, T=2, t=1, y_scale=Yi_scale)
+        py_x_prime = py_x_standardized_fn(Yi_standardized, x_prime)
+        py_x_i = py_x_standardized_fn(Yi_standardized, x)
+        weight = py_x_prime / py_x_i
+        IS_list.append((weight * gYi).mean())
+    IS = jnp.array(IS_list).mean()
+    return IS / Nx, 0

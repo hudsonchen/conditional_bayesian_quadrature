@@ -55,20 +55,36 @@ def grad_y_log_py_x(y, x, y_scale, sigma, T, t):
     return (-1. / y - part1) * y_scale
 
 
-# @jax.jit
-# def py_x(x, sigma, T, t, scale, St):
-#     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
-#     x *= scale
-#     z = (jnp.log(x / St) + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
-#     return jax.scipy.stats.norm.pdf(z)
+@jax.jit
+def py_x_fn(y, x, y_scale, sigma, T, t):
+    """
+    :param y: Ny * 1
+    :param x: scalar
+    :param y_scale: scalar
+    :return: scalar
+    """
+    # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
+    y_tilde = y * y_scale
+    z = jnp.log(y_tilde / x)
+    n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
+    p_n = jax.scipy.stats.norm.pdf(n)
+    p_z = p_n / (sigma * jnp.sqrt(T - t))
+    p_y_tilde = p_z / y_tilde
+    p_y = p_y_tilde / y_scale
+    return p_y
 
 
 @jax.jit
-def log_py_x(y, x, y_scale, sigma, T, t):
+def log_py_x_fn(y, x, y_scale, sigma, T, t):
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
-    y = y * y_scale
-    z = (jnp.log(y / x) + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
-    return jax.scipy.stats.norm.logpdf(z).sum()
+    y_tilde = y * y_scale
+    z = jnp.log(y_tilde / x)
+    n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
+    p_n = jax.scipy.stats.norm.pdf(n)
+    p_z = p_n / (sigma * jnp.sqrt(T - t))
+    p_y_tilde = p_z / y_tilde
+    p_y = p_y_tilde / y_scale
+    return jnp.log(p_y).sum()
 
 
 @jax.jit
@@ -150,26 +166,26 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
         return log_l, c, A, opt_state, nllk_value
 
     # # Debug code
-    log_l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
-    for _ in range(2000):
+    # log_l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
+    for _ in range(20000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
         # Debug code
-        log_l_debug_list.append(log_l)
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
+        # log_l_debug_list.append(log_l)
+        # c_debug_list.append(c)
+        # A_debug_list.append(A)
+        # nll_debug_list.append(nllk_value)
     # Debug code
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(log_l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(log_l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
 
     # l = jnp.exp(log_l)
     # A = jnp.exp(log_A)
@@ -236,7 +252,6 @@ class CBQ:
             Yi = Y[i, :][:, None]
             Yi_standardized, Yi_scale = finance_utils.scale(Yi)
             gYi = gY[i, :][:, None]
-
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
 
             K = self.Ky(Yi_standardized, Yi_standardized, self.ly) + eps * jnp.eye(Ny)
@@ -271,10 +286,6 @@ class CBQ:
             Yi_standardized, Yi_scale = finance_utils.scale(Yi)
             gYi = gY[i, :][:, None]
 
-            # log_py_x_fn = partial(log_py_x, sigma=0.3, T=2, t=1, y_scale=Yi_scale)
-            # dy_log_py_x_fn = jax.grad(log_py_x_fn, argnums=0)
-            # dy_log_py_x = dy_log_py_x_fn(Yi_standardized, x)
-
             grad_y_log_py_x_fn = partial(grad_y_log_py_x, sigma=0.3, T=2, t=1, y_scale=Yi_scale)
             dy_log_py_x = grad_y_log_py_x_fn(Yi_standardized, x)
             ly, c, A = train(x, Yi_standardized, Yi_scale, gYi,
@@ -288,10 +299,11 @@ class CBQ:
 
             Sigma = Sigma.at[i].set(std.squeeze())
             Mu = Mu.at[i].set(mu.squeeze())
-            pause = True
+
             # Large sample mu
             # print(price(X[i], 10000, rng_key)[1].mean())
-
+            # print(mu)
+            # pause = True
         return Mu, Sigma
 
     @partial(jax.jit, static_argnums=(0,))
@@ -348,10 +360,9 @@ class CBQ:
         plt.scatter(X.squeeze(), psi_y_x_mean.squeeze())
         plt.fill_between(x_debug.squeeze(), mu_y_x_debug_original.squeeze() - std_y_x_debug_original,
                          mu_y_x_debug_original.squeeze() + std_y_x_debug_original, color='blue', alpha=0.2)
-        plt.plot()
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
-        plt.savefig(f"./results/GP_finance_X_{Nx}_y_{ny}.pdf")
+        plt.savefig(f"./results/finance/GP_finance_X_{Nx}_y_{ny}.pdf")
         plt.show()
         # plt.close()
         pause = True
@@ -410,7 +421,7 @@ def save_true_value():
     plt.title("True value for finance experiment")
     plt.savefig("./data/true_distribution.pdf")
     # plt.show()
-    plt.close()
+    # plt.close()
     return
 
 
@@ -427,13 +438,16 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [3, 5, 10, 20, 30]
+    # Nx_array = [3, 5, 10, 20, 30]
+    Nx_array = [3, 5]
     # Ny_array = jnp.arange(2, 100, 2)
     Ny_array = [100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
     poly_std_dict = {}
+    IS_mean_dict = {}
+    IS_std_dict = {}
     MC_list = []
 
     St_prime = jnp.array([[70.0]])
@@ -451,6 +465,9 @@ def cbq_option_pricing(args):
         cbq_std_array = jnp.array([])
         poly_mean_array = jnp.array([])
         poly_std_array = jnp.array([])
+        IS_mean_array = jnp.array([])
+        IS_std_array = jnp.array([])
+
         for Ny in tqdm(Ny_array):
             rng_key, _ = jax.random.split(rng_key)
             epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
@@ -463,19 +480,25 @@ def cbq_option_pricing(args):
             mu_y_x_prime_cbq, std_y_x_prime_cbq = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
             CBQ_class.GP_debug(psi_x_mean, psi_x_std, St, Ny)
 
-            mu_y_x_prime_poly, std_y_x_prime_poly = polynommial(St, ST, loss, St_prime, sigma=sigma)
+            mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, St_prime, St, ST, loss)
+            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime, sigma=sigma)
+
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq)
             cbq_std_array = jnp.append(cbq_std_array, std_y_x_prime_cbq)
             poly_mean_array = jnp.append(poly_mean_array, mu_y_x_prime_poly)
             poly_std_array = jnp.append(poly_std_array, std_y_x_prime_poly)
+            IS_mean_array = jnp.append(IS_mean_array, mu_y_x_prime_IS)
+            IS_std_array = jnp.append(IS_std_array, std_y_x_prime_IS)
         cbq_mean_dict[f"{Nx}"] = cbq_mean_array
         cbq_std_dict[f"{Nx}"] = cbq_std_array
         poly_mean_dict[f"{Nx}"] = poly_mean_array
         poly_std_dict[f"{Nx}"] = poly_std_array
+        IS_mean_dict[f"{Nx}"] = IS_mean_array
+        IS_std_dict[f"{Nx}"] = IS_std_array
 
     for Ny in Ny_array:
         rng_key, _ = jax.random.split(rng_key)
-        MC_list.append(price(St_prime, jnp.zeros(Ny), rng_key)[1].mean())
+        MC_list.append(price(St_prime, Ny, rng_key)[1].mean())
 
     with open('./results/finance/BMC_mean', 'wb') as f:
         pickle.dump(cbq_mean_dict, f)
@@ -493,6 +516,7 @@ def cbq_option_pricing(args):
         axs[i].plot(Ny_array, MC_list, color='b', label='MC')
         axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
         axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='orange', label=f'Polynomial Nx = {Nx}')
+        axs[i].plot(Ny_array, IS_mean_dict[f"{Nx}"], color='brown', label=f'IS Nx = {Nx}')
         axs[i].fill_between(Ny_array, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
                             cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
         axs[i].legend()
@@ -501,7 +525,7 @@ def cbq_option_pricing(args):
     plt.suptitle("Finance Dataset")
     plt.savefig("./results/finance/figures/all_methods.pdf")
     # plt.show()
-    plt.close()
+    # plt.close()
     return
 
 
