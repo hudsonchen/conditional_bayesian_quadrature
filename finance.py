@@ -552,6 +552,7 @@ def main():
     else:
         pass
     args = get_config()
+    os.makedirs("./results/finance/figures/", exist_ok = True)
     cbq_option_pricing(args)
     return
 
