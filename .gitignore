@@ -2,5 +2,5 @@ data/
 notes/
 .ipynb_checkpoints/
 results
-__pycache/
-utils/__pycache
+__pycache__/
+utils/__pycache__
