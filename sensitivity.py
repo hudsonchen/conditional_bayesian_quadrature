@@ -27,6 +27,12 @@ else:
 
 eps = 1e-6
 
+plt.rcParams['axes.grid'] = True
+plt.rcParams['font.family'] = 'DeJavu Serif'
+plt.rcParams['font.serif'] = ['Times New Roman']
+plt.rc('text', usetex=False)
+plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
+plt.tight_layout()
 
 def generate_date(rng_key, num):
     rng_key, _ = jax.random.split(rng_key)
@@ -80,25 +86,24 @@ def MCMC(rng_key, nsamples, init_params, log_prob):
                                      seed=rng_key)
     states = run_chain(rng_key, init_params)
     # Debug code
-
-    fig = plt.figure(figsize=(15, 6))
-    ax_0, ax_1, ax_2 = fig.subplots(1, 3)
-
-    x = jnp.linspace(-3 * 10, 3 * 10, 100)
-    beta_0_post = states[:, 0, :]
-    ax_0.plot(x, jax.scipy.stats.norm.pdf(x, 0, 10), color='black', linewidth=5)
-    ax_0.hist(np.array(beta_0_post), bins=10, alpha=0.8, density=True)
-
-    x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
-    beta_1_post = states[:, 1, :]
-    ax_1.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
-    ax_1.hist(np.array(beta_1_post), bins=10, alpha=0.8, density=True)
-
-    x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
-    beta_2_post = states[:, 2, :]
-    ax_2.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
-    ax_2.hist(np.array(beta_2_post), bins=10, alpha=0.8, density=True)
-    plt.show()
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_0, ax_1, ax_2 = fig.subplots(1, 3)
+    #
+    # x = jnp.linspace(-3 * 10, 3 * 10, 100)
+    # beta_0_post = states[:, 0, :]
+    # ax_0.plot(x, jax.scipy.stats.norm.pdf(x, 0, 10), color='black', linewidth=5)
+    # ax_0.hist(np.array(beta_0_post), bins=10, alpha=0.8, density=True)
+    #
+    # x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
+    # beta_1_post = states[:, 1, :]
+    # ax_1.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
+    # ax_1.hist(np.array(beta_1_post), bins=10, alpha=0.8, density=True)
+    #
+    # x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
+    # beta_2_post = states[:, 2, :]
+    # ax_2.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
+    # ax_2.hist(np.array(beta_2_post), bins=10, alpha=0.8, density=True)
+    # plt.show()
     return states
 
 
@@ -154,6 +159,7 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
     return part1 + part2 + part3 + part4
 
 
+# @jax.jit
 def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     """
     :param rng_key:
@@ -190,12 +196,12 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
         log_l, c, A = optax.apply_updates((log_l, c, A), updates)
         return log_l, c, A, opt_state, nllk_value
 
-    # Debug code
+    # # Debug code
     log_l_debug_list = []
     c_debug_list = []
     A_debug_list = []
     nll_debug_list = []
-    for _ in range(3000):
+    for _ in range(30000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
         # Debug code
@@ -223,43 +229,128 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     return BMC_mean, BMC_std
 
 
+def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
+    """
+    :param psi_y_x_mean: n_alpha*1
+    :param psi_y_x_std: n_alpha*1
+    :param X: n_alpha*3
+    :param x_prime: 3*1
+    :return:
+    """
+    Nx = psi_y_x_mean.shape[0]
+    Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
+    Sigma_standardized = psi_y_x_std / Mu_std
+    X_standardized, X_mean, X_std = finance_utils.standardize(X)
+    x_prime_standardized = (x_prime - X_mean) / X_std
+    noise = 0.01
+    lx = 0.5
+
+    K_train_train = my_RBF(X_standardized, X_standardized, lx) + jnp.diag(
+        Sigma_standardized) + noise * jnp.eye(Nx)
+    K_train_train_inv = jnp.linalg.inv(K_train_train)
+    K_test_train = my_RBF(x_prime_standardized, X_standardized, lx)
+    K_test_test = my_RBF(x_prime_standardized, x_prime_standardized, lx) + noise
+    mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
+    var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    std_y_x_prime = jnp.sqrt(var_y_x_prime)
+
+    mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
+    std_y_x_prime_original = std_y_x_prime * Mu_std + jnp.mean(psi_y_x_std)
+    return mu_y_x_prime_original, std_y_x_prime_original
+
+
 def main():
     seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    # generate_date(rng_key, 30)
+    generate_date(rng_key, 10)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
     N_alpha_list = [3]
-    N_beta_list = [30]
+    N_beta_list = [100]
+    cbq_mean_dict = {}
+    cbq_std_dict = {}
 
+    # This is the test point
     alpha_test = jax.random.uniform(rng_key, shape=(3, 1), minval=-1.0, maxval=1.0)
+    cov_test = jnp.array([[10, 2.5, 2.5]]).T + alpha_test
+    log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov_test)
+    grad_log_prob = jax.grad(log_prob, argnums=0)
+    init_params = jnp.array([[0., 0., 0.]]).T
+    states_test = MCMC(rng_key, 4000, init_params, log_prob)
+    states_test = jnp.unique(states_test, axis=0)
+    rng_key, _ = jax.random.split(rng_key)
+    states_test = jax.random.permutation(rng_key, states_test)
+    g_test_true = g(states_test).mean()
 
     for n_alpha in N_alpha_list:
         rng_key, _ = jax.random.split(rng_key)
-        alpha = jax.random.uniform(rng_key, shape=(3, 1), minval=-1.0, maxval=1.0)
-        cov = jnp.array([[10, 2.5, 2.5]]).T + alpha
-        log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
-        grad_log_prob = jax.grad(log_prob, argnums=0)
+        # This is X, size n_alpha*3
+        alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, 3), minval=-1.0, maxval=1.0)
+        cbq_mean_array = jnp.array([])
+        cbq_std_array = jnp.array([])
 
-        init_params = jnp.array([[0., 0., 0.]]).T
-        states_true = MCMC(rng_key, 4000, init_params, log_prob)
-        states_true = jnp.unique(states_true, axis=0)
-        rng_key, _ = jax.random.split(rng_key)
-        states_true = jax.random.permutation(rng_key, states_true)
-        print(g(states_true).mean())
+        states_all = {}
+        g_states_all = {}
+        for i in range(n_alpha):
+            alpha = alpha_all[i, :][:, None]
+            cov = jnp.array([[10, 2.5, 2.5]]).T + alpha
+            log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
+            grad_log_prob = jax.grad(log_prob, argnums=0)
+
+            init_params = jnp.array([[0., 0., 0.]]).T
+            states_temp = MCMC(rng_key, 4000, init_params, log_prob)
+            states_temp = jnp.unique(states_temp, axis=0)
+            rng_key, _ = jax.random.split(rng_key)
+            states_temp = jax.random.permutation(rng_key, states_temp)
+            # This is Y and g(Y)
+            states_all[f'{i}'] = states_temp
+            g_states_all[f'{i}'] = g(states_temp)
 
         for n_beta in N_beta_list:
-            states = states_true[:n_beta, :]
-            g_states = g(states)
-            d_log_pstates = grad_log_prob(states)
+            psi_mean_array = jnp.array([])
+            psi_std_array = jnp.array([])
+            for i in range(n_alpha):
+                states_i = states_all[f'{i}'][:n_beta, :, :]
+                g_states_i = g(states_i)
+                d_log_pstates = grad_log_prob(states_i)
+                # states_standardized, states_mean, state_std = finance_utils.standardize(states)
+                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i, d_log_pstates)
+                # Debug
+                print('True value', g(states_all[f'{i}']).mean())
+                print('MC', g_states_i.mean())
+                psi_mean_array = jnp.append(psi_mean_array, psi_mean)
+                psi_std_array = jnp.append(psi_std_array, psi_std)
 
-            # True value
-            MC = Monte_Carlo(g_states)
-            print(MC)
-            states_standardized, states_mean, state_std = finance_utils.standardize(states)
-            BMC_mean, BMC_std = Bayesian_Monte_Carlo(rng_key, states, g_states, d_log_pstates)
-    pause = True
+            BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, alpha_all, alpha_test)
+            cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
+            cbq_std_array = jnp.append(cbq_std_array, BMC_std)
+
+        cbq_mean_dict[f"{n_alpha}"] = cbq_mean_array
+        cbq_std_dict[f"{n_alpha}"] = cbq_std_array
+
+    MC_list = []
+    for Ny in N_beta_list:
+        rng_key, _ = jax.random.split(rng_key)
+        MC_list.append(g(states_test[:Ny, :]).mean())
+
+
+    fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
+    for i, ax in enumerate(axs):
+        Nx = N_alpha_list[i]
+        axs[i].set_ylim(2, 16)
+        axs[i].axhline(y=g_test_true, linestyle='--', color='black', label='true value')
+        axs[i].plot(N_alpha_list, MC_list, color='b', label='MC')
+        axs[i].plot(N_alpha_list, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
+        axs[i].fill_between(N_alpha_list, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
+                            cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
+        axs[i].legend()
+        # axs[i].set_xscale('log')
+    plt.tight_layout()
+    plt.suptitle("Finance Dataset")
+    plt.savefig("./results/finance/figures/all_methods.pdf")
+    # plt.show()
+
     return
 
 
