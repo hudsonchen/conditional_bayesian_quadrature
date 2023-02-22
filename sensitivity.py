@@ -4,9 +4,12 @@ import os
 import pwd
 import jax.scipy
 import jax.scipy.stats
+from tqdm import tqdm
 from functools import partial
 import matplotlib.pyplot as plt
 import MCMC
+import pickle
+from sensitivity_baselines import *
 from tqdm import tqdm
 import numpy as np
 from tensorflow_probability.substrates import jax as tfp
@@ -34,6 +37,7 @@ plt.rc('text', usetex=False)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 
+
 def generate_date(rng_key, num):
     rng_key, _ = jax.random.split(rng_key)
     x_1 = jax.random.uniform(rng_key, shape=(num, 1), minval=-1.0, maxval=1.0)
@@ -48,6 +52,7 @@ def generate_date(rng_key, num):
     return
 
 
+@jax.jit
 def log_posterior(beta, x, y, prior_cov):
     """
     :param prior_cov: 3*1 array
@@ -62,6 +67,20 @@ def log_posterior(beta, x, y, prior_cov):
     p = jax.nn.sigmoid(x_with_one @ beta)
     log_bern_llk = (y * jnp.log(p + eps) + (1 - y) * jnp.log(1 - p + eps)).sum()
     return (log_bern_llk + log_prior_beta).squeeze()
+
+
+log_posterior_vmap = jax.vmap(log_posterior, in_axes=(0, None, None, None), out_axes=0)
+
+
+def posterior(beta, x, y, prior_cov):
+    """
+    :param prior_cov: 3*1 array
+    :param beta: Ny*3*1 array
+    :param x: N*2 array
+    :param y: N*1 array
+    :return: Ny*1
+    """
+    return jnp.exp(log_posterior_vmap(beta, x, y, prior_cov))
 
 
 def MCMC(rng_key, nsamples, init_params, log_prob):
@@ -85,7 +104,7 @@ def MCMC(rng_key, nsamples, init_params, log_prob):
                                      trace_fn=None,
                                      seed=rng_key)
     states = run_chain(rng_key, init_params)
-    # Debug code
+    # # Debug code
     # fig = plt.figure(figsize=(15, 6))
     # ax_0, ax_1, ax_2 = fig.subplots(1, 3)
     #
@@ -104,6 +123,7 @@ def MCMC(rng_key, nsamples, init_params, log_prob):
     # ax_2.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
     # ax_2.hist(np.array(beta_2_post), bins=10, alpha=0.8, density=True)
     # plt.show()
+    # pause = True
     return states
 
 
@@ -176,8 +196,8 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     eps = 1e-6
 
     c_init = c = 1.0
-    log_l_init = log_l = jnp.log(0.5)
-    A_init = A = 1.0 / jnp.sqrt(n)
+    log_l_init = log_l = jnp.log(1.0)
+    A_init = A = 1.0
     opt_state = optimizer.init((log_l_init, c_init, A_init))
 
     @jax.jit
@@ -197,26 +217,26 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
         return log_l, c, A, opt_state, nllk_value
 
     # # Debug code
-    log_l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
-    for _ in range(30000):
+    # log_l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
+    for _ in range(10000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
         # Debug code
-        log_l_debug_list.append(log_l)
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
+        # log_l_debug_list.append(log_l)
+        # c_debug_list.append(c)
+        # A_debug_list.append(A)
+        # nll_debug_list.append(nllk_value)
     # Debug code
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(log_l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(log_l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
 
     l = jnp.exp(log_l)
     final_K = A * stein_Matern(y, y, l, d_log_py, d_log_py) + c
@@ -226,15 +246,17 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
 
     if jnp.isnan(BMC_std):
         BMC_std = 0.3
+    pause = True
     return BMC_mean, BMC_std
 
 
+@jax.jit
 def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
     """
     :param psi_y_x_mean: n_alpha*1
     :param psi_y_x_std: n_alpha*1
     :param X: n_alpha*3
-    :param x_prime: 3*1
+    :param x_prime: 1*3
     :return:
     """
     Nx = psi_y_x_mean.shape[0]
@@ -262,14 +284,19 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 def main():
     seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    generate_date(rng_key, 10)
+    generate_date(rng_key, 30)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    N_alpha_list = [3]
-    N_beta_list = [100]
+    N_alpha_list = [2, 3]
+    N_beta_list = [10, 30, 100]
+    N_MCMC = 2000
     cbq_mean_dict = {}
     cbq_std_dict = {}
+    poly_mean_dict = {}
+    poly_std_dict = {}
+    IS_mean_dict = {}
+    IS_std_dict = {}
 
     # This is the test point
     alpha_test = jax.random.uniform(rng_key, shape=(3, 1), minval=-1.0, maxval=1.0)
@@ -277,7 +304,7 @@ def main():
     log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov_test)
     grad_log_prob = jax.grad(log_prob, argnums=0)
     init_params = jnp.array([[0., 0., 0.]]).T
-    states_test = MCMC(rng_key, 4000, init_params, log_prob)
+    states_test = MCMC(rng_key, N_MCMC, init_params, log_prob)
     states_test = jnp.unique(states_test, axis=0)
     rng_key, _ = jax.random.split(rng_key)
     states_test = jax.random.permutation(rng_key, states_test)
@@ -285,74 +312,109 @@ def main():
 
     for n_alpha in N_alpha_list:
         rng_key, _ = jax.random.split(rng_key)
-        # This is X, size n_alpha*3
         alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, 3), minval=-1.0, maxval=1.0)
+        # This is X, size n_alpha*3
+        cov_all = jnp.array([[10, 2.5, 2.5]]) + alpha_all
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
+        poly_mean_array = jnp.array([])
+        poly_std_array = jnp.array([])
+        IS_mean_array = jnp.array([])
+        IS_std_array = jnp.array([])
 
         states_all = {}
         g_states_all = {}
         for i in range(n_alpha):
-            alpha = alpha_all[i, :][:, None]
-            cov = jnp.array([[10, 2.5, 2.5]]).T + alpha
+            cov = cov_all[i, :][:, None]
             log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
             grad_log_prob = jax.grad(log_prob, argnums=0)
 
             init_params = jnp.array([[0., 0., 0.]]).T
-            states_temp = MCMC(rng_key, 4000, init_params, log_prob)
+            states_temp = MCMC(rng_key, N_MCMC, init_params, log_prob)
             states_temp = jnp.unique(states_temp, axis=0)
             rng_key, _ = jax.random.split(rng_key)
             states_temp = jax.random.permutation(rng_key, states_temp)
-            # This is Y and g(Y)
             states_all[f'{i}'] = states_temp
             g_states_all[f'{i}'] = g(states_temp)
 
-        for n_beta in N_beta_list:
+        for n_beta in tqdm(N_beta_list):
             psi_mean_array = jnp.array([])
             psi_std_array = jnp.array([])
+
+            # This is Y and g(Y)
+            states = jnp.zeros([n_alpha, n_beta, 3, 1])
+            g_states = jnp.zeros([n_alpha, n_beta])
+
             for i in range(n_alpha):
-                states_i = states_all[f'{i}'][:n_beta, :, :]
+                rng_key, _ = jax.random.split(rng_key)
+                ind = jax.random.permutation(rng_key, len(states_all[f'{i}']))[:n_beta]
+                states_i = states_all[f'{i}'][ind, :, :]
                 g_states_i = g(states_i)
+                states = states.at[i, :, :, :].set(states_i)
+                g_states = g_states.at[i, :].set(g_states_i)
                 d_log_pstates = grad_log_prob(states_i)
-                # states_standardized, states_mean, state_std = finance_utils.standardize(states)
-                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i, d_log_pstates)
                 # Debug
                 print('True value', g(states_all[f'{i}']).mean())
                 print('MC', g_states_i.mean())
+                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i, d_log_pstates)
                 psi_mean_array = jnp.append(psi_mean_array, psi_mean)
                 psi_std_array = jnp.append(psi_std_array, psi_std)
+                print('BMC', psi_mean)
 
-            BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, alpha_all, alpha_test)
+            BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
             cbq_std_array = jnp.append(cbq_std_array, BMC_std)
 
+            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(cov_all, states, g_states, cov_test)
+            poly_mean_array = jnp.append(poly_mean_array, mu_y_x_prime_poly)
+            poly_std_array = jnp.append(poly_std_array, std_y_x_prime_poly)
+
+            py_x_fn = partial(posterior, x=X, y=Y)
+            mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, cov_all, states, g_states, cov_test)
+            IS_mean_array = jnp.append(IS_mean_array, mu_y_x_prime_IS)
+            IS_std_array = jnp.append(IS_std_array, std_y_x_prime_IS)
+
         cbq_mean_dict[f"{n_alpha}"] = cbq_mean_array
         cbq_std_dict[f"{n_alpha}"] = cbq_std_array
+        poly_mean_dict[f"{n_alpha}"] = poly_mean_array
+        poly_std_dict[f"{n_alpha}"] = poly_std_array
+        IS_mean_dict[f"{n_alpha}"] = IS_mean_array
+        IS_std_dict[f"{n_alpha}"] = IS_std_array
 
     MC_list = []
     for Ny in N_beta_list:
         rng_key, _ = jax.random.split(rng_key)
         MC_list.append(g(states_test[:Ny, :]).mean())
+    jnp.save('./results/sensitivity/MC', jnp.array(MC_list))
 
+    with open('./results/sensitivity/BMC_mean', 'wb') as f:
+        pickle.dump(cbq_mean_dict, f)
+    with open('./results/sensitivity/BMC_std', 'wb') as f:
+        pickle.dump(cbq_std_dict, f)
+    with open('./results/sensitivity/poly', 'wb') as f:
+        pickle.dump(poly_mean_dict, f)
+    with open('./results/sensitivity/importance_sampling', 'wb') as f:
+        pickle.dump(IS_mean_dict, f)
 
     fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
     for i, ax in enumerate(axs):
         Nx = N_alpha_list[i]
-        axs[i].set_ylim(2, 16)
+        axs[i].set_ylim(-2, 6)
         axs[i].axhline(y=g_test_true, linestyle='--', color='black', label='true value')
-        axs[i].plot(N_alpha_list, MC_list, color='b', label='MC')
-        axs[i].plot(N_alpha_list, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
-        axs[i].fill_between(N_alpha_list, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
+        axs[i].plot(N_beta_list, MC_list, color='b', label='MC')
+        axs[i].plot(N_beta_list, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
+        axs[i].plot(N_beta_list, IS_mean_dict[f"{Nx}"], color='orange', label=f'IS Nx = {Nx}')
+        axs[i].fill_between(N_beta_list, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
                             cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
         axs[i].legend()
         # axs[i].set_xscale('log')
     plt.tight_layout()
-    plt.suptitle("Finance Dataset")
-    plt.savefig("./results/finance/figures/all_methods.pdf")
-    # plt.show()
-
+    plt.suptitle("Bayesian sensitivity analysis")
+    plt.savefig("./results/sensitivity/figures/all_methods.pdf")
+    plt.show()
     return
 
 
 if __name__ == '__main__':
+    os.makedirs("./results/sensitivity/figures/", exist_ok=True)
     main()

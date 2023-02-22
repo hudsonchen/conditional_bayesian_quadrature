@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 
-def polynomial(X, Y, gY, x_prime, sigma, poly=3):
+def polynomial(X, Y, gY, x_prime, poly=3):
     X_standardized, X_mean, X_std = finance_utils.standardize(X)
     x_prime_standardized = (x_prime - X_mean) / X_std
     X_poly = np.ones_like(X_standardized)

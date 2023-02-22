@@ -481,7 +481,7 @@ def cbq_option_pricing(args):
             CBQ_class.GP_debug(psi_x_mean, psi_x_std, St, Ny)
 
             mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, St_prime, St, ST, loss)
-            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime, sigma=sigma)
+            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime)
 
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq)
             cbq_std_array = jnp.append(cbq_std_array, std_y_x_prime_cbq)
