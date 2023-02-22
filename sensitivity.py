@@ -38,7 +38,7 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 
 
-def generate_date(rng_key, num):
+def generate_data(rng_key, num):
     rng_key, _ = jax.random.split(rng_key)
     x_1 = jax.random.uniform(rng_key, shape=(num, 1), minval=-1.0, maxval=1.0)
     rng_key, _ = jax.random.split(rng_key)
@@ -284,7 +284,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 def main():
     seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    # generate_date(rng_key, 30)
+    generate_data(rng_key, 30)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
@@ -419,5 +419,6 @@ def main():
 
 
 if __name__ == '__main__':
+    os.makedirs(f'./data/sensitivity/', exist_ok=True)
     os.makedirs("./results/sensitivity/figures/", exist_ok=True)
     main()
