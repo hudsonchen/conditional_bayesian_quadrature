@@ -284,12 +284,14 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 def main():
     seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    generate_date(rng_key, 30)
+    # generate_date(rng_key, 30)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    N_alpha_list = [2, 3]
-    N_beta_list = [10, 30, 100]
+    # N_alpha_list = [2, 3]
+    N_alpha_list = [3, 5, 10, 20, 30]
+    N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # N_beta_list = [10, 30, 100]
     N_MCMC = 2000
     cbq_mean_dict = {}
     cbq_std_dict = {}
@@ -353,19 +355,19 @@ def main():
                 states = states.at[i, :, :, :].set(states_i)
                 g_states = g_states.at[i, :].set(g_states_i)
                 d_log_pstates = grad_log_prob(states_i)
-                # Debug
-                print('True value', g(states_all[f'{i}']).mean())
-                print('MC', g_states_i.mean())
+                # # Debug
+                # print('True value', g(states_all[f'{i}']).mean())
+                # print('MC', g_states_i.mean())
                 psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i, d_log_pstates)
                 psi_mean_array = jnp.append(psi_mean_array, psi_mean)
                 psi_std_array = jnp.append(psi_std_array, psi_std)
-                print('BMC', psi_mean)
+                # print('BMC', psi_mean)
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
             cbq_std_array = jnp.append(cbq_std_array, BMC_std)
 
-            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(cov_all, states, g_states, cov_test)
+            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(cov_all, states, g_states, cov_test.T)
             poly_mean_array = jnp.append(poly_mean_array, mu_y_x_prime_poly)
             poly_std_array = jnp.append(poly_std_array, std_y_x_prime_poly)
 
@@ -399,11 +401,12 @@ def main():
     fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
     for i, ax in enumerate(axs):
         Nx = N_alpha_list[i]
-        axs[i].set_ylim(-2, 6)
+        # axs[i].set_ylim(-1, 6)
         axs[i].axhline(y=g_test_true, linestyle='--', color='black', label='true value')
         axs[i].plot(N_beta_list, MC_list, color='b', label='MC')
         axs[i].plot(N_beta_list, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
         axs[i].plot(N_beta_list, IS_mean_dict[f"{Nx}"], color='orange', label=f'IS Nx = {Nx}')
+        axs[i].plot(N_beta_list, poly_mean_dict[f"{Nx}"], color='brown', label=f'Poly Nx = {Nx}')
         axs[i].fill_between(N_beta_list, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
                             cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
         axs[i].legend()
