@@ -9,6 +9,9 @@
 #$ -N cbq_sensitivity
 
 #source /share/apps/source_files/python/python-3.8.5.source
+JOB_PARAMS="${@}"
+echo "Job params: $JOB_PARAMS"
+
 conda activate cbq
 
 date
@@ -19,4 +22,4 @@ which pip
 which python
 
 pwd
-python /home/zongchen/CBQ/sensitivity.py
+python /home/zongchen/CBQ/sensitivity.py $JOB_PARAMS

@@ -9,6 +9,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 import MCMC
 import pickle
+import argparse
 from sensitivity_baselines import *
 from tqdm import tqdm
 import numpy as np
@@ -215,26 +216,26 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
         return log_l, log_c, log_A, opt_state, nllk_value
 
     # # Debug code
-    log_l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
+    # log_l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
     for _ in range(3000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, log_c, log_A, opt_state, nllk_value = step(log_l, log_c, log_A, opt_state, rng_key)
-        # Debug code
-        log_l_debug_list.append(log_l)
-        c_debug_list.append(jnp.exp(log_c))
-        A_debug_list.append(jnp.exp(log_A))
-        nll_debug_list.append(nllk_value)
-    # Debug code
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(log_l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+    #     # Debug code
+    #     log_l_debug_list.append(log_l)
+    #     c_debug_list.append(jnp.exp(log_c))
+    #     A_debug_list.append(jnp.exp(log_A))
+    #     nll_debug_list.append(nllk_value)
+    # # Debug code
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(log_l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
 
     l, c, A = jnp.exp(log_l), jnp.exp(log_c), jnp.exp(log_A)
     final_K = A * stein_Matern(y, y, l, d_log_py, d_log_py) + c
@@ -279,19 +280,19 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
     return mu_y_x_prime_original, std_y_x_prime_original
 
 
-def main():
+def main(args):
     seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    D = 3
+    D = args.dim
     prior_covariance = 5.0
-    generate_data(rng_key, D, 10)
+    generate_data(rng_key, D, 20)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    N_alpha_list = [3, 5]
+    N_alpha_list = [3, 10]
     # N_alpha_list = [3, 5, 10, 20, 30]
     # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    N_beta_list = [10, 30]
+    N_beta_list = [10, 30, 100]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
@@ -307,7 +308,7 @@ def main():
     log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov_test)
     grad_log_prob = jax.grad(log_prob, argnums=0)
     init_params = jnp.array([[0.] * D]).T
-    states_test = MCMC(rng_key, N_MCMC, init_params, log_prob)
+    states_test = MCMC(rng_key, N_MCMC * 5, init_params, log_prob)
     states_test = jnp.unique(states_test, axis=0)
     rng_key, _ = jax.random.split(rng_key)
     states_test = jax.random.permutation(rng_key, states_test)
@@ -419,7 +420,19 @@ def main():
     return
 
 
+def get_config():
+    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity')
+
+    # Data settings
+    parser.add_argument('--dim', type=int)
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
     os.makedirs(f'./data/sensitivity/', exist_ok=True)
     os.makedirs("./results/sensitivity/figures/", exist_ok=True)
-    main()
+    args = get_config()
+    main(args)
+
+
