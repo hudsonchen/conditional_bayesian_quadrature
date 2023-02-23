@@ -38,31 +38,29 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 
 
-def generate_data(rng_key, num):
+def generate_data(rng_key, D, num):
     rng_key, _ = jax.random.split(rng_key)
-    x_1 = jax.random.uniform(rng_key, shape=(num, 1), minval=-1.0, maxval=1.0)
-    rng_key, _ = jax.random.split(rng_key)
-    x_2 = jax.random.uniform(rng_key, shape=(num, 1), minval=-1.0, maxval=1.0)
-    p = 1. / (1. + jnp.exp(-(x_1 + x_2)))
+    x = jax.random.uniform(rng_key, shape=(num, D-1), minval=-1.0, maxval=1.0)
+    p = 1. / (1. + jnp.exp(- x.sum()))
     rng_key, _ = jax.random.split(rng_key)
     Y = jax.random.bernoulli(rng_key, p)
     jnp.save(f'./data/sensitivity/data_y', Y)
-    X = jnp.concatenate((x_1, x_2), axis=1)
-    jnp.save(f'./data/sensitivity/data_x', X)
+    jnp.save(f'./data/sensitivity/data_x', x)
     return
 
 
 @jax.jit
 def log_posterior(beta, x, y, prior_cov):
     """
-    :param prior_cov: 3*1 array
-    :param beta: 3*1 array
+    :param prior_cov: D*1 array
+    :param beta: D*1 array
     :param x: N*2 array
     :param y: N*1 array
     :return:
     """
+    D = prior_cov.shape[0]
     prior_cov = jnp.diag(prior_cov.squeeze())
-    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(), mean=jnp.zeros([3]), cov=prior_cov).sum()
+    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(), mean=jnp.zeros([D]), cov=prior_cov).sum()
     x_with_one = jnp.hstack([x, jnp.ones([x.shape[0], 1])])
     p = jax.nn.sigmoid(x_with_one @ beta)
     log_bern_llk = (y * jnp.log(p + eps) + (1 - y) * jnp.log(1 - p + eps)).sum()
@@ -74,7 +72,7 @@ log_posterior_vmap = jax.vmap(log_posterior, in_axes=(0, None, None, None), out_
 
 def posterior(beta, x, y, prior_cov):
     """
-    :param prior_cov: 3*1 array
+    :param prior_cov: *1 array
     :param beta: Ny*3*1 array
     :param x: N*2 array
     :param y: N*1 array
@@ -284,15 +282,17 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 def main():
     seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    generate_data(rng_key, 30)
+    D = 5
+    generate_data(rng_key, D, 10)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    # N_alpha_list = [2, 3]
-    N_alpha_list = [3, 5, 10, 20, 30]
-    N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    # N_beta_list = [10, 30, 100]
+    N_alpha_list = [3, 5]
+    # N_alpha_list = [3, 5, 10, 20, 30]
+    # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    N_beta_list = [10, 30, 100]
     N_MCMC = 2000
+
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -301,11 +301,11 @@ def main():
     IS_std_dict = {}
 
     # This is the test point
-    alpha_test = jax.random.uniform(rng_key, shape=(3, 1), minval=-1.0, maxval=1.0)
-    cov_test = jnp.array([[10, 2.5, 2.5]]).T + alpha_test
+    alpha_test = jax.random.uniform(rng_key, shape=(D, 1), minval=-1.0, maxval=1.0)
+    cov_test = jnp.array([[5.] * D]).T + alpha_test
     log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov_test)
     grad_log_prob = jax.grad(log_prob, argnums=0)
-    init_params = jnp.array([[0., 0., 0.]]).T
+    init_params = jnp.array([[0.] * D]).T
     states_test = MCMC(rng_key, N_MCMC, init_params, log_prob)
     states_test = jnp.unique(states_test, axis=0)
     rng_key, _ = jax.random.split(rng_key)
@@ -314,9 +314,9 @@ def main():
 
     for n_alpha in N_alpha_list:
         rng_key, _ = jax.random.split(rng_key)
-        alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, 3), minval=-1.0, maxval=1.0)
+        alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
         # This is X, size n_alpha*3
-        cov_all = jnp.array([[10, 2.5, 2.5]]) + alpha_all
+        cov_all = jnp.array([[2.5] * D]) + alpha_all
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
         poly_mean_array = jnp.array([])
@@ -331,7 +331,7 @@ def main():
             log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
             grad_log_prob = jax.grad(log_prob, argnums=0)
 
-            init_params = jnp.array([[0., 0., 0.]]).T
+            init_params = jnp.array([[0.] * D]).T
             states_temp = MCMC(rng_key, N_MCMC, init_params, log_prob)
             states_temp = jnp.unique(states_temp, axis=0)
             rng_key, _ = jax.random.split(rng_key)
@@ -344,7 +344,7 @@ def main():
             psi_std_array = jnp.array([])
 
             # This is Y and g(Y)
-            states = jnp.zeros([n_alpha, n_beta, 3, 1])
+            states = jnp.zeros([n_alpha, n_beta, D, 1])
             g_states = jnp.zeros([n_alpha, n_beta])
 
             for i in range(n_alpha):
@@ -356,12 +356,12 @@ def main():
                 g_states = g_states.at[i, :].set(g_states_i)
                 d_log_pstates = grad_log_prob(states_i)
                 # # Debug
-                # print('True value', g(states_all[f'{i}']).mean())
-                # print('MC', g_states_i.mean())
+                print('True value', g(states_all[f'{i}']).mean())
+                print(f'MC with {n_beta} number of Y', g_states_i.mean())
                 psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i, d_log_pstates)
                 psi_mean_array = jnp.append(psi_mean_array, psi_mean)
                 psi_std_array = jnp.append(psi_std_array, psi_std)
-                # print('BMC', psi_mean)
+                print(f'BMC with {n_beta} number of Y', psi_mean)
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
@@ -401,11 +401,11 @@ def main():
     fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
     for i, ax in enumerate(axs):
         Nx = N_alpha_list[i]
-        # axs[i].set_ylim(-1, 6)
+        axs[i].set_ylim(g_test_true * 0.5, g_test_true * 1.5)
         axs[i].axhline(y=g_test_true, linestyle='--', color='black', label='true value')
         axs[i].plot(N_beta_list, MC_list, color='b', label='MC')
         axs[i].plot(N_beta_list, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
-        axs[i].plot(N_beta_list, IS_mean_dict[f"{Nx}"], color='orange', label=f'IS Nx = {Nx}')
+        axs[i].plot(N_beta_list, IS_mean_dict[f"{Nx}"], color='darkgreen', label=f'IS Nx = {Nx}')
         axs[i].plot(N_beta_list, poly_mean_dict[f"{Nx}"], color='brown', label=f'Poly Nx = {Nx}')
         axs[i].fill_between(N_beta_list, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
                             cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)

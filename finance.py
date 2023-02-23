@@ -17,8 +17,8 @@ import pwd
 import argparse
 import pickle
 from jax.config import config
-config.update("jax_enable_x64", True)
 
+config.update("jax_enable_x64", True)
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
@@ -517,8 +517,8 @@ def cbq_option_pricing(args):
         axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
         axs[i].plot(Ny_array, MC_list, color='b', label='MC')
         axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
-        axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='orange', label=f'Polynomial Nx = {Nx}')
-        axs[i].plot(Ny_array, IS_mean_dict[f"{Nx}"], color='brown', label=f'IS Nx = {Nx}')
+        axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='brown', label=f'Polynomial Nx = {Nx}')
+        axs[i].plot(Ny_array, IS_mean_dict[f"{Nx}"], color='darkgreen', label=f'IS Nx = {Nx}')
         axs[i].fill_between(Ny_array, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
                             cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
         axs[i].legend()
@@ -552,7 +552,7 @@ def main():
     else:
         pass
     args = get_config()
-    os.makedirs("./results/finance/figures/", exist_ok = True)
+    os.makedirs("./results/finance/figures/", exist_ok=True)
     cbq_option_pricing(args)
     return
 
