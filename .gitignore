@@ -1,7 +1,7 @@
 data/
 notes/
 .ipynb_checkpoints/
-results
-results_server
+results/
+results_server/
 __pycache__/
 utils/__pycache__

@@ -193,14 +193,14 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
 
-    c_init = c = 1.0
-    log_l_init = log_l = jnp.log(1.0)
-    A_init = A = 1.0
-    opt_state = optimizer.init((log_l_init, c_init, A_init))
+    log_c_init = log_c = jnp.log(10.0)
+    log_l_init = log_l = jnp.log(3.0)
+    log_A_init = log_A = jnp.log(10.0)
+    opt_state = optimizer.init((log_l_init, log_c_init, log_A_init))
 
     @jax.jit
-    def nllk_func(log_l, c, A):
-        l = jnp.exp(log_l)
+    def nllk_func(log_l, log_c, log_A):
+        l, c, A = jnp.exp(log_l), jnp.exp(log_c), jnp.exp(log_A)
         n = y.shape[0]
         K = A * stein_Matern(y, y, l, d_log_py, d_log_py) + c
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
@@ -208,35 +208,35 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
         return nll
 
     @jax.jit
-    def step(log_l, c, A, opt_state, rng_key):
-        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, c, A)
-        updates, opt_state = optimizer.update(grads, opt_state, (log_l, c, A))
-        log_l, c, A = optax.apply_updates((log_l, c, A), updates)
-        return log_l, c, A, opt_state, nllk_value
+    def step(log_l, log_c, log_A, opt_state, rng_key):
+        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, log_c, log_A)
+        updates, opt_state = optimizer.update(grads, opt_state, (log_l, log_c, log_A))
+        log_l, log_c, log_A = optax.apply_updates((log_l, log_c, log_A), updates)
+        return log_l, log_c, log_A, opt_state, nllk_value
 
     # # Debug code
-    # log_l_debug_list = []
-    # c_debug_list = []
-    # A_debug_list = []
-    # nll_debug_list = []
-    for _ in range(10000):
+    log_l_debug_list = []
+    c_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
+    for _ in range(3000):
         rng_key, _ = jax.random.split(rng_key)
-        log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
+        log_l, log_c, log_A, opt_state, nllk_value = step(log_l, log_c, log_A, opt_state, rng_key)
         # Debug code
-        # log_l_debug_list.append(log_l)
-        # c_debug_list.append(c)
-        # A_debug_list.append(A)
-        # nll_debug_list.append(nllk_value)
+        log_l_debug_list.append(log_l)
+        c_debug_list.append(jnp.exp(log_c))
+        A_debug_list.append(jnp.exp(log_A))
+        nll_debug_list.append(nllk_value)
     # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    # ax_1.plot(log_l_debug_list)
-    # ax_2.plot(c_debug_list)
-    # ax_3.plot(A_debug_list)
-    # ax_4.plot(nll_debug_list)
-    # plt.show()
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(log_l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
 
-    l = jnp.exp(log_l)
+    l, c, A = jnp.exp(log_l), jnp.exp(log_c), jnp.exp(log_A)
     final_K = A * stein_Matern(y, y, l, d_log_py, d_log_py) + c
     final_K_inv = jnp.linalg.inv(final_K + eps * jnp.eye(n))
     BMC_mean = c * (final_K_inv @ gy).sum()
@@ -282,7 +282,8 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 def main():
     seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
-    D = 5
+    D = 3
+    prior_covariance = 5.0
     generate_data(rng_key, D, 10)
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
@@ -290,8 +291,8 @@ def main():
     N_alpha_list = [3, 5]
     # N_alpha_list = [3, 5, 10, 20, 30]
     # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    N_beta_list = [10, 30, 100]
-    N_MCMC = 2000
+    N_beta_list = [10, 30]
+    N_MCMC = 5000
 
     cbq_mean_dict = {}
     cbq_std_dict = {}
@@ -302,7 +303,7 @@ def main():
 
     # This is the test point
     alpha_test = jax.random.uniform(rng_key, shape=(D, 1), minval=-1.0, maxval=1.0)
-    cov_test = jnp.array([[5.] * D]).T + alpha_test
+    cov_test = jnp.array([[prior_covariance] * D]).T + alpha_test
     log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov_test)
     grad_log_prob = jax.grad(log_prob, argnums=0)
     init_params = jnp.array([[0.] * D]).T
@@ -316,7 +317,7 @@ def main():
         rng_key, _ = jax.random.split(rng_key)
         alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
         # This is X, size n_alpha*3
-        cov_all = jnp.array([[2.5] * D]) + alpha_all
+        cov_all = jnp.array([[prior_covariance] * D]) + alpha_all
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
         poly_mean_array = jnp.array([])

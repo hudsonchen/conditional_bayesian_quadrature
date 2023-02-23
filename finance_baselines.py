@@ -56,4 +56,4 @@ def importance_sampling(py_x_fn, x_prime, X, Y, gY):
         weight = py_x_prime / py_x_i
         IS_list.append((weight * gYi).mean())
     IS = jnp.array(IS_list).mean()
-    return IS / Nx, 0
+    return IS, 0

@@ -140,7 +140,7 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     """
     rng_key, _ = jax.random.split(rng_key)
     n = y.shape[0]
-    learning_rate = 1e-2
+    learning_rate = 3e-2
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
 
@@ -166,26 +166,26 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
         return log_l, c, A, opt_state, nllk_value
 
     # # Debug code
-    # log_l_debug_list = []
-    # c_debug_list = []
-    # A_debug_list = []
-    # nll_debug_list = []
-    for _ in range(20000):
+    log_l_debug_list = []
+    c_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
+    for _ in range(2000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
         # Debug code
-        # log_l_debug_list.append(log_l)
-        # c_debug_list.append(c)
-        # A_debug_list.append(A)
-        # nll_debug_list.append(nllk_value)
+        log_l_debug_list.append(log_l)
+        c_debug_list.append(c)
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
     # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    # ax_1.plot(log_l_debug_list)
-    # ax_2.plot(c_debug_list)
-    # ax_3.plot(A_debug_list)
-    # ax_4.plot(nll_debug_list)
-    # plt.show()
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(log_l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
 
     # l = jnp.exp(log_l)
     # A = jnp.exp(log_A)
@@ -363,8 +363,8 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"./results/finance/GP_finance_X_{Nx}_y_{ny}.pdf")
-        # plt.show()
-        plt.close()
+        plt.show()
+        # plt.close()
         pause = True
         return
 
@@ -438,9 +438,9 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [3, 5, 10, 20, 30]
+    # Nx_array = [3, 5]
     Nx_array = [3, 5, 10, 20, 30]
-    # Ny_array = jnp.arange(2, 100, 2)
+    # Ny_array = [10]
     Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
@@ -526,7 +526,7 @@ def cbq_option_pricing(args):
     plt.tight_layout()
     plt.suptitle("Finance Dataset")
     plt.savefig("./results/finance/figures/all_methods.pdf")
-    # plt.show()
+    plt.show()
     # plt.close()
     return
 
