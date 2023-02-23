@@ -110,9 +110,9 @@ def price_visualize(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1):
 
 
 def scale(Z):
-    scale = Z.mean()
-    standardized = Z / scale
-    return standardized, scale
+    s = Z.mean()
+    standardized = Z / s
+    return standardized, s
 
 
 def standardize(Z):

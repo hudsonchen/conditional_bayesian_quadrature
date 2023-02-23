@@ -16,11 +16,11 @@ import numpy as np
 from tensorflow_probability.substrates import jax as tfp
 from kernels import *
 import optax
-from utils import finance_utils
+from utils import finance_utils, sensitivity_utils
 import time
 from jax.config import config
-config.update("jax_enable_x64", True)
 
+config.update("jax_enable_x64", True)
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
@@ -41,7 +41,7 @@ plt.tight_layout()
 
 def generate_data(rng_key, D, num):
     rng_key, _ = jax.random.split(rng_key)
-    x = jax.random.uniform(rng_key, shape=(num, D-1), minval=-1.0, maxval=1.0)
+    x = jax.random.uniform(rng_key, shape=(num, D - 1), minval=-1.0, maxval=1.0)
     p = 1. / (1. + jnp.exp(- x.sum()))
     rng_key, _ = jax.random.split(rng_key)
     Y = jax.random.bernoulli(rng_key, p)
@@ -61,7 +61,8 @@ def log_posterior(beta, x, y, prior_cov):
     """
     D = prior_cov.shape[0]
     prior_cov = jnp.diag(prior_cov.squeeze())
-    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(), mean=jnp.zeros([D]), cov=prior_cov).sum()
+    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(), mean=jnp.zeros([D]),
+                                                                cov=prior_cov).sum()
     x_with_one = jnp.hstack([x, jnp.ones([x.shape[0], 1])])
     p = jax.nn.sigmoid(x_with_one @ beta)
     log_bern_llk = (y * jnp.log(p + eps) + (1 - y) * jnp.log(1 - p + eps)).sum()
@@ -102,6 +103,7 @@ def MCMC(rng_key, nsamples, init_params, log_prob):
                                      kernel=kernel,
                                      trace_fn=None,
                                      seed=rng_key)
+
     states = run_chain(rng_key, init_params)
     # # Debug code
     # fig = plt.figure(figsize=(15, 6))
@@ -149,6 +151,47 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
     N, D = x.shape
     M = y.shape[0]
 
+    batch_kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
+    grad_x_K_fn = jax.grad(batch_kernel.apply, argnums=0)
+    vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
+    grad_y_K_fn = jax.grad(batch_kernel.apply, argnums=1)
+    vec_grad_y_K_fn = jax.vmap(grad_y_K_fn, in_axes=(0, 0), out_axes=0)
+
+    grad_xy_K_fn = jax.jacfwd(jax.jacrev(batch_kernel.apply, argnums=1), argnums=0)
+
+    def diag_sum_grad_xy_K_fn(x, y):
+        return jnp.diag(grad_xy_K_fn(x, y)).sum()
+
+    vec_grad_xy_K_fn = jax.vmap(diag_sum_grad_xy_K_fn, in_axes=(0, 0), out_axes=0)
+
+    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
+    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
+
+    K = batch_kernel.matrix(x, y)
+    dx_K = vec_grad_x_K_fn(x_dummy, y_dummy).reshape(N, M, D)
+    dy_K = vec_grad_y_K_fn(x_dummy, y_dummy).reshape(N, M, D)
+    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, M)
+
+    part1 = d_log_px @ d_log_py.T * K
+    part2 = (d_log_py[None, :] * dx_K).sum(-1)
+    part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
+    part4 = dxdy_K
+
+    return part1 + part2 + part3 + part4
+
+
+def stein_Gaussian(x, y, l, d_log_px, d_log_py):
+    """
+    :param x: N*D
+    :param y: M*D
+    :param l: scalar
+    :param d_log_px: N*D
+    :param d_log_py: M*D
+    :return: N*M
+    """
+    N, D = x.shape
+    M = y.shape[0]
+
     batch_kernel = tfp.math.psd_kernels.ExponentiatedQuadratic(amplitude=1., length_scale=l)
     grad_x_K_fn = jax.grad(batch_kernel.apply, argnums=0)
     vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
@@ -179,12 +222,13 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
 
 
 # @jax.jit
-def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
+def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     """
     :param rng_key:
     :param y: N * D * 1
     :param gy: N
     :param d_log_py: N * D * 1
+    :param kernel_y: kernel function
     :return:
     """
     y = y[:, :, 0]
@@ -194,18 +238,18 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
 
-    log_c_init = log_c = jnp.log(10.0)
+    log_c_init = log_c = jnp.log(1.0)
     log_l_init = log_l = jnp.log(3.0)
-    log_A_init = log_A = jnp.log(10.0)
+    log_A_init = log_A = jnp.log(1.0)
     opt_state = optimizer.init((log_l_init, log_c_init, log_A_init))
 
     @jax.jit
     def nllk_func(log_l, log_c, log_A):
         l, c, A = jnp.exp(log_l), jnp.exp(log_c), jnp.exp(log_A)
         n = y.shape[0]
-        K = A * stein_Matern(y, y, l, d_log_py, d_log_py) + c
+        K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
-        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps))
+        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + 1.0))
         return nll
 
     @jax.jit
@@ -223,7 +267,9 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     for _ in range(3000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, log_c, log_A, opt_state, nllk_value = step(log_l, log_c, log_A, opt_state, rng_key)
-    #     # Debug code
+        # Debug code
+    #     if jnp.isnan(nllk_value):
+    #         p = 1
     #     log_l_debug_list.append(log_l)
     #     c_debug_list.append(jnp.exp(log_c))
     #     A_debug_list.append(jnp.exp(log_A))
@@ -238,7 +284,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py):
     # plt.show()
 
     l, c, A = jnp.exp(log_l), jnp.exp(log_c), jnp.exp(log_A)
-    final_K = A * stein_Matern(y, y, l, d_log_py, d_log_py) + c
+    final_K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c
     final_K_inv = jnp.linalg.inv(final_K + eps * jnp.eye(n))
     BMC_mean = c * (final_K_inv @ gy).sum()
     BMC_std = jnp.sqrt(c - final_K_inv.sum() * c * c)
@@ -281,7 +327,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 
 
 def main(args):
-    seed = int(time.time())
+    seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
     D = args.dim
     prior_covariance = 5.0
@@ -292,7 +338,7 @@ def main(args):
     N_alpha_list = [3, 10]
     # N_alpha_list = [3, 5, 10, 20, 30]
     # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    N_beta_list = [10, 30, 100]
+    N_beta_list = [10, 30, 50, 100]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
@@ -308,7 +354,7 @@ def main(args):
     log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov_test)
     grad_log_prob = jax.grad(log_prob, argnums=0)
     init_params = jnp.array([[0.] * D]).T
-    states_test = MCMC(rng_key, N_MCMC * 5, init_params, log_prob)
+    states_test = MCMC(rng_key, N_MCMC * 2, init_params, log_prob)
     states_test = jnp.unique(states_test, axis=0)
     rng_key, _ = jax.random.split(rng_key)
     states_test = jax.random.permutation(rng_key, states_test)
@@ -354,16 +400,20 @@ def main(args):
                 ind = jax.random.permutation(rng_key, len(states_all[f'{i}']))[:n_beta]
                 states_i = states_all[f'{i}'][ind, :, :]
                 g_states_i = g(states_i)
+
                 states = states.at[i, :, :, :].set(states_i)
                 g_states = g_states.at[i, :].set(g_states_i)
+
+                g_states_standardized, g_states_scale = sensitivity_utils.scale(g_states_i)
                 d_log_pstates = grad_log_prob(states_i)
+
                 # # Debug
                 print('True value', g(states_all[f'{i}']).mean())
                 print(f'MC with {n_beta} number of Y', g_states_i.mean())
-                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i, d_log_pstates)
-                psi_mean_array = jnp.append(psi_mean_array, psi_mean)
-                psi_std_array = jnp.append(psi_std_array, psi_std)
-                print(f'BMC with {n_beta} number of Y', psi_mean)
+                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_standardized, d_log_pstates, stein_Gaussian)
+                psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_states_scale)
+                psi_std_array = jnp.append(psi_std_array, psi_std * g_states_scale)
+                print(f'BMC with {n_beta} number of Y', psi_mean * g_states_scale)
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
@@ -389,50 +439,31 @@ def main(args):
     for Ny in N_beta_list:
         rng_key, _ = jax.random.split(rng_key)
         MC_list.append(g(states_test[:Ny, :]).mean())
-    jnp.save('./results/sensitivity/MC', jnp.array(MC_list))
-
-    with open('./results/sensitivity/BMC_mean', 'wb') as f:
-        pickle.dump(cbq_mean_dict, f)
-    with open('./results/sensitivity/BMC_std', 'wb') as f:
-        pickle.dump(cbq_std_dict, f)
-    with open('./results/sensitivity/poly', 'wb') as f:
-        pickle.dump(poly_mean_dict, f)
-    with open('./results/sensitivity/importance_sampling', 'wb') as f:
-        pickle.dump(IS_mean_dict, f)
-
-    fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
-    for i, ax in enumerate(axs):
-        Nx = N_alpha_list[i]
-        axs[i].set_ylim(g_test_true * 0.5, g_test_true * 1.5)
-        axs[i].axhline(y=g_test_true, linestyle='--', color='black', label='true value')
-        axs[i].plot(N_beta_list, MC_list, color='b', label='MC')
-        axs[i].plot(N_beta_list, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
-        axs[i].plot(N_beta_list, IS_mean_dict[f"{Nx}"], color='darkgreen', label=f'IS Nx = {Nx}')
-        axs[i].plot(N_beta_list, poly_mean_dict[f"{Nx}"], color='brown', label=f'Poly Nx = {Nx}')
-        axs[i].fill_between(N_beta_list, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
-                            cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
-        axs[i].legend()
-        # axs[i].set_xscale('log')
-    plt.tight_layout()
-    plt.suptitle("Bayesian sensitivity analysis")
-    plt.savefig("./results/sensitivity/figures/all_methods.pdf")
-    plt.show()
+    sensitivity_utils.save(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
+                           IS_mean_dict, g_test_true, N_alpha_list, N_beta_list)
     return
 
 
 def get_config():
-    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity')
+    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
 
-    # Data settings
+    # Args settings
     parser.add_argument('--dim', type=int)
+    parser.add_argument('--seed', type=int, default=10)
+    parser.add_argument('--save_path', type=str, default='./')
+    parser.add_argument('--data_path', type=str, default='./data')
     args = parser.parse_args()
     return args
 
 
+def create_dir(args):
+    args.save_path += f'results/sensitivity/'
+    args.save_path += f"seed_{args.seed}__dim_{args.dim}"
+    os.makedirs(args.save_path, exist_ok=True)
+    return args
+
+
 if __name__ == '__main__':
-    os.makedirs(f'./data/sensitivity/', exist_ok=True)
-    os.makedirs("./results/sensitivity/figures/", exist_ok=True)
     args = get_config()
+    create_dir(args)
     main(args)
-
-
