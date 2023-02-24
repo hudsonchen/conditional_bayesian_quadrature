@@ -335,10 +335,10 @@ def main(args):
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    # N_alpha_list = [3, 10]
-    N_alpha_list = [3, 5, 10, 20, 30]
-    N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    # N_beta_list = [10, 30, 50, 100]
+    N_alpha_list = [3, 10]
+    # N_alpha_list = [3, 5, 10, 20, 30]
+    # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    N_beta_list = [10, 30, 50, 100]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
@@ -407,13 +407,13 @@ def main(args):
                 g_states_standardized, g_states_scale = sensitivity_utils.scale(g_states_i)
                 d_log_pstates = grad_log_prob(states_i)
 
-                # # Debug
-                print('True value', g(states_all[f'{i}']).mean())
-                print(f'MC with {n_beta} number of Y', g_states_i.mean())
                 psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_standardized, d_log_pstates, stein_Gaussian)
                 psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_states_scale)
                 psi_std_array = jnp.append(psi_std_array, psi_std * g_states_scale)
-                print(f'BMC with {n_beta} number of Y', psi_mean * g_states_scale)
+                # # Debug
+                # print('True value', g(states_all[f'{i}']).mean())
+                # print(f'MC with {n_beta} number of Y', g_states_i.mean())
+                # print(f'BMC with {n_beta} number of Y', psi_mean * g_states_scale)
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
