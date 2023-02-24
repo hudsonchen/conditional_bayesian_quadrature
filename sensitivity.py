@@ -262,28 +262,28 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
         return log_l, c, A, opt_state, nllk_value
 
     # # Debug code
-    log_l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
+    # log_l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
     for _ in range(10000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
-        # Debug code
-        if jnp.isnan(nllk_value):
-            p = 1
-        log_l_debug_list.append(log_l)
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
-    # Debug code
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(log_l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+        # # Debug code
+        # if jnp.isnan(nllk_value):
+        #     p = 1
+    #     log_l_debug_list.append(log_l)
+    #     c_debug_list.append(c)
+    #     A_debug_list.append(A)
+    #     nll_debug_list.append(nllk_value)
+    # # Debug code
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(log_l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
 
     l, c, A = jnp.exp(log_l), c, A
     final_K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c
@@ -350,8 +350,6 @@ def main(args):
     IS_mean_dict = {}
     IS_std_dict = {}
 
-    save_dict = sensitivity_utils.init_save_dict()
-
     # This is the test point
     alpha_test = jax.random.uniform(rng_key, shape=(D, 1), minval=-1.0, maxval=1.0)
     cov_test = jnp.array([[prior_covariance] * D]).T + alpha_test
@@ -379,6 +377,8 @@ def main(args):
         states_all = {}
         g_states_all = {}
         for i in range(n_alpha):
+            logging = sensitivity_utils.init_logging()
+
             cov = cov_all[i, :][:, None]
             log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
             grad_log_prob = jax.grad(log_prob, argnums=0)
@@ -414,15 +414,18 @@ def main(args):
                 psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_states_i_scale)
                 psi_std_array = jnp.append(psi_std_array, psi_std * g_states_i_scale)
 
+                true_value = g(states_all[f'{i}']).mean()
+                BMC_value = psi_mean * g_states_i_scale
+                MC_value = g_states_i.mean()
                 # # Debug
-                print('True value', g(states_all[f'{i}']).mean())
-                print(f'MC with {n_beta} number of Y', g_states_i.mean())
-                print(f'BMC with {n_beta} number of Y', psi_mean * g_states_i_scale)
-                save_dict['BMC'].append(psi_mean * g_states_i_scale)
-                save_dict['MC'].append(g_states_i.mean())
-                save_dict['True Value'].append(g(states_all[f'{i}']).mean())
+                # print('True value', true_value)
+                # print(f'MC with {n_beta} number of Y', MC_value)
+                # print(f'BMC with {n_beta} number of Y', BMC_value)
+                logging = sensitivity_utils.update_log(args, n_alpha, n_beta, logging,
+                                                       true_value, MC_value, BMC_value)
                 print(f"=================")
                 pause = True
+
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
@@ -449,7 +452,7 @@ def main(args):
         rng_key, _ = jax.random.split(rng_key)
         MC_list.append(g(states_test[:Ny, :]).mean())
     sensitivity_utils.save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
-                                         IS_mean_dict, g_test_true, N_alpha_list, N_beta_list, save_dict)
+                                         IS_mean_dict, g_test_true, N_alpha_list, N_beta_list)
     return
 
 

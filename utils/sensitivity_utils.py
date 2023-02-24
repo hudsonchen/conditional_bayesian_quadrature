@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 
-def init_save_dict():
+def init_logging():
     save_dict = {}
     save_dict['True Value'] = []
     save_dict['BMC'] = []
@@ -12,7 +12,7 @@ def init_save_dict():
 
 
 def save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
-         IS_mean_dict, true_value, N_alpha_list, N_beta_list, save_dict):
+         IS_mean_dict, true_value, N_alpha_list, N_beta_list):
     jnp.save(f'{args.save_path}/MC', jnp.array(MC_list))
 
     with open(f'{args.save_path}/BMC_mean', 'wb') as f:
@@ -23,8 +23,7 @@ def save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dic
         pickle.dump(poly_mean_dict, f)
     with open(f'{args.save_path}/importance_sampling', 'wb') as f:
         pickle.dump(IS_mean_dict, f)
-    with open(f'{args.save_path}/training_log', 'wb') as f:
-        pickle.dump(IS_mean_dict, f)
+
     fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
     for i, ax in enumerate(axs):
         Nx = N_alpha_list[i]
@@ -38,10 +37,19 @@ def save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dic
                             cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
         axs[i].legend()
         # axs[i].set_xscale('log')
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.suptitle("Bayesian sensitivity analysis")
     plt.savefig(f"{args.save_path}/all_methods.pdf")
     plt.show()
+
+
+def update_log(args, Nx, Ny, logging, true_value, MC, BMC):
+    logging['True Value'].append(true_value)
+    logging['BMC'].append(BMC)
+    logging['MC'].append(MC)
+    with open(f'{args.save_path}/logging__Nx_{Nx}__Ny_{Ny}', 'wb') as f:
+        pickle.dump(logging, f)
+    return logging
 
 
 def scale(Z):

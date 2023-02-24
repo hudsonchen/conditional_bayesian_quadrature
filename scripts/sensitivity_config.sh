@@ -1,0 +1,6 @@
+--dim 3 --seed 0
+--dim 4 --seed 0
+--dim 5 --seed 0
+--dim 6 --seed 0
+--dim 7 --seed 0
+--dim 8 --seed 0
