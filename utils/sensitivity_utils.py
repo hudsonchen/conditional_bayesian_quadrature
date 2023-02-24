@@ -3,8 +3,16 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 
-def save(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
-         IS_mean_dict, true_value, N_alpha_list, N_beta_list):
+def init_save_dict():
+    save_dict = {}
+    save_dict['True Value'] = []
+    save_dict['BMC'] = []
+    save_dict['MC'] = []
+    return save_dict
+
+
+def save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
+         IS_mean_dict, true_value, N_alpha_list, N_beta_list, save_dict):
     jnp.save(f'{args.save_path}/MC', jnp.array(MC_list))
 
     with open(f'{args.save_path}/BMC_mean', 'wb') as f:
@@ -15,7 +23,8 @@ def save(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
         pickle.dump(poly_mean_dict, f)
     with open(f'{args.save_path}/importance_sampling', 'wb') as f:
         pickle.dump(IS_mean_dict, f)
-
+    with open(f'{args.save_path}/training_log', 'wb') as f:
+        pickle.dump(IS_mean_dict, f)
     fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
     for i, ax in enumerate(axs):
         Nx = N_alpha_list[i]

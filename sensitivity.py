@@ -232,58 +232,60 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     :return:
     """
     y = y[:, :, 0]
+    N, D = y.shape[0], y.shape[1]
     d_log_py = d_log_py[:, :, 0]
     n = y.shape[0]
     learning_rate = 1e-2
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
-
-    log_c_init = log_c = jnp.log(1.0)
-    log_l_init = log_l = jnp.log(3.0)
-    log_A_init = log_A = jnp.log(1.0)
-    opt_state = optimizer.init((log_l_init, log_c_init, log_A_init))
+    median_d = jnp.median(distance(y, y))
+    gy_var = gy.var()
+    c_init = c = 1.0 * gy_var
+    log_l_init = log_l = jnp.log(median_d / jnp.sqrt(D))
+    A_init = A = 1.0 * gy_var
+    opt_state = optimizer.init((log_l_init, c_init, A_init))
 
     @jax.jit
-    def nllk_func(log_l, log_c, log_A):
-        l, c, A = jnp.exp(log_l), jnp.exp(log_c), jnp.exp(log_A)
+    def nllk_func(log_l, c, A):
+        l, c, A = jnp.exp(log_l), c, A
         n = y.shape[0]
         K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
-        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + 1.0))
+        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps))
         return nll
 
     @jax.jit
-    def step(log_l, log_c, log_A, opt_state, rng_key):
-        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, log_c, log_A)
-        updates, opt_state = optimizer.update(grads, opt_state, (log_l, log_c, log_A))
-        log_l, log_c, log_A = optax.apply_updates((log_l, log_c, log_A), updates)
-        return log_l, log_c, log_A, opt_state, nllk_value
+    def step(log_l, c, A, opt_state, rng_key):
+        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, c, A)
+        updates, opt_state = optimizer.update(grads, opt_state, (log_l, c, A))
+        log_l, c, A = optax.apply_updates((log_l, c, A), updates)
+        return log_l, c, A, opt_state, nllk_value
 
     # # Debug code
-    # log_l_debug_list = []
-    # c_debug_list = []
-    # A_debug_list = []
-    # nll_debug_list = []
-    for _ in range(3000):
+    log_l_debug_list = []
+    c_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
+    for _ in range(10000):
         rng_key, _ = jax.random.split(rng_key)
-        log_l, log_c, log_A, opt_state, nllk_value = step(log_l, log_c, log_A, opt_state, rng_key)
+        log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
         # Debug code
-    #     if jnp.isnan(nllk_value):
-    #         p = 1
-    #     log_l_debug_list.append(log_l)
-    #     c_debug_list.append(jnp.exp(log_c))
-    #     A_debug_list.append(jnp.exp(log_A))
-    #     nll_debug_list.append(nllk_value)
-    # # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    # ax_1.plot(log_l_debug_list)
-    # ax_2.plot(c_debug_list)
-    # ax_3.plot(A_debug_list)
-    # ax_4.plot(nll_debug_list)
-    # plt.show()
+        if jnp.isnan(nllk_value):
+            p = 1
+        log_l_debug_list.append(log_l)
+        c_debug_list.append(c)
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
+    # Debug code
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(log_l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
 
-    l, c, A = jnp.exp(log_l), jnp.exp(log_c), jnp.exp(log_A)
+    l, c, A = jnp.exp(log_l), c, A
     final_K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c
     final_K_inv = jnp.linalg.inv(final_K + eps * jnp.eye(n))
     BMC_mean = c * (final_K_inv @ gy).sum()
@@ -335,10 +337,10 @@ def main(args):
     X = jnp.load(f'./data/sensitivity/data_x.npy')
     Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    # N_alpha_list = [3, 10]
-    N_alpha_list = [3, 5, 10, 20, 30]
-    N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    # N_beta_list = [10, 30, 50, 100]
+    N_alpha_list = [5, 6]
+    # N_alpha_list = [3, 5, 10, 20, 30]
+    # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    N_beta_list = [10, 30, 50, 100]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
@@ -347,6 +349,8 @@ def main(args):
     poly_std_dict = {}
     IS_mean_dict = {}
     IS_std_dict = {}
+
+    save_dict = sensitivity_utils.init_save_dict()
 
     # This is the test point
     alpha_test = jax.random.uniform(rng_key, shape=(D, 1), minval=-1.0, maxval=1.0)
@@ -400,20 +404,25 @@ def main(args):
                 ind = jax.random.permutation(rng_key, len(states_all[f'{i}']))[:n_beta]
                 states_i = states_all[f'{i}'][ind, :, :]
                 g_states_i = g(states_i)
-
+                g_states_i_standardized, g_states_i_scale = sensitivity_utils.scale(g_states_i)
                 states = states.at[i, :, :, :].set(states_i)
                 g_states = g_states.at[i, :].set(g_states_i)
-
-                g_states_standardized, g_states_scale = sensitivity_utils.scale(g_states_i)
                 d_log_pstates = grad_log_prob(states_i)
 
-                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_standardized, d_log_pstates, stein_Gaussian)
-                psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_states_scale)
-                psi_std_array = jnp.append(psi_std_array, psi_std * g_states_scale)
+                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i_standardized, d_log_pstates,
+                                                         stein_Gaussian)
+                psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_states_i_scale)
+                psi_std_array = jnp.append(psi_std_array, psi_std * g_states_i_scale)
+
                 # # Debug
-                # print('True value', g(states_all[f'{i}']).mean())
-                # print(f'MC with {n_beta} number of Y', g_states_i.mean())
-                # print(f'BMC with {n_beta} number of Y', psi_mean * g_states_scale)
+                print('True value', g(states_all[f'{i}']).mean())
+                print(f'MC with {n_beta} number of Y', g_states_i.mean())
+                print(f'BMC with {n_beta} number of Y', psi_mean * g_states_i_scale)
+                save_dict['BMC'].append(psi_mean * g_states_i_scale)
+                save_dict['MC'].append(g_states_i.mean())
+                save_dict['True Value'].append(g(states_all[f'{i}']).mean())
+                print(f"=================")
+                pause = True
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)
@@ -439,8 +448,8 @@ def main(args):
     for Ny in N_beta_list:
         rng_key, _ = jax.random.split(rng_key)
         MC_list.append(g(states_test[:Ny, :]).mean())
-    sensitivity_utils.save(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
-                           IS_mean_dict, g_test_true, N_alpha_list, N_beta_list)
+    sensitivity_utils.save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dict,
+                                         IS_mean_dict, g_test_true, N_alpha_list, N_beta_list, save_dict)
     return
 
 
@@ -449,7 +458,7 @@ def get_config():
 
     # Args settings
     parser.add_argument('--dim', type=int)
-    parser.add_argument('--seed', type=int, default=10)
+    parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
     args = parser.parse_args()
@@ -457,6 +466,8 @@ def get_config():
 
 
 def create_dir(args):
+    if args.seed is None:
+        args.seed = int(time.time())
     args.save_path += f'results/sensitivity/'
     args.save_path += f"seed_{args.seed}__dim_{args.dim}"
     os.makedirs(args.save_path, exist_ok=True)
