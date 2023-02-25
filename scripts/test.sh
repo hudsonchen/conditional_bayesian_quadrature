@@ -1,4 +1,4 @@
-echo "$1"
+echo $1
 PARAMS=$1
 echo $PARAMS
 

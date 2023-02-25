@@ -10,7 +10,7 @@
 
 #source /share/apps/source_files/python/python-3.8.5.source
 
-$JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")
+JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")
 echo "Job params: $JOB_PARAMS"
 
 conda activate cbq

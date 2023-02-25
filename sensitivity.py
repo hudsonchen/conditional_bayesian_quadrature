@@ -421,10 +421,10 @@ def main(args):
                 # print('True value', true_value)
                 # print(f'MC with {n_beta} number of Y', MC_value)
                 # print(f'BMC with {n_beta} number of Y', BMC_value)
-                logging = sensitivity_utils.update_log(args, n_alpha, n_beta, logging,
-                                                       true_value, MC_value, BMC_value)
                 print(f"=================")
                 pause = True
+                logging = sensitivity_utils.update_log(args, n_alpha, n_beta, logging,
+                                                       true_value, MC_value, BMC_value)
 
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
