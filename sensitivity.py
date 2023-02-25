@@ -421,7 +421,7 @@ def main(args):
                 # print('True value', true_value)
                 # print(f'MC with {n_beta} number of Y', MC_value)
                 # print(f'BMC with {n_beta} number of Y', BMC_value)
-                print(f"=================")
+                # print(f"=================")
                 pause = True
                 logging = sensitivity_utils.update_log(args, n_alpha, n_beta, logging,
                                                        true_value, MC_value, BMC_value)
@@ -480,4 +480,5 @@ def create_dir(args):
 if __name__ == '__main__':
     args = get_config()
     create_dir(args)
+    print(f'Device is {jax.devices()}')
     main(args)
