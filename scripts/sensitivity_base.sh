@@ -1,5 +1,5 @@
 #$ -l tmem=10G
-#$ -l h_vmem=2G
+#$ -l h_vmem=10G
 #$ -l h_rt=12:0:0
 #$ -R y
 
