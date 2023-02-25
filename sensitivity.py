@@ -45,9 +45,9 @@ def generate_data(rng_key, D, num):
     p = 1. / (1. + jnp.exp(- x.sum()))
     rng_key, _ = jax.random.split(rng_key)
     Y = jax.random.bernoulli(rng_key, p)
-    jnp.save(f'./data/sensitivity/data_y', Y)
-    jnp.save(f'./data/sensitivity/data_x', x)
-    return
+    # jnp.save(f'./data/sensitivity/data_y', Y)
+    # jnp.save(f'./data/sensitivity/data_x', x)
+    return x, Y
 
 
 @jax.jit
@@ -333,9 +333,9 @@ def main(args):
     rng_key = jax.random.PRNGKey(seed)
     D = args.dim
     prior_covariance = 5.0
-    generate_data(rng_key, D, 20)
-    X = jnp.load(f'./data/sensitivity/data_x.npy')
-    Y = jnp.load(f'./data/sensitivity/data_y.npy')
+    X, Y = generate_data(rng_key, D, 20)
+    # X = jnp.load(f'./data/sensitivity/data_x.npy')
+    # Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
     # N_alpha_list = [5, 6]
     N_alpha_list = [3, 5, 10, 20, 30]
