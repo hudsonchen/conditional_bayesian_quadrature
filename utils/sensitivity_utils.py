@@ -1,6 +1,6 @@
-import pickle
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def init_logging():
@@ -15,14 +15,11 @@ def save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dic
          IS_mean_dict, true_value, N_alpha_list, N_beta_list):
     jnp.save(f'{args.save_path}/MC', jnp.array(MC_list))
 
-    with open(f'{args.save_path}/BMC_mean', 'wb') as f:
-        pickle.dump(cbq_mean_dict, f)
-    with open(f'{args.save_path}/BMC_std', 'wb') as f:
-        pickle.dump(cbq_std_dict, f)
-    with open(f'{args.save_path}/poly', 'wb') as f:
-        pickle.dump(poly_mean_dict, f)
-    with open(f'{args.save_path}/importance_sampling', 'wb') as f:
-        pickle.dump(IS_mean_dict, f)
+    pd.DataFrame(data=cbq_mean_dict).to_csv(f'{args.save_path}/BMC_mean.csv', encoding='utf-8', index=False)
+    pd.DataFrame(data=cbq_std_dict).to_csv(f'{args.save_path}/BMC_std.csv', encoding='utf-8', index=False)
+    pd.DataFrame(data=poly_mean_dict).to_csv(f'{args.save_path}/poly.csv', encoding='utf-8', index=False)
+    pd.DataFrame(data=IS_mean_dict).to_csv(f'{args.save_path}/importance_sampling.csv', encoding='utf-8', index=False)
+
 
     fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
     for i, ax in enumerate(axs):
@@ -47,8 +44,7 @@ def update_log(args, Nx, Ny, logging, true_value, MC, BMC):
     logging['True Value'].append(true_value)
     logging['BMC'].append(BMC)
     logging['MC'].append(MC)
-    with open(f'{args.save_path}/logging__Nx_{Nx}__Ny_{Ny}', 'wb') as f:
-        pickle.dump(logging, f)
+    pd.DataFrame(data=logging).to_csv(f'{args.save_path}/logging__Nx_{Nx}__Ny_{Ny}.csv', encoding='utf-8', index=False)
     return logging
 
 

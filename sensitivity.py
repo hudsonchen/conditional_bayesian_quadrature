@@ -8,7 +8,6 @@ from tqdm import tqdm
 from functools import partial
 import matplotlib.pyplot as plt
 import MCMC
-import pickle
 import argparse
 from sensitivity_baselines import *
 from tqdm import tqdm
@@ -20,6 +19,7 @@ from utils import finance_utils, sensitivity_utils
 import time
 from jax.config import config
 
+config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
@@ -337,10 +337,10 @@ def main(args):
     # X = jnp.load(f'./data/sensitivity/data_x.npy')
     # Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    # N_alpha_list = [5, 6]
-    N_alpha_list = [3, 5, 10, 20, 30]
-    N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    # N_beta_list = [10, 30, 50, 100]
+    N_alpha_list = [5, 6]
+    # N_alpha_list = [3, 5, 10, 20, 30]
+    # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    N_beta_list = [10, 30, 50]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
@@ -377,7 +377,6 @@ def main(args):
         states_all = {}
         g_states_all = {}
         for i in range(n_alpha):
-            logging = sensitivity_utils.init_logging()
 
             cov = cov_all[i, :][:, None]
             log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
@@ -394,6 +393,7 @@ def main(args):
         for n_beta in tqdm(N_beta_list):
             psi_mean_array = jnp.array([])
             psi_std_array = jnp.array([])
+            logging = sensitivity_utils.init_logging()
 
             # This is Y and g(Y)
             states = jnp.zeros([n_alpha, n_beta, D, 1])
