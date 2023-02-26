@@ -1,6 +1,6 @@
---dim 3 --seed 1
---dim 4 --seed 1
---dim 5 --seed 1
---dim 6 --seed 1
---dim 7 --seed 1
---dim 8 --seed 1
+--dim 3
+--dim 4
+--dim 5
+--dim 6
+--dim 7
+--dim 8
