@@ -24,7 +24,7 @@ def save_final_results(args, MC_list, cbq_mean_dict, cbq_std_dict, poly_mean_dic
     fig, axs = plt.subplots(len(N_alpha_list), 1, figsize=(10, len(N_alpha_list) * 3))
     for i, ax in enumerate(axs):
         Nx = N_alpha_list[i]
-        axs[i].set_ylim(true_value * 0.5, true_value * 1.5)
+        axs[i].set_ylim(true_value * 0.8, true_value * 1.2)
         axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
         axs[i].plot(N_beta_list, MC_list, color='b', label='MC')
         axs[i].plot(N_beta_list, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
