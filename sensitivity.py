@@ -337,10 +337,10 @@ def main(args):
     # X = jnp.load(f'./data/sensitivity/data_x.npy')
     # Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
-    N_alpha_list = [5, 6]
-    # N_alpha_list = [3, 5, 10, 20, 30]
-    # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    N_beta_list = [10, 30, 50]
+    # N_alpha_list = [5, 6]
+    N_alpha_list = [3, 5, 10, 20, 30]
+    N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # N_beta_list = [10, 30, 50]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
