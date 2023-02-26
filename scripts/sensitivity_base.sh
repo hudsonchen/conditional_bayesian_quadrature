@@ -14,7 +14,7 @@
 JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")
 echo "Job params: $JOB_PARAMS"
 
-conda activate cbq
+conda activate cbq_cpu
 
 date
 nvidia-smi
