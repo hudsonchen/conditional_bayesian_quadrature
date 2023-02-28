@@ -42,9 +42,9 @@ plt.tight_layout()
 def generate_data(rng_key, D, num):
     rng_key, _ = jax.random.split(rng_key)
     x = jax.random.uniform(rng_key, shape=(num, D - 1), minval=-1.0, maxval=1.0)
-    p = 1. / (1. + jnp.exp(- x.sum()))
+    p = 1. / (1. + jnp.exp(- x.sum(-1)))
     rng_key, _ = jax.random.split(rng_key)
-    Y = jax.random.bernoulli(rng_key, p)
+    Y = jax.random.bernoulli(rng_key, p)[:, None]
     # jnp.save(f'./data/sensitivity/data_y', Y)
     # jnp.save(f'./data/sensitivity/data_x', x)
     return x, Y
@@ -61,7 +61,8 @@ def log_posterior(beta, x, y, prior_cov):
     """
     D = prior_cov.shape[0]
     prior_cov = jnp.diag(prior_cov.squeeze())
-    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(), mean=jnp.zeros([D]),
+    log_prior_beta = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(),
+                                                                mean=jnp.zeros([D]),
                                                                 cov=prior_cov).sum()
     x_with_one = jnp.hstack([x, jnp.ones([x.shape[0], 1])])
     p = jax.nn.sigmoid(x_with_one @ beta)
@@ -83,12 +84,12 @@ def posterior(beta, x, y, prior_cov):
     return jnp.exp(log_posterior_vmap(beta, x, y, prior_cov))
 
 
-def MCMC(rng_key, nsamples, init_params, log_prob):
+def MCMC(rng_key, cov, nsamples, init_params, log_prob):
     rng_key, _ = jax.random.split(rng_key)
 
     @jax.jit
     def run_chain(rng_key, state):
-        num_burnin_steps = int(100)
+        num_burnin_steps = int(1e3)
         # kernel = tfp.mcmc.SimpleStepSizeAdaptation(
         #     tfp.mcmc.HamiltonianMonteCarlo(
         #         target_log_prob_fn=log_prob,
@@ -96,35 +97,31 @@ def MCMC(rng_key, nsamples, init_params, log_prob):
         #         step_size=1.0),
         #         num_adaptation_steps=int(num_burnin_steps * 0.8))
 
-        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-3)
-        return tfp.mcmc.sample_chain(num_results=nsamples,
-                                     num_burnin_steps=num_burnin_steps,
-                                     current_state=state,
-                                     kernel=kernel,
-                                     trace_fn=None,
-                                     seed=rng_key)
+        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-2)
+        samples = tfp.mcmc.sample_chain(num_results=nsamples,
+                                        num_burnin_steps=num_burnin_steps,
+                                        current_state=state,
+                                        kernel=kernel,
+                                        trace_fn=None,
+                                        seed=rng_key)
+        return samples
 
     states = run_chain(rng_key, init_params)
+
     # # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_0, ax_1, ax_2 = fig.subplots(1, 3)
+    # D = states.shape[1]
+    # fig = plt.figure(figsize=(5 * D, 10))
+    # ax_list = fig.subplots(1, D)
+    # prior_std = jnp.sqrt(cov.squeeze())
     #
-    # x = jnp.linspace(-3 * 10, 3 * 10, 100)
-    # beta_0_post = states[:, 0, :]
-    # ax_0.plot(x, jax.scipy.stats.norm.pdf(x, 0, 10), color='black', linewidth=5)
-    # ax_0.hist(np.array(beta_0_post), bins=10, alpha=0.8, density=True)
-    #
-    # x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
-    # beta_1_post = states[:, 1, :]
-    # ax_1.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
-    # ax_1.hist(np.array(beta_1_post), bins=10, alpha=0.8, density=True)
-    #
-    # x = jnp.linspace(-3 * 2.5, 3 * 2.5, 100)
-    # beta_2_post = states[:, 2, :]
-    # ax_2.plot(x, jax.scipy.stats.norm.pdf(x, 0, 2.5), color='black', linewidth=5)
-    # ax_2.hist(np.array(beta_2_post), bins=10, alpha=0.8, density=True)
+    # for i, ax in enumerate(ax_list):
+    #     x = jnp.linspace(0 - 3 * prior_std[i], 0 + 3 * prior_std[i], 100)
+    #     beta_post = states[:, i, :]
+    #     ax.plot(x, jax.scipy.stats.norm.pdf(x, 0, prior_std[i]), color='black', linewidth=5)
+    #     ax.hist(np.array(beta_post), bins=10, alpha=0.8, density=True)
     # plt.show()
-    # pause = True
+
+    pause = True
     return states
 
 
@@ -333,14 +330,14 @@ def main(args):
     rng_key = jax.random.PRNGKey(seed)
     D = args.dim
     prior_covariance = 5.0
-    X, Y = generate_data(rng_key, D, 20)
+    X, Y = generate_data(rng_key, D, 100)
     # X = jnp.load(f'./data/sensitivity/data_x.npy')
     # Y = jnp.load(f'./data/sensitivity/data_y.npy')
 
     # N_alpha_list = [5, 6]
     N_alpha_list = [3, 5, 10, 20, 30]
     N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    # N_beta_list = [10, 30, 50]
+    # N_beta_list = [10, 30, 50, 100]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
@@ -355,8 +352,8 @@ def main(args):
     cov_test = jnp.array([[prior_covariance] * D]).T + alpha_test
     log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov_test)
     grad_log_prob = jax.grad(log_prob, argnums=0)
-    init_params = jnp.array([[0.] * D]).T
-    states_test = MCMC(rng_key, N_MCMC * 2, init_params, log_prob)
+    init_params = jnp.array([[0.1] * D]).T
+    states_test = MCMC(rng_key, cov_test, N_MCMC * 2, init_params, log_prob)
     states_test = jnp.unique(states_test, axis=0)
     rng_key, _ = jax.random.split(rng_key)
     states_test = jax.random.permutation(rng_key, states_test)
@@ -381,8 +378,8 @@ def main(args):
             log_prob = partial(log_posterior, x=X, y=Y, prior_cov=cov)
             grad_log_prob = jax.grad(log_prob, argnums=0)
 
-            init_params = jnp.array([[0.] * D]).T
-            states_temp = MCMC(rng_key, N_MCMC, init_params, log_prob)
+            init_params = jnp.array([[0.1] * D]).T
+            states_temp = MCMC(rng_key, cov, N_MCMC, init_params, log_prob)
             states_temp = jnp.unique(states_temp, axis=0)
             rng_key, _ = jax.random.split(rng_key)
             states_temp = jax.random.permutation(rng_key, states_temp)
@@ -417,14 +414,13 @@ def main(args):
                 BMC_value = psi_mean * g_states_i_scale
                 MC_value = g_states_i.mean()
                 # # Debug
-                # print('True value', true_value)
-                # print(f'MC with {n_beta} number of Y', MC_value)
-                # print(f'BMC with {n_beta} number of Y', BMC_value)
-                # print(f"=================")
+                print('True value', true_value)
+                print(f'MC with {n_beta} number of Y', MC_value)
+                print(f'BMC with {n_beta} number of Y', BMC_value)
+                print(f"=================")
                 pause = True
                 logging = sensitivity_utils.update_log(args, n_alpha, n_beta, logging,
                                                        true_value, MC_value, BMC_value)
-
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, cov_all, cov_test.T)
             cbq_mean_array = jnp.append(cbq_mean_array, BMC_mean)

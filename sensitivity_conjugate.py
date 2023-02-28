@@ -128,22 +128,18 @@ def MCMC(rng_key, nsamples, init_params, log_prob, post_mean, post_var):
 
     states = run_chain(rng_key, init_params)
     # # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_0, ax_1 = fig.subplots(1, 2)
+    # D = states.shape[1]
+    # fig = plt.figure(figsize=(5 * D, 10))
+    # ax_list = fig.subplots(1, D)
     # prior_std = jnp.sqrt(jnp.diag(post_var))
     #
-    # x = jnp.linspace(post_mean[0] - 3 * prior_std[0], post_mean[0] + 3 * prior_std[0], 100)
-    # beta_0_post = states[:, 0, :]
-    # ax_0.plot(x, jax.scipy.stats.norm.pdf(x, post_mean[0], prior_std[0]), color='black', linewidth=5)
-    # ax_0.hist(np.array(beta_0_post), bins=10, alpha=0.8, density=True)
-    #
-    # x = jnp.linspace(post_mean[1] - 3 * prior_std[1], post_mean[1] + 3 * prior_std[1], 100)
-    # beta_1_post = states[:, 1, :]
-    # ax_1.plot(x, jax.scipy.stats.norm.pdf(x, post_mean[1], prior_std[1]), color='black', linewidth=5)
-    # ax_1.hist(np.array(beta_1_post), bins=10, alpha=0.8, density=True)
-    #
+    # for i, ax in enumerate(ax_list):
+    #     x = jnp.linspace(post_mean[i] - 3 * prior_std[i], post_mean[i] + 3 * prior_std[i], 100)
+    #     beta_post = states[:, i, :]
+    #     ax.plot(x, jax.scipy.stats.norm.pdf(x, post_mean[i], prior_std[i]), color='black', linewidth=5)
+    #     ax.hist(np.array(beta_post), bins=10, alpha=0.8, density=True)
     # plt.show()
-    pause = True
+    # pause = True
     return states
 
 
@@ -285,7 +281,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     # c_debug_list = []
     # A_debug_list = []
     # nll_debug_list = []
-    for _ in range(10000):
+    for _ in range(2000):
         rng_key, _ = jax.random.split(rng_key)
         log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
         # # Debug code
@@ -360,7 +356,7 @@ def main(args):
     N_alpha_list = [5, 6]
     # N_alpha_list = [3, 5, 10, 20, 30]
     # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    N_beta_list = [50, 100]
+    N_beta_list = [100]
     N_MCMC = 5000
 
     cbq_mean_dict = {}
@@ -496,7 +492,7 @@ def get_config():
 def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
-    args.save_path += f'results/sensitivity/'
+    args.save_path += f'results/sensitivity_conjugate/'
     args.save_path += f"seed_{args.seed}__dim_{args.dim}"
     os.makedirs(args.save_path, exist_ok=True)
     return args
