@@ -414,11 +414,11 @@ def main(args):
                 BMC_value = psi_mean * g_states_i_scale
                 MC_value = g_states_i.mean()
                 # # Debug
-                print('True value', true_value)
-                print(f'MC with {n_beta} number of Y', MC_value)
-                print(f'BMC with {n_beta} number of Y', BMC_value)
-                print(f"=================")
-                pause = True
+                # print('True value', true_value)
+                # print(f'MC with {n_beta} number of Y', MC_value)
+                # print(f'BMC with {n_beta} number of Y', BMC_value)
+                # print(f"=================")
+                # pause = True
                 logging = sensitivity_utils.update_log(args, n_alpha, n_beta, logging,
                                                        true_value, MC_value, BMC_value)
 
