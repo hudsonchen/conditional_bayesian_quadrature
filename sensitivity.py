@@ -135,89 +135,6 @@ def g(y):
 def Monte_Carlo(gy):
     return gy.mean(0)
 
-
-def stein_Matern(x, y, l, d_log_px, d_log_py):
-    """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
-    """
-    N, D = x.shape
-    M = y.shape[0]
-
-    batch_kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
-    grad_x_K_fn = jax.grad(batch_kernel.apply, argnums=0)
-    vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
-    grad_y_K_fn = jax.grad(batch_kernel.apply, argnums=1)
-    vec_grad_y_K_fn = jax.vmap(grad_y_K_fn, in_axes=(0, 0), out_axes=0)
-
-    grad_xy_K_fn = jax.jacfwd(jax.jacrev(batch_kernel.apply, argnums=1), argnums=0)
-
-    def diag_sum_grad_xy_K_fn(x, y):
-        return jnp.diag(grad_xy_K_fn(x, y)).sum()
-
-    vec_grad_xy_K_fn = jax.vmap(diag_sum_grad_xy_K_fn, in_axes=(0, 0), out_axes=0)
-
-    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
-    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
-
-    K = batch_kernel.matrix(x, y)
-    dx_K = vec_grad_x_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dy_K = vec_grad_y_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, M)
-
-    part1 = d_log_px @ d_log_py.T * K
-    part2 = (d_log_py[None, :] * dx_K).sum(-1)
-    part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
-    part4 = dxdy_K
-
-    return part1 + part2 + part3 + part4
-
-
-def stein_Gaussian(x, y, l, d_log_px, d_log_py):
-    """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
-    """
-    N, D = x.shape
-    M = y.shape[0]
-
-    batch_kernel = tfp.math.psd_kernels.ExponentiatedQuadratic(amplitude=1., length_scale=l)
-    grad_x_K_fn = jax.grad(batch_kernel.apply, argnums=0)
-    vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
-    grad_y_K_fn = jax.grad(batch_kernel.apply, argnums=1)
-    vec_grad_y_K_fn = jax.vmap(grad_y_K_fn, in_axes=(0, 0), out_axes=0)
-
-    grad_xy_K_fn = jax.jacfwd(jax.jacrev(batch_kernel.apply, argnums=1), argnums=0)
-
-    def diag_sum_grad_xy_K_fn(x, y):
-        return jnp.diag(grad_xy_K_fn(x, y)).sum()
-
-    vec_grad_xy_K_fn = jax.vmap(diag_sum_grad_xy_K_fn, in_axes=(0, 0), out_axes=0)
-
-    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
-    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
-
-    K = batch_kernel.matrix(x, y)
-    dx_K = vec_grad_x_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dy_K = vec_grad_y_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, M)
-
-    part1 = d_log_px @ d_log_py.T * K
-    part2 = (d_log_py[None, :] * dx_K).sum(-1)
-    part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
-    part4 = dxdy_K
-
-    return part1 + part2 + part3 + part4
-
-
 # @jax.jit
 def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     """
@@ -405,7 +322,9 @@ def main(args):
                 g_states = g_states.at[i, :].set(g_states_i)
                 d_log_pstates = grad_log_prob(states_i)
 
-                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i, g_states_i_standardized, d_log_pstates,
+                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, states_i,
+                                                         g_states_i_standardized,
+                                                         d_log_pstates,
                                                          stein_Gaussian)
                 psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_states_i_scale)
                 psi_std_array = jnp.append(psi_std_array, psi_std * g_states_i_scale)
