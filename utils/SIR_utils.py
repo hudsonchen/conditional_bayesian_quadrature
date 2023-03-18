@@ -32,7 +32,7 @@ def scale(A):
 def standardize(Z):
     mean = Z.mean(0)
     std = Z.std(0)
-    standardized = (Z - mean) / std
+    standardized = (Z - mean) / (std + eps)
     return standardized, mean, std
 
 
@@ -110,8 +110,8 @@ def generate_data(beta, gamma, T, population, target_date, rng_key):
     # D_real_remove_zero = {'S': St_real_non_zero, 'I': It_real_non_zero,
     #                       'R': Rt_real_non_zero, 'dI': delta_It_real_non_zero,
     #                       'dR': delta_Rt_real_non_zero}
-    D_real_remove_zero = {'S': S_array[:target_date], 'I': I_array[:target_date],
-                          'R': R_array[:target_date], 'dI': delta_It_array[:target_date],
+    D_real_remove_zero = {'S': S_array[10:target_date], 'I': I_array[10:target_date],
+                          'R': R_array[10:target_date], 'dI': delta_It_array[10:target_date],
                           'dR': delta_Rt_array[:target_date]}
     return D_real, D_real_remove_zero
 
