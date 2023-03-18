@@ -1,7 +1,9 @@
-#$ -l tmem=20G
-#$ -l h_vmem=20G
+#$ -l tmem=10G
+#$ -l gpu=true
+#$ -pe gpu 1
 #$ -l h_rt=12:0:0
 #$ -R y
+
 #$ -S /bin/bash
 #$ -j y
 #$ -N cbq_finance
@@ -10,6 +12,7 @@
 conda activate cbq
 
 date
+nvidia-smi
 
 ## Check if the environment is correct.
 which pip
