@@ -43,6 +43,9 @@ def get_config():
     # Data settings
     parser.add_argument('--kernel_x', type=str)
     parser.add_argument('--kernel_y', type=str)
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--save_path', type=str, default='./')
+    parser.add_argument('--data_path', type=str, default='./data')
     args = parser.parse_args()
     return args
 
@@ -305,12 +308,12 @@ class CBQ:
             Sigma = Sigma.at[i].set(std.squeeze())
             Mu = Mu.at[i].set(mu.squeeze())
 
-            # Large sample mu
-            print('True value', price(X[i], 10000, rng_key)[1].mean())
-            print(f'MC with {Ny} number of Y', price(X[i], Ny, rng_key)[1].mean())
-            print(f'BMC with {Ny} number of Y', mu)
-            print(f"=================")
-            pause = True
+            # # Large sample mu
+            # print('True value', price(X[i], 10000, rng_key)[1].mean())
+            # print(f'MC with {Ny} number of Y', price(X[i], Ny, rng_key)[1].mean())
+            # print(f'BMC with {Ny} number of Y', mu)
+            # print(f"=================")
+            # pause = True
         return Mu, Sigma
 
     @partial(jax.jit, static_argnums=(0,))
@@ -358,8 +361,8 @@ class CBQ:
         # TODO: Adding jnp.mean(Sigma_standardized) is a bit suspicious here.
         std_y_x_debug_original = std_y_x_debug * Mu_std + jnp.mean(psi_y_x_std)
 
-        true_X = jnp.load('./data/finance_X.npy')
-        true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
+        true_X = jnp.load(f"{args.data_path}/finance_X.npy")
+        true_EgY_X = jnp.load(f"{args.data_path}/finance_EgY_X.npy")
 
         plt.figure()
         plt.plot(x_debug.squeeze(), mu_y_x_debug_original.squeeze(), color='blue', label='predict')
@@ -369,7 +372,7 @@ class CBQ:
                          mu_y_x_debug_original.squeeze() + std_y_x_debug_original, color='blue', alpha=0.2)
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
-        plt.savefig(f"./results/finance/GP_finance_X_{Nx}_y_{ny}.pdf")
+        plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{ny}.pdf")
         # plt.show()
         plt.close()
         pause = True
@@ -400,9 +403,8 @@ def price(St, N, rng_key):
     return ST, psi_ST_1 - psi_ST_2
 
 
-def save_true_value():
-    seed = int(time.time())
-    # seed = 0
+def save_true_value(args):
+    seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
 
@@ -419,14 +421,14 @@ def save_true_value():
     St = St.squeeze()
     ind = jnp.argsort(St)
     value = loss.mean(1)
-    jnp.save('./data/finance_X.npy', St[ind])
-    jnp.save('./data/finance_EgY_X.npy', value[ind])
+    jnp.save(f"{args.data_path}/finance_X.npy", St[ind])
+    jnp.save(f"{args.data_path}/finance_EgY_X.npy", value[ind])
     plt.figure()
     plt.plot(St[ind], value[ind])
     plt.xlabel(r"$X$")
     plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
     plt.title("True value for finance experiment")
-    plt.savefig("./data/true_distribution.pdf")
+    plt.savefig(f"{args.data_path}/true_distribution.pdf")
     # plt.show()
     # plt.close()
     return
@@ -445,10 +447,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
-    Nx_array = [3, 5, 10, 20, 30]
-    # Ny_array = [10, 50]
-    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    Nx_array = [5, 10]
+    # Nx_array = [3, 5, 10, 20, 30]
+    Ny_array = [10, 50]
+    # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -518,17 +520,17 @@ def cbq_option_pricing(args):
         rng_key, _ = jax.random.split(rng_key)
         MC_list.append(price(St_prime, Ny, rng_key)[1].mean())
 
-    with open('./results/finance/BMC_mean', 'wb') as f:
+    with open(f"{args.save_path}/BMC_mean", 'wb') as f:
         pickle.dump(cbq_mean_dict, f)
-    with open('./results/finance/BMC_std', 'wb') as f:
+    with open(f"{args.save_path}/BMC_std", 'wb') as f:
         pickle.dump(cbq_std_dict, f)
-    with open('./results/finance/poly', 'wb') as f:
+    with open(f"{args.save_path}/poly", 'wb') as f:
         pickle.dump(poly_mean_dict, f)
-    with open('./results/finance/importance_sampling', 'wb') as f:
+    with open(f"{args.save_path}/importance_sampling", 'wb') as f:
         pickle.dump(IS_mean_dict, f)
-    with open('./results/finance/mean_shrinkage', 'wb') as f:
+    with open(f"{args.save_path}/mean_shrinkage", 'wb') as f:
         pickle.dump(mean_shrinkage_mean_dict, f)
-    jnp.save('./results/finance/MC', jnp.array(MC_list))
+    jnp.save(f"{args.save_path}/MC", jnp.array(MC_list))
 
     fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
     for i, ax in enumerate(axs):
@@ -546,14 +548,14 @@ def cbq_option_pricing(args):
         # axs[i].set_xscale('log')
     plt.tight_layout()
     plt.suptitle("Finance Dataset")
-    plt.savefig("./results/finance/figures/all_methods.pdf")
+    plt.savefig(f"{args.save_path}/figures/all_methods.pdf")
     plt.show()
     # plt.close()
     return
 
 
-def main():
-    seed = int(time.time())
+def main(args):
+    seed = args.seed
     # seed = 0
     rng_key = jax.random.PRNGKey(seed)
 
@@ -572,12 +574,28 @@ def main():
         finance_utils.BSM_butterfly_analytic()
     else:
         pass
-    args = get_config()
-    os.makedirs("./results/finance/figures/", exist_ok=True)
     cbq_option_pricing(args)
     return
 
 
+def create_dir(args):
+    if args.seed is None:
+        args.seed = int(time.time())
+    args.save_path += f'results/finance/'
+    args.save_path += f"seed_{args.seed}"
+    os.makedirs(args.save_path, exist_ok=True)
+    os.makedirs(f"{args.save_path}/figures/", exist_ok=True)
+    return args
+
+
 if __name__ == '__main__':
-    save_true_value()
-    main()
+    args = get_config()
+    create_dir(args)
+    print(f'Device is {jax.devices()}')
+    save_true_value(args)
+    main(args)
+    save_path = args.save_path
+    print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
+    os.rename(save_path, f"{save_path}__complete")
+    print("\n------------------- DONE -------------------\n")
+
