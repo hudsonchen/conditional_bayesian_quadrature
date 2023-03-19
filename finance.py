@@ -447,10 +447,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [5, 10]
-    # Nx_array = [3, 5, 10, 20, 30]
-    Ny_array = [10, 50]
-    # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # Nx_array = [5, 10]
+    Nx_array = [3, 5, 10, 20, 30]
+    # Ny_array = [10, 50]
+    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
