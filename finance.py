@@ -361,8 +361,8 @@ class CBQ:
         # TODO: Adding jnp.mean(Sigma_standardized) is a bit suspicious here.
         std_y_x_debug_original = std_y_x_debug * Mu_std + jnp.mean(psi_y_x_std)
 
-        true_X = jnp.load(f"{args.data_path}/finance_X.npy")
-        true_EgY_X = jnp.load(f"{args.data_path}/finance_EgY_X.npy")
+        true_X = jnp.load(f"{args.save_path}/finance_X.npy")
+        true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
         plt.figure()
         plt.plot(x_debug.squeeze(), mu_y_x_debug_original.squeeze(), color='blue', label='predict')
@@ -421,14 +421,14 @@ def save_true_value(args):
     St = St.squeeze()
     ind = jnp.argsort(St)
     value = loss.mean(1)
-    jnp.save(f"{args.data_path}/finance_X.npy", St[ind])
-    jnp.save(f"{args.data_path}/finance_EgY_X.npy", value[ind])
+    jnp.save(f"{args.save_path}/finance_X.npy", St[ind])
+    jnp.save(f"{args.save_path}/finance_EgY_X.npy", value[ind])
     plt.figure()
     plt.plot(St[ind], value[ind])
     plt.xlabel(r"$X$")
     plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
     plt.title("True value for finance experiment")
-    plt.savefig(f"{args.data_path}/true_distribution.pdf")
+    plt.savefig(f"{args.save_path}/true_distribution.pdf")
     # plt.show()
     # plt.close()
     return
@@ -590,8 +590,9 @@ def create_dir(args):
 
 if __name__ == '__main__':
     args = get_config()
-    create_dir(args)
+    args = create_dir(args)
     print(f'Device is {jax.devices()}')
+    print(args.seed)
     save_true_value(args)
     main(args)
     save_path = args.save_path
