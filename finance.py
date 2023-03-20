@@ -14,6 +14,7 @@ from kernels import *
 from utils import finance_utils
 import os
 import pwd
+import shutil
 import argparse
 import pickle
 from jax.config import config
@@ -387,12 +388,11 @@ class CBQ:
 
     def debug(self, Nx, Ny, psi_x_mean, St, St_prime, mu_y_x_prime_cbq, std_y_x_prime_cbq,
                     mean_shrinkage_mean, mu_y_x_prime_IS, mu_y_x_prime_poly):
-        true_X = jnp.load(f"{args.save_path}/finance_X.npy")
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
         plt.figure()
         plt.ylim(-2, 15)
-        plt.plot(true_X, true_EgY_X, color='red', label='true')
+        plt.plot(St_prime.squeeze(), true_EgY_X, color='red', label='true')
         plt.scatter(St.squeeze(), psi_x_mean.squeeze())
         plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
         plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
@@ -443,29 +443,27 @@ def save_true_value(args):
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
 
-    K1 = 50
-    K2 = 150
-    s = -0.2
-    t = 1
-    T = 2
-    sigma = 0.3
-    S0 = 50
-    epsilon = jax.random.normal(rng_key, shape=(1000, 1))
-    St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
+    # K1 = 50
+    # K2 = 150
+    # s = -0.2
+    # t = 1
+    # T = 2
+    # sigma = 0.3
+    # S0 = 50
+
+    St = jnp.linspace(20., 100., 100)[:, None]
     _, loss = price(St, 100000, rng_key)
-    St = St.squeeze()
-    ind = jnp.argsort(St)
     value = loss.mean(1)
-    jnp.save(f"{args.save_path}/finance_X.npy", St[ind])
-    jnp.save(f"{args.save_path}/finance_EgY_X.npy", value[ind])
+    jnp.save(f"{args.save_path}/finance_X.npy", St)
+    jnp.save(f"{args.save_path}/finance_EgY_X.npy", value)
     plt.figure()
-    plt.plot(St[ind], value[ind])
+    plt.plot(St, value)
     plt.xlabel(r"$X$")
     plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
     plt.title("True value for finance experiment")
     plt.savefig(f"{args.save_path}/true_distribution.pdf")
-    # plt.show()
-    # plt.close()
+    plt.show()
+    plt.close()
     return
 
 
@@ -482,10 +480,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [5, 10]
-    # Nx_array = [3, 5, 10, 20, 30]
-    Ny_array = [10, 30, 50]
-    # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # Nx_array = [5, 10]
+    Nx_array = [3, 5, 10, 20, 30]
+    # Ny_array = [10, 30, 50]
+    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -635,6 +633,8 @@ if __name__ == '__main__':
     main(args)
     save_path = args.save_path
     print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
+    if os.path.exists(f"{save_path}__complete"):
+        shutil.rmtree(f"{save_path}__complete")
     os.rename(save_path, f"{save_path}__complete")
     print("\n------------------- DONE -------------------\n")
 
