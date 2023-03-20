@@ -305,31 +305,39 @@ class CBQ:
             mu = c * (K_inv @ gYi).sum()
             std = jnp.sqrt(c - K_inv.sum() * c ** 2)
 
+            if mu > 15 or mu < 0:
+                mu = gYi.mean()
             Sigma = Sigma.at[i].set(std.squeeze())
             Mu = Mu.at[i].set(mu.squeeze())
 
             # # Large sample mu
-            # print('True value', price(X[i], 10000, rng_key)[1].mean())
-            # print(f'MC with {Ny} number of Y', price(X[i], Ny, rng_key)[1].mean())
-            # print(f'BMC with {Ny} number of Y', mu)
-            # print(f"=================")
-            # pause = True
+            print('True value', price(X[i], 10000, rng_key)[1].mean())
+            print(f'MC with {Ny} number of Y', gYi.mean())
+            print(f'BMC with {Ny} number of Y', mu)
+            print(f"=================")
+            pause = True
         return Mu, Sigma
 
     @partial(jax.jit, static_argnums=(0,))
-    def GP(self, psi_y_x_mean, psi_y_x_std, X, x_prime):
+    def GP(self, psi_y_x_mean, psi_y_x_std, X, X_prime):
+        """
+        :param psi_y_x_mean: Nx * 1
+        :param psi_y_x_std: Nx * 1
+        :param X: Nx * 1
+        :param X_prime: N_prime * 1
+        :return:
+        """
         Nx = psi_y_x_mean.shape[0]
         Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
         Sigma_standardized = psi_y_x_std / Mu_std
         X_standardized, X_mean, X_std = finance_utils.standardize(X)
-        x_prime_standardized = (x_prime - X_mean) / X_std
-        noise = 0.01
+        X_prime_standardized = (X_prime - X_mean) / X_std
+        noise = 0.001
 
-        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(
-            Sigma_standardized) + noise * jnp.eye(Nx)
+        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = self.one_d_Kx(x_prime_standardized, X_standardized, self.lx)
-        K_test_test = self.one_d_Kx(x_prime_standardized, x_prime_standardized, self.lx) + noise
+        K_test_train = self.Kx(X_prime_standardized, X_standardized, self.lx)
+        K_test_test = self.Kx(X_prime_standardized, X_prime_standardized, self.lx) + noise
         mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
         var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
         std_y_x_prime = jnp.sqrt(var_y_x_prime)
@@ -345,12 +353,11 @@ class CBQ:
         Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
         Sigma_standardized = psi_y_x_std / Mu_std
         X_standardized, X_mean, X_std = finance_utils.standardize(X)
-        noise = 0.01
+        noise = 0.001
         x_debug = jnp.linspace(20, 120, 100)[:, None]
         x_debug_standardized = (x_debug - X_mean) / X_std
 
-        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(
-            Sigma_standardized) + noise * jnp.eye(Nx)
+        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
         K_train_debug = self.Kx(X_standardized, x_debug_standardized, self.lx)
         mu_y_x_debug = K_train_debug.T @ K_train_train_inv @ Mu_standardized
@@ -373,8 +380,35 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{ny}.pdf")
-        # plt.show()
+        plt.show()
         plt.close()
+        pause = True
+        return
+
+    def debug(self, Nx, Ny, psi_x_mean, St, St_prime, mu_y_x_prime_cbq, std_y_x_prime_cbq,
+                    mean_shrinkage_mean, mu_y_x_prime_IS, mu_y_x_prime_poly):
+        true_X = jnp.load(f"{args.save_path}/finance_X.npy")
+        true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
+
+        plt.figure()
+        plt.ylim(-2, 15)
+        plt.plot(true_X, true_EgY_X, color='red', label='true')
+        plt.scatter(St.squeeze(), psi_x_mean.squeeze())
+        plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
+        plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
+        plt.plot(St_prime.squeeze(), mu_y_x_prime_poly.squeeze(), color='orange', label='poly')
+        plt.plot(St_prime.squeeze(), mean_shrinkage_mean.squeeze(), color='purple', label='mean shrinkage')
+        plt.legend()
+        plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
+        plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{Ny}.pdf")
+        plt.show()
+
+        jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean)
+        jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq)
+        jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq)
+        jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS)
+        jnp.save(f"{args.save_path}/poly_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_poly)
+        jnp.save(f"{args.save_path}/mean_shrinkage_mean_X_{Nx}_y_{Ny}.npy", mean_shrinkage_mean)
         pause = True
         return
 
@@ -435,7 +469,7 @@ def save_true_value(args):
 
 
 def cbq_option_pricing(args):
-    seed = int(time.time())
+    seed = args.seed
     # seed = 0
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
@@ -447,10 +481,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
-    Nx_array = [3, 5, 10, 20, 30]
-    # Ny_array = [10, 50]
-    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    Nx_array = [5, 10]
+    # Nx_array = [3, 5, 10, 20, 30]
+    Ny_array = [10, 30]
+    # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -461,12 +495,12 @@ def cbq_option_pricing(args):
     mean_shrinkage_std_dict = {}
     MC_list = []
 
-    St_prime = jnp.array([[70.0]])
-    # True value with standard MC
-    for _ in range(1):
-        rng_key, _ = jax.random.split(rng_key)
-        true_value = price(St_prime, 100000, rng_key)[1].mean()
-        print('True Value is:', true_value)
+    St_prime = jnp.linspace(20., 100., 100)[:, None]
+    test_ind = 50
+    St_prime_single = St_prime[test_ind][:, None]
+    rng_key, _ = jax.random.split(rng_key)
+    true_value = price(St_prime_single, 100000, rng_key)[1].mean()
+    print('True Value is:', true_value)
 
     kernel_x = args.kernel_x
     kernel_y = args.kernel_y
@@ -485,6 +519,7 @@ def cbq_option_pricing(args):
             rng_key, _ = jax.random.split(rng_key)
             epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
             St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
+            # St = jnp.linspace(20, 100, Nx)[:, None]
             ST, loss = price(St, Ny, rng_key)
 
             # St is X, ST is Y, loss is g(Y)
@@ -494,19 +529,21 @@ def cbq_option_pricing(args):
             mc_mean = loss.mean(1)[:, None]
             mc_std = 0 * mc_mean
             mean_shrinkage_mean, mean_shrinkage_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
-            CBQ_class.GP_debug(psi_x_mean, psi_x_std, St, Ny)
-
             mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, St_prime, St, ST, loss)
             mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime)
 
-            cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq)
-            cbq_std_array = jnp.append(cbq_std_array, std_y_x_prime_cbq)
-            poly_mean_array = jnp.append(poly_mean_array, mu_y_x_prime_poly)
-            poly_std_array = jnp.append(poly_std_array, std_y_x_prime_poly)
-            IS_mean_array = jnp.append(IS_mean_array, mu_y_x_prime_IS)
-            IS_std_array = jnp.append(IS_std_array, std_y_x_prime_IS)
-            mean_shrinkage_mean_array = jnp.append(mean_shrinkage_mean_array, mean_shrinkage_mean)
-            mean_shrinkage_std_array = jnp.append(mean_shrinkage_std_array, mean_shrinkage_std)
+            CBQ_class.debug(Nx, Ny, psi_x_mean, St, St_prime, mu_y_x_prime_cbq, std_y_x_prime_cbq,
+                            mean_shrinkage_mean, mu_y_x_prime_IS, mu_y_x_prime_poly)
+
+            cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq[test_ind])
+            cbq_std_array = jnp.append(cbq_std_array, jnp.diag(std_y_x_prime_cbq)[test_ind])
+            poly_mean_array = jnp.append(poly_mean_array, mu_y_x_prime_poly[test_ind])
+            poly_std_array = jnp.append(poly_std_array, std_y_x_prime_poly[test_ind])
+            IS_mean_array = jnp.append(IS_mean_array, mu_y_x_prime_IS[test_ind])
+            IS_std_array = jnp.append(IS_std_array, std_y_x_prime_IS[test_ind])
+            mean_shrinkage_mean_array = jnp.append(mean_shrinkage_mean_array, mean_shrinkage_mean[test_ind])
+            mean_shrinkage_std_array = jnp.append(mean_shrinkage_std_array, mean_shrinkage_std[test_ind])
+
         cbq_mean_dict[f"{Nx}"] = cbq_mean_array
         cbq_std_dict[f"{Nx}"] = cbq_std_array
         poly_mean_dict[f"{Nx}"] = poly_mean_array
@@ -518,7 +555,7 @@ def cbq_option_pricing(args):
 
     for Ny in Ny_array:
         rng_key, _ = jax.random.split(rng_key)
-        MC_list.append(price(St_prime, Ny, rng_key)[1].mean())
+        MC_list.append(price(St_prime_single, Ny, rng_key)[1].mean())
 
     with open(f"{args.save_path}/BMC_mean", 'wb') as f:
         pickle.dump(cbq_mean_dict, f)
