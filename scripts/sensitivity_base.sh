@@ -15,7 +15,6 @@ echo "Job params: $JOB_PARAMS"
 conda activate cbq
 
 date
-nvidia-smi
 
 ## Check if the environment is correct.
 which pip

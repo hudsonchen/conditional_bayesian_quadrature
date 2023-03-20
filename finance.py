@@ -482,10 +482,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
-    Nx_array = [3, 5, 10, 20, 30]
-    # Ny_array = [10, 30]
-    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    Nx_array = [5, 10]
+    # Nx_array = [3, 5, 10, 20, 30]
+    Ny_array = [10, 30, 50]
+    # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
@@ -518,9 +518,9 @@ def cbq_option_pricing(args):
 
         for Ny in tqdm(Ny_array):
             rng_key, _ = jax.random.split(rng_key)
-            epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
-            St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-            # St = jnp.linspace(20, 100, Nx)[:, None]
+            # epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
+            # St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
+            St = jnp.linspace(20, 100, Nx)[:, None]
             ST, loss = price(St, Ny, rng_key)
 
             # St is X, ST is Y, loss is g(Y)
