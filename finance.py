@@ -311,11 +311,11 @@ class CBQ:
             Mu = Mu.at[i].set(mu.squeeze())
 
             # # Large sample mu
-            print('True value', price(X[i], 10000, rng_key)[1].mean())
-            print(f'MC with {Ny} number of Y', gYi.mean())
-            print(f'BMC with {Ny} number of Y', mu)
-            print(f"=================")
-            pause = True
+            # print('True value', price(X[i], 10000, rng_key)[1].mean())
+            # print(f'MC with {Ny} number of Y', gYi.mean())
+            # print(f'BMC with {Ny} number of Y', mu)
+            # print(f"=================")
+            # pause = True
         return Mu, Sigma
 
     @partial(jax.jit, static_argnums=(0,))
@@ -380,7 +380,7 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{ny}")
         plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{ny}.pdf")
-        plt.show()
+        # plt.show()
         plt.close()
         pause = True
         return
@@ -401,7 +401,8 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
         plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{Ny}.pdf")
-        plt.show()
+        # plt.show()
+        plt.close()
 
         jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean)
         jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq)
@@ -481,10 +482,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [5, 10]
-    # Nx_array = [3, 5, 10, 20, 30]
-    Ny_array = [10, 30]
-    # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # Nx_array = [5, 10]
+    Nx_array = [3, 5, 10, 20, 30]
+    # Ny_array = [10, 30]
+    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
