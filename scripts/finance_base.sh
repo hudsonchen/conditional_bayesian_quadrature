@@ -1,6 +1,6 @@
 #$ -l tmem=20G
 #$ -l h_vmem=20G
-#$ -l h_rt=23:00:00
+#$ -l h_rt=12:00:00
 #$ -R y
 #$ -S /bin/bash
 #$ -j y
