@@ -170,10 +170,10 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
         return l, c, A, opt_state, nllk_value
 
     # # Debug code
-    l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
+    # l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
     for _ in range(100):
         rng_key, _ = jax.random.split(rng_key)
         l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
@@ -183,18 +183,18 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
         #     K = A * Ky(y, y, l, d_log_py, d_log_py) + c + jnp.eye(n)
         #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
         #     pause = True
-        l_debug_list.append(l)
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
+        # l_debug_list.append(l)
+        # c_debug_list.append(c)
+        # A_debug_list.append(A)
+        # nll_debug_list.append(nllk_value)
     # Debug code
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
 
     # l = jnp.exp(log_l)
     # A = jnp.exp(log_A)
@@ -312,11 +312,11 @@ class CBQ:
             Mu = Mu.at[i].set(mu.squeeze())
 
             # # Large sample mu
-            print('True value', price(X[i], 10000, rng_key)[1].mean())
-            print(f'MC with {Ny} number of Y', gYi.mean())
-            print(f'BMC with {Ny} number of Y', mu)
-            print(f"=================")
-            pause = True
+            # print('True value', price(X[i], 10000, rng_key)[1].mean())
+            # print(f'MC with {Ny} number of Y', gYi.mean())
+            # print(f'BMC with {Ny} number of Y', mu)
+            # print(f"=================")
+            # pause = True
         return Mu, Sigma
 
     @partial(jax.jit, static_argnums=(0,))
@@ -480,10 +480,11 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [5, 10]
-    # Nx_array = [3, 5, 10, 20, 30]
-    Ny_array = [10, 30, 50]
+    # Nx_array = [5, 10]
+    Nx_array = [3, 5, 10, 15, 20, 30]
+    # Ny_array = [10, 30, 50]
     # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    Ny_array = np.arange(3, 20, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}
