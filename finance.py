@@ -52,15 +52,15 @@ def get_config():
 
 
 @jax.jit
-def grad_y_log_py_x(y, x, y_scale, sigma, T, t):
+def grad_y_log_py_x(y, x, y_mean, y_scale, sigma, T, t):
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
-    y *= y_scale
+    y = y * y_scale + y_mean
     part1 = (jnp.log(y) + sigma ** 2 * (T - t) / 2 - jnp.log(x)) / y / (sigma ** 2 * (T - t))
     return (-1. / y - part1) * y_scale
 
 
 @jax.jit
-def py_x_fn(y, x, y_scale, sigma, T, t):
+def py_x_fn(y, x, y_scale, y_mean, sigma, T, t):
     """
     :param y: Ny * 1
     :param x: scalar
@@ -68,7 +68,7 @@ def py_x_fn(y, x, y_scale, sigma, T, t):
     :return: scalar
     """
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
-    y_tilde = y * y_scale
+    y_tilde = y * y_scale + y_mean
     z = jnp.log(y_tilde / x)
     n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
     p_n = jax.scipy.stats.norm.pdf(n)
@@ -149,52 +149,52 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     eps = 1e-6
 
     c_init = c = 1.0
-    log_l_init = log_l = jnp.log(1.0)
+    l_init = l = 2.0
     A_init = A = 1.0 / jnp.sqrt(n)
-    opt_state = optimizer.init((log_l_init, c_init, A_init))
+    opt_state = optimizer.init((l_init, c_init, A_init))
 
     @jax.jit
-    def nllk_func(log_l, c, A):
-        l = jnp.exp(log_l)
+    def nllk_func(l, c, A):
+        # l = jnp.exp(log_l)
         n = y.shape[0]
-        K = A * Ky(y, y, l, d_log_py, d_log_py) + c
+        K = A * Ky(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
         nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
         return nll[0][0]
 
     @jax.jit
-    def step(log_l, c, A, opt_state, rng_key):
-        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, c, A)
-        updates, opt_state = optimizer.update(grads, opt_state, (log_l, c, A))
-        log_l, c, A = optax.apply_updates((log_l, c, A), updates)
-        return log_l, c, A, opt_state, nllk_value
+    def step(l, c, A, opt_state, rng_key):
+        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A)
+        updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
+        l, c, A = optax.apply_updates((l, c, A), updates)
+        return l, c, A, opt_state, nllk_value
 
     # # Debug code
-    # log_l_debug_list = []
-    # c_debug_list = []
-    # A_debug_list = []
-    # nll_debug_list = []
-    for _ in range(10000):
+    l_debug_list = []
+    c_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
+    for _ in range(100):
         rng_key, _ = jax.random.split(rng_key)
-        log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
+        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
         # # Debug code
         # if jnp.isnan(nllk_value):
-        #     l = jnp.exp(log_l)
-        #     K = A * Ky(y, y, l, d_log_py, d_log_py) + c
+        #     # l = jnp.exp(log_l)
+        #     K = A * Ky(y, y, l, d_log_py, d_log_py) + c + jnp.eye(n)
         #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
         #     pause = True
-    #     log_l_debug_list.append(log_l)
-    #     c_debug_list.append(c)
-    #     A_debug_list.append(A)
-    #     nll_debug_list.append(nllk_value)
-    # # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    # ax_1.plot(log_l_debug_list)
-    # ax_2.plot(c_debug_list)
-    # ax_3.plot(A_debug_list)
-    # ax_4.plot(nll_debug_list)
-    # plt.show()
+        l_debug_list.append(l)
+        c_debug_list.append(c)
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
+    # Debug code
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
 
     # l = jnp.exp(log_l)
     # A = jnp.exp(log_A)
@@ -209,7 +209,7 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     # plt.plot(y_debug * y_scale, gy_debug)
     # plt.show()
     pause = True
-    return jnp.exp(log_l), c, A
+    return l, c, A
 
 
 class CBQ:
@@ -227,6 +227,8 @@ class CBQ:
             self.Ky = stein_Matern
         elif kernel_y == 'stein_laplace':
             self.Ky = stein_Laplace
+        elif kernel_y == 'stein_rbf':
+            self.Ky = stein_Gaussian
         else:
             raise NotImplementedError
 
@@ -292,31 +294,29 @@ class CBQ:
         for i in range(Nx):
             x = X[i]
             Yi = Y[i, :][:, None]
-            Yi_standardized, Yi_scale = finance_utils.scale(Yi)
+            Yi_standardized, Yi_scale, Yi_mean = finance_utils.scale(Yi)
             gYi = gY[i, :][:, None]
 
-            grad_y_log_py_x_fn = partial(grad_y_log_py_x, sigma=0.3, T=2, t=1, y_scale=Yi_scale)
+            grad_y_log_py_x_fn = partial(grad_y_log_py_x, sigma=0.3, T=2, t=1, y_mean=Yi_mean, y_scale=Yi_scale)
             dy_log_py_x = grad_y_log_py_x_fn(Yi_standardized, x)
             ly, c, A = train(x, Yi_standardized, Yi_scale, gYi,
                              dy_log_py_x, grad_y_log_py_x_fn, rng_key, self.Ky)
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
 
-            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, dy_log_py_x, dy_log_py_x) + c
+            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, dy_log_py_x, dy_log_py_x) + c + A * jnp.eye(Ny)
             K_inv = jnp.linalg.inv(K + eps * jnp.eye(Ny))
             mu = c * (K_inv @ gYi).sum()
             std = jnp.sqrt(c - K_inv.sum() * c ** 2)
 
-            if mu > 15 or mu < 0:
-                mu = gYi.mean()
             Sigma = Sigma.at[i].set(std.squeeze())
             Mu = Mu.at[i].set(mu.squeeze())
 
             # # Large sample mu
-            # print('True value', price(X[i], 10000, rng_key)[1].mean())
-            # print(f'MC with {Ny} number of Y', gYi.mean())
-            # print(f'BMC with {Ny} number of Y', mu)
-            # print(f"=================")
-            # pause = True
+            print('True value', price(X[i], 10000, rng_key)[1].mean())
+            print(f'MC with {Ny} number of Y', gYi.mean())
+            print(f'BMC with {Ny} number of Y', mu)
+            print(f"=================")
+            pause = True
         return Mu, Sigma
 
     @partial(jax.jit, static_argnums=(0,))
@@ -480,10 +480,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
-    Nx_array = [3, 5, 10, 20, 30]
-    # Ny_array = [10, 30, 50]
-    Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    Nx_array = [5, 10]
+    # Nx_array = [3, 5, 10, 20, 30]
+    Ny_array = [10, 30, 50]
+    # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}

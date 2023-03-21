@@ -5,3 +5,4 @@ echo $jobs_in_parallel
 echo $1
 
 qsub -t 1-${jobs_in_parallel} /home/zongchen/CBQ/scripts/finance_base.sh "$1"
+
