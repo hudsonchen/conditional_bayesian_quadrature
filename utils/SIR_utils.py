@@ -23,16 +23,16 @@ def non_zero_ind(A):
 
 
 def scale(A):
-    m = 0.
-    s = jnp.log10(A.max())
-    std = 10 ** (int(s))
-    return m, std, (A - m) / std
+    m = 1e4
+    return m, A / m
 
 
 def standardize(Z):
     mean = Z.mean(0)
     std = Z.std(0)
-    standardized = (Z - mean) / (std + eps)
+    # mean = 0.
+    # std = 1.
+    standardized = (Z - mean) / std
     return standardized, mean, std
 
 
