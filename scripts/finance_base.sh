@@ -1,6 +1,5 @@
-#$ -l tmem=10G
-#$ -l gpu=true
-#$ -pe gpu 1
+#$ -l tmem=20G
+#$ -l h_vmem=20G
 #$ -l h_rt=12:0:0
 #$ -R y
 

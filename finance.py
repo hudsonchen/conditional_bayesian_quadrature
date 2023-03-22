@@ -19,6 +19,7 @@ import argparse
 import pickle
 from jax.config import config
 
+config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
 
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
@@ -404,12 +405,12 @@ class CBQ:
         # plt.show()
         plt.close()
 
-        jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean)
-        jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq)
-        jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq)
-        jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS)
-        jnp.save(f"{args.save_path}/poly_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_poly)
-        jnp.save(f"{args.save_path}/mean_shrinkage_mean_X_{Nx}_y_{Ny}.npy", mean_shrinkage_mean)
+        jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean.squeeze())
+        jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq.squeeze())
+        jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq.squeeze())
+        jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS.squeeze())
+        jnp.save(f"{args.save_path}/poly_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_poly.squeeze())
+        jnp.save(f"{args.save_path}/mean_shrinkage_mean_X_{Nx}_y_{Ny}.npy", mean_shrinkage_mean.squeeze())
         pause = True
         return
 
