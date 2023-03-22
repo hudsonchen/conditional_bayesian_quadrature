@@ -23,7 +23,7 @@ def non_zero_ind(A):
 
 
 def scale(A):
-    m = 1e4
+    m = 1.
     return m, A / m
 
 
@@ -51,13 +51,12 @@ def time_step(beta, gamma, population, St, It, Rt, rng_key):
     return St, It, Rt, delta_It, delta_Rt
 
 
-def generate_data(beta, gamma, T, population, target_date, rng_key):
+def generate_data(beta, gamma, T, population, rng_key):
     """
     :param beta: float, infection rate
     :param gamma: float, recovery rate
     :param rng_key:
     :param T: Time length
-    :param target_date: The time for the second retuned result
     :return: array T*3, the first is number of Susceptible,
     the second is Infected, the third is Recoverdd
     """
@@ -76,7 +75,7 @@ def generate_data(beta, gamma, T, population, target_date, rng_key):
         S_list.append(St)
         I_list.append(It)
         R_list.append(Rt)
-        St, Rt, It, delta_It, delta_Rt = time_step(beta, gamma, population, St, It, Rt, rng_key)
+        St, It, Rt, delta_It, delta_Rt = time_step(beta, gamma, population, St, It, Rt, rng_key)
         delta_It_list.append(delta_It)
         delta_Rt_list.append(delta_Rt)
 
@@ -98,6 +97,7 @@ def generate_data(beta, gamma, T, population, target_date, rng_key):
     # ax.grid(b=True, which='major', c='w', lw=2, ls='-')
     # legend = ax.legend()
     # legend.get_frame().set_alpha(0.5)
+    # plt.title(f'Infection rate is {beta}')
     # plt.show()
 
     D_real = {'S': S_array, 'I': I_array, 'R': R_array, 'dI': delta_It_array, 'dR': delta_Rt_array}
@@ -110,23 +110,21 @@ def generate_data(beta, gamma, T, population, target_date, rng_key):
     # D_real_remove_zero = {'S': St_real_non_zero, 'I': It_real_non_zero,
     #                       'R': Rt_real_non_zero, 'dI': delta_It_real_non_zero,
     #                       'dR': delta_Rt_real_non_zero}
-    D_real_remove_zero = {'S': S_array[10:target_date], 'I': I_array[10:target_date],
-                          'R': R_array[10:target_date], 'dI': delta_It_array[10:target_date],
-                          'dR': delta_Rt_array[:target_date]}
-    return D_real, D_real_remove_zero
+    pause = True
+    return D_real
 
 
-def ground_truth_peak_infected_number(beta_lab_all, gamma, T, population, target_date, rng_key):
+def ground_truth_peak_infected_number(beta_lab_all, gamma, T, population, rng_key):
     peak_infected_number = jnp.zeros_like(beta_lab_all)
     for i, beta in enumerate(beta_lab_all):
-        D, _ = generate_data(beta, gamma, T, population, target_date, rng_key)
-        peak_infected_number = peak_infected_number.at[i].set(D['I'].max())
+        D = generate_data(beta, gamma, T, population, rng_key)
+        peak_infected_number = peak_infected_number.at[i].set(D['dI'].max())
     return peak_infected_number
 
 
-def ground_truth_peak_infected_time(beta_lab_all, gamma, T, population, target_date, rng_key):
+def ground_truth_peak_infected_time(beta_lab_all, gamma, T, population, rng_key):
     peak_infected_time = jnp.zeros_like(beta_lab_all)
     for i, beta in enumerate(beta_lab_all):
-        D, _ = generate_data(beta, gamma, T, population, target_date, rng_key)
-        peak_infected_time = peak_infected_time.at[i].set(D['I'].argmax())
+        D = generate_data(beta, gamma, T, population, rng_key)
+        peak_infected_time = peak_infected_time.at[i].set(D['dI'].argmax())
     return peak_infected_time

@@ -47,7 +47,7 @@ def MCMC(rng_key, beta_lab, nsamples, init_params, log_prob, rate):
         #         step_size=1e-2),
         #     num_adaptation_steps=int(num_burnin_steps * 0.8))
 
-        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-3)
+        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-4)
         samples = tfp.mcmc.sample_chain(num_results=nsamples,
                                         num_burnin_steps=num_burnin_steps,
                                         current_state=state,
@@ -58,14 +58,14 @@ def MCMC(rng_key, beta_lab, nsamples, init_params, log_prob, rate):
 
     states = run_chain(rng_key, init_params)
     # # # Debug code
-    # scale = 1. / rate
-    # interval = jnp.linspace(0, 1, 100)
-    # interval_pdf = 1. / scale * jax.scipy.stats.gamma.pdf(interval / scale, a=1 + rate * beta_lab)
-    # plt.figure()
-    # plt.plot(interval, interval_pdf)
-    # plt.hist(np.array(states), bins=20, alpha=0.8, density=True)
-    # plt.show()
-    # pause = True
+    scale = 1. / rate
+    interval = jnp.linspace(0, 1, 100)
+    interval_pdf = 1. / scale * jax.scipy.stats.gamma.pdf(interval / scale, a=1 + rate * beta_lab)
+    plt.figure()
+    plt.plot(interval, interval_pdf)
+    plt.hist(np.array(states), bins=30, alpha=0.8, density=False)
+    plt.show()
+    pause = True
     return states
 
 
@@ -84,12 +84,12 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     """
     n = y.shape[0]
     learning_rate = 1e-2
-    optimizer = optax.sgd(learning_rate)
+    optimizer = optax.adam(learning_rate)
     eps = 1e-6
     median_d = jnp.median(distance(y, y))
     c_init = c = 1.0
     log_l_init = log_l = jnp.log(5.0)
-    A_init = A = 0.1
+    A_init = A = 1.0
     opt_state = optimizer.init((log_l_init, c_init, A_init))
 
     @jax.jit
@@ -216,28 +216,31 @@ def SIR(args, rng_key):
     gamma_lab = 0.05
     rate = 1000.0
     scale = 1. / rate
-    T = 150
+    T = 10
 
-    target_date = 20
+    target_date = 150
 
     rng_key, _ = jax.random.split(rng_key)
-    D_real, D_real_target = SIR_utils.generate_data(beta_real, gamma_real, T, population, target_date, rng_key)
-    D_real_target = SIR_utils.convert_dict_to_jnp(D_real_target)
-    N_MCMC = 1000
+    D_real = SIR_utils.generate_data(beta_real, gamma_real, T, population, rng_key)
+    N_MCMC = 100
 
     if args.mode == 'peak_number':
         f = peak_infected_number
         rng_key, _ = jax.random.split(rng_key)
         peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_lab_all,
-                                                                                 gamma_lab, T, population,
-                                                                                 target_date, rng_key)
+                                                                                 gamma_lab,
+                                                                                 target_date,
+                                                                                 population,
+                                                                                 rng_key)
         jnp.save(f'./data/SIR/peak_infected_number_array.npy', peak_infected_number_array)
     elif args.mode == 'peak_time':
         f = peak_infected_time
         rng_key, _ = jax.random.split(rng_key)
         peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_lab_all,
-                                                                             gamma_lab, T, population,
-                                                                             target_date, rng_key)
+                                                                             gamma_lab,
+                                                                             target_date,
+                                                                             population,
+                                                                             rng_key)
         jnp.save(f'./data/SIR/peak_infected_time_array.npy', peak_infected_time_array)
     else:
         pass
@@ -251,7 +254,7 @@ def SIR(args, rng_key):
         # This one is heuristic
         log_posterior_scale = 100.
         rng_key, _ = jax.random.split(rng_key)
-        log_posterior_fn = partial(log_posterior, beta_mean=0., beta_std=1.0, gamma=gamma_lab, D_real=D_real_target,
+        log_posterior_fn = partial(log_posterior, beta_mean=0., beta_std=1.0, gamma=gamma_lab, D_real=D_real,
                                    population=population, beta_lab=beta_lab, T=T,
                                    log_posterior_scale=log_posterior_scale, rate=rate, rng_key=rng_key)
         grad_log_posterior_fn = jax.grad(log_posterior_fn)
@@ -268,7 +271,7 @@ def SIR(args, rng_key):
         for i in range(N_MCMC):
             beta = samples_post[i]
             rng_key, _ = jax.random.split(rng_key)
-            D, _ = SIR_utils.generate_data(beta, gamma_real, T, population, target_date, rng_key)
+            D = SIR_utils.generate_data(beta, gamma_real, target_date, population, rng_key)
             f_beta = f(D)
             beta_array_large_sample = beta_array_large_sample.at[i, :].set(beta)
             f_beta_array_large_sample = f_beta_array_large_sample.at[i, :].set(f_beta)
@@ -280,7 +283,7 @@ def SIR(args, rng_key):
             beta_array = samples_post[:Ny]
             beta_standardized, beta_mean, beta_std = SIR_utils.standardize(beta_array)
             log_posterior_fn = partial(log_posterior, beta_mean=beta_mean, beta_std=beta_std,
-                                       gamma=gamma_lab, D_real=D_real_target,
+                                       gamma=gamma_lab, D_real=D_real,
                                        population=population, beta_lab=beta_lab, T=T,
                                        log_posterior_scale=log_posterior_scale, rate=rate, rng_key=rng_key)
             grad_log_posterior_fn = jax.grad(log_posterior_fn)
@@ -289,7 +292,7 @@ def SIR(args, rng_key):
             d_log_beta_array = jnp.zeros([Ny, 1])
             for i in range(Ny):
                 rng_key, _ = jax.random.split(rng_key)
-                D, _ = SIR_utils.generate_data(beta_array[i], gamma_real, T, population, target_date, rng_key)
+                D = SIR_utils.generate_data(beta_array[i], gamma_real, target_date, population, rng_key)
                 f_beta = f(D)
                 d_log_beta = grad_log_posterior_fn(beta_standardized[i])
                 f_beta_array = f_beta_array.at[i].set(f_beta)
