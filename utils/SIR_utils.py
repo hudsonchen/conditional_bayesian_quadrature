@@ -23,7 +23,7 @@ def non_zero_ind(A):
 
 
 def scale(A):
-    m = 1.
+    m = A.mean()
     return m, A / m
 
 

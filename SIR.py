@@ -83,47 +83,46 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     :return:
     """
     n = y.shape[0]
-    learning_rate = 1e-2
+    learning_rate = 5e-2
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
     median_d = jnp.median(distance(y, y))
     c_init = c = 1.0
-    log_l_init = log_l = jnp.log(5.0)
+    l_init = l = 2.0
     A_init = A = 1.0
-    opt_state = optimizer.init((log_l_init, c_init, A_init))
+    opt_state = optimizer.init((l_init, c_init, A_init))
 
     @jax.jit
-    def nllk_func(log_l, c, A):
-        l, c, A = jnp.exp(log_l), c, A
+    def nllk_func(l, c, A):
+        l, c, A = l, c, A
         n = y.shape[0]
         K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
-        diagonal = jnp.diag(jnp.diag(K))
-        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(diagonal) + eps)) / n
+        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
         return nll
 
     @jax.jit
-    def step(log_l, c, A, opt_state, rng_key):
-        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, c, A)
-        updates, opt_state = optimizer.update(grads, opt_state, (log_l, c, A))
-        log_l, c, A = optax.apply_updates((log_l, c, A), updates)
-        return log_l, c, A, opt_state, nllk_value
+    def step(l, c, A, opt_state, rng_key):
+        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A)
+        updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
+        l, c, A = optax.apply_updates((l, c, A), updates)
+        return l, c, A, opt_state, nllk_value
 
     # # Debug code
     l_debug_list = []
     c_debug_list = []
     A_debug_list = []
     nll_debug_list = []
-    for _ in range(100):
+    for _ in range(5000):
         rng_key, _ = jax.random.split(rng_key)
-        log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, rng_key)
+        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
         # Debug code
-        if jnp.isnan(nllk_value) or jnp.isinf(nllk_value) or jnp.abs(nllk_value) > 1e5:
-            l, c, A = jnp.exp(log_l), c, A
-            K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
-            det = jnp.linalg.det
-            print(nllk_value)
-        l_debug_list.append(jnp.exp(log_l))
+        # if jnp.isnan(nllk_value) or jnp.isinf(nllk_value) or jnp.abs(nllk_value) > 1e5:
+        #     l, c, A = l, c, A
+        #     K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
+        #     det = jnp.linalg.det
+        #     print(nllk_value)
+        l_debug_list.append(l)
         c_debug_list.append(c)
         A_debug_list.append(A)
         nll_debug_list.append(nllk_value)
@@ -136,7 +135,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     ax_4.plot(nll_debug_list)
     plt.show()
 
-    l, c, A = jnp.exp(log_l), c, A
+    l, c, A = l, c, A
     K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
     BMC_mean = c * (K_inv @ gy).sum()
@@ -146,7 +145,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
 
 
 # @jax.jit
-def log_posterior(beta_tilde, beta_mean, beta_std, gamma, D_real, population, beta_lab, T, log_posterior_scale, rate, rng_key):
+def log_posterior(beta_tilde, beta_mean, beta_std, gamma, D_real, population, beta_lab, rate, rng_key):
     scale = 1. / rate
     beta = beta_tilde * beta_std + beta_mean
     log_prior_beta = jax.scipy.stats.gamma.logpdf(beta / scale, a=1 + rate * beta_lab)
@@ -176,8 +175,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     x_prime_standardized = (x_prime - X_mean) / X_std
     noise = 1e-5
 
-    K_train_train = my_RBF(X_standardized, X_standardized, lx) + jnp.diag(Sigma_standardized) \
-                    + noise * jnp.eye(Nx)
+    K_train_train = my_RBF(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
     K_test_train = my_RBF(x_prime_standardized, X_standardized, lx)
     K_test_test = my_RBF(x_prime_standardized, x_prime_standardized, lx) + noise
@@ -190,58 +188,59 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
 
     plt.figure()
     plt.plot(x_prime, mu_y_x_prime_original)
+    plt.scatter(X.squeeze(), psi_y_x_mean.squeeze(), color='red')
     plt.show()
     pause = True
     return mu_y_x_prime_original, std_y_x_prime_original
 
 
 def peak_infected_number(D):
-    return D['I'].max()
+    return D['dI'].max()
 
 
 def peak_infected_time(D):
-    return D['I'].argmax()
+    return D['dI'].argmax()
 
 
 def SIR(args, rng_key):
     # Ny_list = [2, 3, 5, 7, 10]
-    Ny_list = [10, 20, 30, 50]
+    Ny_list = [10]
     population = float(1e5)
-    beta_real, gamma_real = 0.15, 0.05
-    beta_lab_array = jnp.array([0.05, 0.06, 0.07, 0.08, 0.10, 0.15, 0.25, 0.35, 0.45])
+    beta_real, gamma_real = 0.25, 0.05
+    beta_lab_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55])
     # beta_lab_array = jnp.array([0.05, 0.10, 0.15, 0.25, 0.35])
     Nx = len(beta_lab_array)
     # beta_lab_array = jax.random.uniform(rng_key, shape=(Nx,), minval=0.3, maxval=0.6)
-    beta_lab_all = jnp.linspace(0.01, 0.45, 50)
+    beta_lab_all = jnp.linspace(0.01, 0.60, 100)
     gamma_lab = 0.05
-    rate = 1000.0
+    rate = 100.0
     scale = 1. / rate
     T = 10
-
     target_date = 150
 
     rng_key, _ = jax.random.split(rng_key)
     D_real = SIR_utils.generate_data(beta_real, gamma_real, T, population, rng_key)
-    N_MCMC = 100
+    D_ground_truth = SIR_utils.generate_data(beta_real, gamma_real, target_date, population, rng_key)
+    N_MCMC = 1000
 
     if args.mode == 'peak_number':
         f = peak_infected_number
-        rng_key, _ = jax.random.split(rng_key)
-        peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_lab_all,
-                                                                                 gamma_lab,
-                                                                                 target_date,
-                                                                                 population,
-                                                                                 rng_key)
-        jnp.save(f'./data/SIR/peak_infected_number_array.npy', peak_infected_number_array)
+        # rng_key, _ = jax.random.split(rng_key)
+        # peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_lab_all,
+        #                                                                          gamma_lab,
+        #                                                                          target_date,
+        #                                                                          population,
+        #                                                                          rng_key)
+        # jnp.save(f'./data/SIR/peak_infected_number_array.npy', peak_infected_number_array)
     elif args.mode == 'peak_time':
         f = peak_infected_time
-        rng_key, _ = jax.random.split(rng_key)
-        peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_lab_all,
-                                                                             gamma_lab,
-                                                                             target_date,
-                                                                             population,
-                                                                             rng_key)
-        jnp.save(f'./data/SIR/peak_infected_time_array.npy', peak_infected_time_array)
+        # rng_key, _ = jax.random.split(rng_key)
+        # peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_lab_all,
+        #                                                                      gamma_lab,
+        #                                                                      target_date,
+        #                                                                      population,
+        #                                                                      rng_key)
+        # jnp.save(f'./data/SIR/peak_infected_time_array.npy', peak_infected_time_array)
     else:
         pass
 
@@ -251,12 +250,10 @@ def SIR(args, rng_key):
     for j in tqdm(range(Nx)):
         beta_lab = beta_lab_array[j]
         init_params = beta_lab
-        # This one is heuristic
-        log_posterior_scale = 100.
         rng_key, _ = jax.random.split(rng_key)
         log_posterior_fn = partial(log_posterior, beta_mean=0., beta_std=1.0, gamma=gamma_lab, D_real=D_real,
-                                   population=population, beta_lab=beta_lab, T=T,
-                                   log_posterior_scale=log_posterior_scale, rate=rate, rng_key=rng_key)
+                                   population=population, beta_lab=beta_lab,
+                                   rate=rate, rng_key=rng_key)
         grad_log_posterior_fn = jax.grad(log_posterior_fn)
         rng_key, _ = jax.random.split(rng_key)
         samples_post = MCMC(rng_key, beta_lab, N_MCMC, init_params, log_posterior_fn, rate)
@@ -284,8 +281,8 @@ def SIR(args, rng_key):
             beta_standardized, beta_mean, beta_std = SIR_utils.standardize(beta_array)
             log_posterior_fn = partial(log_posterior, beta_mean=beta_mean, beta_std=beta_std,
                                        gamma=gamma_lab, D_real=D_real,
-                                       population=population, beta_lab=beta_lab, T=T,
-                                       log_posterior_scale=log_posterior_scale, rate=rate, rng_key=rng_key)
+                                       population=population, beta_lab=beta_lab,
+                                       rate=rate, rng_key=rng_key)
             grad_log_posterior_fn = jax.grad(log_posterior_fn)
 
             f_beta_array = jnp.zeros([Ny])
@@ -302,6 +299,7 @@ def SIR(args, rng_key):
             f_beta_array_scale, f_beta_array_standardized = SIR_utils.scale(f_beta_array)
             beta_standardized = beta_standardized[:, None]
             rng_key, _ = jax.random.split(rng_key)
+
             psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, beta_standardized, f_beta_array_standardized,
                                                      d_log_beta_array, stein_Matern)
             psi_mean = psi_mean * f_beta_array_scale
@@ -331,10 +329,10 @@ def SIR(args, rng_key):
     plt.plot(beta_lab_all, BMC_mean, color='blue')
     if args.mode == 'peak_number':
         # plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_number_array.npy'))
-        plt.axhline(D_real['I'].max(), linestyle='--', color='black')
+        plt.axhline(D_ground_truth['dI'].max(), linestyle='--', color='black')
     elif args.mode == 'peak_time':
         # plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_time_array.npy'))
-        plt.axhline(D_real['I'].argmax(), linestyle='--', color='black')
+        plt.axhline(D_ground_truth['dI'].argmax(), linestyle='--', color='black')
     else:
         pass
     plt.scatter(beta_lab_array, psi_mean_array, color='orange')
