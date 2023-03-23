@@ -225,22 +225,22 @@ def SIR(args, rng_key):
 
     if args.mode == 'peak_number':
         f = peak_infected_number
-        # rng_key, _ = jax.random.split(rng_key)
-        # peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_lab_all,
-        #                                                                          gamma_lab,
-        #                                                                          target_date,
-        #                                                                          population,
-        #                                                                          rng_key)
-        # jnp.save(f'./data/SIR/peak_infected_number_array.npy', peak_infected_number_array)
+        rng_key, _ = jax.random.split(rng_key)
+        peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_lab_all,
+                                                                                 gamma_lab,
+                                                                                 target_date,
+                                                                                 population,
+                                                                                 rng_key)
+        jnp.save(f'./data/SIR/peak_infected_number_array.npy', peak_infected_number_array)
     elif args.mode == 'peak_time':
         f = peak_infected_time
-        # rng_key, _ = jax.random.split(rng_key)
-        # peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_lab_all,
-        #                                                                      gamma_lab,
-        #                                                                      target_date,
-        #                                                                      population,
-        #                                                                      rng_key)
-        # jnp.save(f'./data/SIR/peak_infected_time_array.npy', peak_infected_time_array)
+        rng_key, _ = jax.random.split(rng_key)
+        peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_lab_all,
+                                                                             gamma_lab,
+                                                                             target_date,
+                                                                             population,
+                                                                             rng_key)
+        jnp.save(f'./data/SIR/peak_infected_time_array.npy', peak_infected_time_array)
     else:
         pass
 
@@ -313,14 +313,8 @@ def SIR(args, rng_key):
             print(f'BMC with {Ny} number of Y', psi_mean)
             print(f"=================")
             pause = True
-    if args.mode == 'peak_number':
-        # plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_number_array.npy'))
-        lx = 2.0
-    elif args.mode == 'peak_time':
-        # plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_time_array.npy'))
-        lx = 0.7
-    else:
-        pass
+
+    lx = 1.0
     BMC_mean, BMC_std = GP(psi_mean_array[:, None], psi_std_array[:, None],
                            beta_lab_array[:, None], beta_lab_all[:, None], lx)
     BMC_mean = BMC_mean.squeeze()
@@ -328,10 +322,10 @@ def SIR(args, rng_key):
     plt.figure()
     plt.plot(beta_lab_all, BMC_mean, color='blue')
     if args.mode == 'peak_number':
-        # plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_number_array.npy'))
+        plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_number_array.npy'))
         plt.axhline(D_ground_truth['dI'].max(), linestyle='--', color='black')
     elif args.mode == 'peak_time':
-        # plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_time_array.npy'))
+        plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_time_array.npy'))
         plt.axhline(D_ground_truth['dI'].argmax(), linestyle='--', color='black')
     else:
         pass

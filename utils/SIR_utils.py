@@ -5,6 +5,7 @@ import jax
 import numpy as np
 import pandas as pd
 from tensorflow_probability.substrates import jax as tfp
+from tqdm import tqdm
 tfd = tfp.distributions
 
 eps = 1e-6
@@ -116,15 +117,23 @@ def generate_data(beta, gamma, T, population, rng_key):
 
 def ground_truth_peak_infected_number(beta_lab_all, gamma, T, population, rng_key):
     peak_infected_number = jnp.zeros_like(beta_lab_all)
-    for i, beta in enumerate(beta_lab_all):
-        D = generate_data(beta, gamma, T, population, rng_key)
-        peak_infected_number = peak_infected_number.at[i].set(D['dI'].max())
+    repeat = 1000
+    for i, beta in tqdm(enumerate(beta_lab_all)):
+        dummy = 0
+        for j in range(repeat):
+            D = generate_data(beta, gamma, T, population, rng_key)
+            dummy += D['dI'].max()
+        peak_infected_number = peak_infected_number.at[i].set(dummy / repeat)
     return peak_infected_number
 
 
 def ground_truth_peak_infected_time(beta_lab_all, gamma, T, population, rng_key):
     peak_infected_time = jnp.zeros_like(beta_lab_all)
-    for i, beta in enumerate(beta_lab_all):
-        D = generate_data(beta, gamma, T, population, rng_key)
-        peak_infected_time = peak_infected_time.at[i].set(D['dI'].argmax())
+    repeat = 1000
+    for i, beta in tqdm(enumerate(beta_lab_all)):
+        dummy = 0
+        for j in range(repeat):
+            D = generate_data(beta, gamma, T, population, rng_key)
+            dummy += D['dI'].argmax()
+        peak_infected_time = peak_infected_time.at[i].set(dummy / repeat)
     return peak_infected_time
