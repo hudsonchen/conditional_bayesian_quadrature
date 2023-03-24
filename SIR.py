@@ -11,9 +11,11 @@ from functools import partial
 from utils import SIR_utils
 from tensorflow_probability.substrates import jax as tfp
 from jax.config import config
+import SIR_baselines
 import argparse
 import os
 import pwd
+import shutil
 
 tfd = tfp.distributions
 config.update('jax_platform_name', 'cpu')
@@ -34,7 +36,7 @@ else:
     pass
 
 
-def MCMC(rng_key, beta_lab, nsamples, init_params, log_prob, rate):
+def MCMC(rng_key, beta_0, nsamples, init_params, log_prob, rate):
     rng_key, _ = jax.random.split(rng_key)
 
     @jax.jit
@@ -58,14 +60,14 @@ def MCMC(rng_key, beta_lab, nsamples, init_params, log_prob, rate):
 
     states = run_chain(rng_key, init_params)
     # # # Debug code
-    scale = 1. / rate
-    interval = jnp.linspace(0, 1, 100)
-    interval_pdf = 1. / scale * jax.scipy.stats.gamma.pdf(interval / scale, a=1 + rate * beta_lab)
-    plt.figure()
-    plt.plot(interval, interval_pdf)
-    plt.hist(np.array(states), bins=30, alpha=0.8, density=False)
-    plt.show()
-    pause = True
+    # scale = 1. / rate
+    # interval = jnp.linspace(0, 1, 100)
+    # interval_pdf = 1. / scale * jax.scipy.stats.gamma.pdf(interval / scale, a=1 + rate * beta_0)
+    # plt.figure()
+    # plt.plot(interval, interval_pdf)
+    # plt.hist(np.array(states), bins=30, alpha=0.8, density=False)
+    # plt.show()
+    # pause = True
     return states
 
 
@@ -109,10 +111,10 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
         return l, c, A, opt_state, nllk_value
 
     # # Debug code
-    l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
+    # l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
     for _ in range(5000):
         rng_key, _ = jax.random.split(rng_key)
         l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
@@ -122,18 +124,18 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
         #     K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
         #     det = jnp.linalg.det
         #     print(nllk_value)
-        l_debug_list.append(l)
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
-    # # Debug code
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+    #     l_debug_list.append(l)
+    #     c_debug_list.append(c)
+    #     A_debug_list.append(A)
+    #     nll_debug_list.append(nllk_value)
+    # # # Debug code
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
 
     l, c, A = l, c, A
     K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
@@ -145,11 +147,24 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
 
 
 # @jax.jit
-def log_posterior(beta_tilde, beta_mean, beta_std, gamma, D_real, population, beta_lab, rate, rng_key):
+def posterior(beta_tilde, beta_mean, beta_std, gamma, D_real, population, beta_0, rate, rng_key):
     scale = 1. / rate
     beta = beta_tilde * beta_std + beta_mean
-    log_prior_beta = jax.scipy.stats.gamma.logpdf(beta / scale, a=1 + rate * beta_lab)
-    # log_prior_beta = jax.scipy.stats.gamma.logpdf(beta, a=1., loc=beta_lab, scale=scale)
+    prior_beta = jax.scipy.stats.gamma.pdf(beta / scale, a=1 + rate * beta_0)
+    S_real, I_real, _, delta_I_real, _ = D_real['S'], D_real['I'], D_real['R'], D_real['dI'], D_real['dR']
+
+    P_sim = 1 - jnp.exp(-beta * (I_real / population))
+    part1 = delta_I_real * jnp.log(P_sim)
+    part2 = -beta * I_real / population * (S_real - delta_I_real)
+    return prior_beta * jnp.exp(part1) * jnp.exp(part2)
+
+
+# @jax.jit
+def log_posterior(beta_tilde, beta_mean, beta_std, gamma, D_real, population, beta_0, rate, rng_key):
+    scale = 1. / rate
+    beta = beta_tilde * beta_std + beta_mean
+    log_prior_beta = jax.scipy.stats.gamma.logpdf(beta / scale, a=1 + rate * beta_0)
+    # log_prior_beta = jax.scipy.stats.gamma.logpdf(beta, a=1., loc=beta_0, scale=scale)
     S_real, I_real, _, delta_I_real, _ = D_real['S'], D_real['I'], D_real['R'], D_real['dI'], D_real['dR']
 
     P_sim = 1 - jnp.exp(-beta * (I_real / population))
@@ -186,10 +201,10 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
     std_y_x_prime_original = std_y_x_prime * Mu_std + jnp.mean(psi_y_x_std)
 
-    plt.figure()
-    plt.plot(x_prime, mu_y_x_prime_original)
-    plt.scatter(X.squeeze(), psi_y_x_mean.squeeze(), color='red')
-    plt.show()
+    # plt.figure()
+    # plt.plot(x_prime, mu_y_x_prime_original)
+    # plt.scatter(X.squeeze(), psi_y_x_mean.squeeze(), color='red')
+    # plt.show()
     pause = True
     return mu_y_x_prime_original, std_y_x_prime_original
 
@@ -204,14 +219,18 @@ def peak_infected_time(D):
 
 def SIR(args, rng_key):
     # Ny_list = [2, 3, 5, 7, 10]
-    Ny_list = [10]
+    Ny = 10
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
-    beta_lab_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55])
-    # beta_lab_array = jnp.array([0.05, 0.10, 0.15, 0.25, 0.35])
-    Nx = len(beta_lab_array)
-    # beta_lab_array = jax.random.uniform(rng_key, shape=(Nx,), minval=0.3, maxval=0.6)
-    beta_lab_all = jnp.linspace(0.01, 0.60, 100)
+    beta_0_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55])
+    # beta_0_array = jnp.array([0.15, 0.25])
+    # N_MCMC = 1000
+    N_MCMC = 100
+    # N_test = 10
+    N_test = 100
+    Nx = len(beta_0_array)
+    # beta_0_array = jax.random.uniform(rng_key, shape=(Nx,), minval=0.3, maxval=0.6)
+    beta_test_all = jnp.linspace(0.01, 0.60, N_test)
     gamma_lab = 0.05
     rate = 100.0
     scale = 1. / rate
@@ -220,43 +239,44 @@ def SIR(args, rng_key):
 
     rng_key, _ = jax.random.split(rng_key)
     D_real = SIR_utils.generate_data(beta_real, gamma_real, T, population, rng_key)
-    D_ground_truth = SIR_utils.generate_data(beta_real, gamma_real, target_date, population, rng_key)
-    N_MCMC = 1000
 
     if args.mode == 'peak_number':
         f = peak_infected_number
+
         rng_key, _ = jax.random.split(rng_key)
-        peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_lab_all,
+        peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_test_all,
                                                                                  gamma_lab,
+                                                                                 D_real,
                                                                                  target_date,
                                                                                  population,
+                                                                                 MCMC,
+                                                                                 N_MCMC,
+                                                                                 log_posterior,
+                                                                                 rate,
                                                                                  rng_key)
-        jnp.save(f'./data/SIR/peak_infected_number_array.npy', peak_infected_number_array)
+        jnp.save(f'{args.save_path}/peak_infected_number_array.npy', peak_infected_number_array)
     elif args.mode == 'peak_time':
         f = peak_infected_time
-        rng_key, _ = jax.random.split(rng_key)
-        peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_lab_all,
-                                                                             gamma_lab,
-                                                                             target_date,
-                                                                             population,
-                                                                             rng_key)
-        jnp.save(f'./data/SIR/peak_infected_time_array.npy', peak_infected_time_array)
     else:
         pass
 
-    psi_mean_array = jnp.zeros([Nx])
-    psi_std_array = jnp.zeros([Nx])
+    bmc_mean_array = jnp.zeros([Nx])
+    bmc_std_array = jnp.zeros([Nx])
+    mc_mean_array = jnp.zeros([Nx])
+    mc_std_array = jnp.zeros([Nx])
+
+    # beta_array_all is Y, beta_0_array is X, f_beta_array_all is f(Y)
+    beta_array_all = jnp.zeros([Nx, Ny])
+    f_beta_array_all = jnp.zeros([Nx, Ny])
 
     for j in tqdm(range(Nx)):
-        beta_lab = beta_lab_array[j]
-        init_params = beta_lab
+        beta_0 = beta_0_array[j]
+        init_params = beta_0
         rng_key, _ = jax.random.split(rng_key)
         log_posterior_fn = partial(log_posterior, beta_mean=0., beta_std=1.0, gamma=gamma_lab, D_real=D_real,
-                                   population=population, beta_lab=beta_lab,
-                                   rate=rate, rng_key=rng_key)
-        grad_log_posterior_fn = jax.grad(log_posterior_fn)
+                                   population=population, beta_0=beta_0, rate=rate, rng_key=rng_key)
         rng_key, _ = jax.random.split(rng_key)
-        samples_post = MCMC(rng_key, beta_lab, N_MCMC, init_params, log_posterior_fn, rate)
+        samples_post = MCMC(rng_key, beta_0, N_MCMC, init_params, log_posterior_fn, rate)
         samples_post = jnp.unique(samples_post, axis=0)
         rng_key, _ = jax.random.split(rng_key)
         samples_post = jax.random.permutation(rng_key, samples_post)
@@ -274,64 +294,80 @@ def SIR(args, rng_key):
             f_beta_array_large_sample = f_beta_array_large_sample.at[i, :].set(f_beta)
         MC_large_sample = f_beta_array_large_sample.mean()
 
-        for Ny in Ny_list:
+        rng_key, _ = jax.random.split(rng_key)
+        samples_post = jax.random.permutation(rng_key, samples_post)
+        beta_array = samples_post[:Ny]
+        beta_standardized, beta_mean, beta_std = SIR_utils.standardize(beta_array)
+        log_posterior_fn = partial(log_posterior, beta_mean=beta_mean, beta_std=beta_std,
+                                   gamma=gamma_lab, D_real=D_real,
+                                   population=population, beta_0=beta_0,
+                                   rate=rate, rng_key=rng_key)
+        grad_log_posterior_fn = jax.grad(log_posterior_fn)
+
+        f_beta_array = jnp.zeros([Ny])
+        d_log_beta_array = jnp.zeros([Ny, 1])
+        for i in range(Ny):
             rng_key, _ = jax.random.split(rng_key)
-            samples_post = jax.random.permutation(rng_key, samples_post)
-            beta_array = samples_post[:Ny]
-            beta_standardized, beta_mean, beta_std = SIR_utils.standardize(beta_array)
-            log_posterior_fn = partial(log_posterior, beta_mean=beta_mean, beta_std=beta_std,
-                                       gamma=gamma_lab, D_real=D_real,
-                                       population=population, beta_lab=beta_lab,
-                                       rate=rate, rng_key=rng_key)
-            grad_log_posterior_fn = jax.grad(log_posterior_fn)
+            D = SIR_utils.generate_data(beta_array[i], gamma_real, target_date, population, rng_key)
+            f_beta = f(D)
+            d_log_beta = grad_log_posterior_fn(beta_standardized[i])
+            f_beta_array = f_beta_array.at[i].set(f_beta)
+            d_log_beta_array = d_log_beta_array.at[i, :].set(d_log_beta)
 
-            f_beta_array = jnp.zeros([Ny])
-            d_log_beta_array = jnp.zeros([Ny, 1])
-            for i in range(Ny):
-                rng_key, _ = jax.random.split(rng_key)
-                D = SIR_utils.generate_data(beta_array[i], gamma_real, target_date, population, rng_key)
-                f_beta = f(D)
-                d_log_beta = grad_log_posterior_fn(beta_standardized[i])
-                f_beta_array = f_beta_array.at[i].set(f_beta)
-                d_log_beta_array = d_log_beta_array.at[i, :].set(d_log_beta)
+        beta_array_all = beta_array_all.at[j, :].set(beta_array)
+        f_beta_array_all = f_beta_array_all.at[j, :].set(f_beta_array)
 
-            MC = Monte_Carlo(f_beta_array)
-            f_beta_array_scale, f_beta_array_standardized = SIR_utils.scale(f_beta_array)
-            beta_standardized = beta_standardized[:, None]
-            rng_key, _ = jax.random.split(rng_key)
+        MC = Monte_Carlo(f_beta_array)
+        f_beta_array_scale, f_beta_array_standardized = SIR_utils.scale(f_beta_array)
+        beta_standardized = beta_standardized[:, None]
+        rng_key, _ = jax.random.split(rng_key)
 
-            psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, beta_standardized, f_beta_array_standardized,
-                                                     d_log_beta_array, stein_Matern)
-            psi_mean = psi_mean * f_beta_array_scale
-            psi_std = psi_std * f_beta_array_scale
-            psi_mean_array = psi_mean_array.at[j].set(psi_mean)
-            psi_std_array = psi_std_array.at[j].set(psi_std)
-
-            # Debug
-            print('True value (MC with large samples)', MC_large_sample)
-            print(f'MC with {Ny} number of Y', MC)
-            print(f'BMC with {Ny} number of Y', psi_mean)
-            print(f"=================")
-            pause = True
+        bmc_mean, bmc_std = Bayesian_Monte_Carlo(rng_key, beta_standardized, f_beta_array_standardized,
+                                                 d_log_beta_array, stein_Matern)
+        bmc_mean = bmc_mean * f_beta_array_scale
+        bmc_std = bmc_std * f_beta_array_scale
+        bmc_mean_array = bmc_mean_array.at[j].set(bmc_mean)
+        bmc_std_array = bmc_std_array.at[j].set(bmc_std)
+        mc_mean_array = mc_mean_array.at[j].set(MC)
+        # Debug
+        print('True value (MC with large samples)', MC_large_sample)
+        print(f'MC with {Ny} number of Y', MC)
+        print(f'BMC with {Ny} number of Y', bmc_mean)
+        print(f"=================")
+        pause = True
 
     lx = 1.0
-    BMC_mean, BMC_std = GP(psi_mean_array[:, None], psi_std_array[:, None],
-                           beta_lab_array[:, None], beta_lab_all[:, None], lx)
+    BMC_mean, BMC_std = GP(bmc_mean_array[:, None], bmc_std_array[:, None],
+                           beta_0_array[:, None], beta_test_all[:, None], lx)
     BMC_mean = BMC_mean.squeeze()
     BMC_std = jnp.diag(BMC_std).squeeze()
+
+    # Importance sampling
+    # py_x_fn = partial(posterior, beta_mean=0., beta_std=1., gamma=gamma_lab, D_real=D_real,
+    #                   population=population, rate=rate, rng_key=rng_key)
+    # IS_mean, _ = SIR_baselines.importance_sampling(py_x_fn, beta_test_all, beta_0_array, beta_array_all, f_beta_array_all)
+
+    # Kernel mean shrinkage estimator
+    KMS_mean, KMS_std = GP(mc_mean_array[:, None], mc_std_array[:, None],
+                           beta_0_array[:, None], beta_test_all[:, None], lx)
+
+    # Least squared Monte Carlo
+    poly_mean, _ = SIR_baselines.polynomial(beta_0_array[:, None], beta_array_all[:, None], f_beta_array_all, beta_test_all[:, None])
+
     plt.figure()
-    plt.plot(beta_lab_all, BMC_mean, color='blue')
+    plt.plot(beta_test_all, BMC_mean, color='blue', label='BMC')
+    plt.plot(beta_test_all, KMS_mean, color='red', label='KMS')
+    plt.plot(beta_test_all, poly_mean, color='green', label='LSMC')
     if args.mode == 'peak_number':
-        plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_number_array.npy'))
-        plt.axhline(D_ground_truth['dI'].max(), linestyle='--', color='black')
+        plt.plot(beta_test_all, jnp.load(f'{args.save_path}/peak_infected_number_array.npy'), color='black', label='True')
     elif args.mode == 'peak_time':
-        plt.plot(beta_lab_all, jnp.load(f'./data/SIR/peak_infected_time_array.npy'))
-        plt.axhline(D_ground_truth['dI'].argmax(), linestyle='--', color='black')
+        plt.plot(beta_test_all, jnp.load(f'{args.save_path}/peak_infected_time_array.npy'), color='black', label='True')
     else:
         pass
-    plt.scatter(beta_lab_array, psi_mean_array, color='orange')
-    plt.fill_between(beta_lab_all, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.4, color='blue')
-    plt.savefig(f"{args.save_path}/{args.mode}.pdf")
+    plt.scatter(beta_0_array, bmc_mean_array, color='orange')
+    plt.fill_between(beta_test_all, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
+    plt.legend()
+    plt.savefig(f"{args.save_path}/plot.pdf")
     plt.show()
     pause = True
     return
@@ -339,10 +375,19 @@ def SIR(args, rng_key):
 
 def main(args):
     # seed = int(time.time())
-    seed = 101
+    seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
     SIR(args, rng_key)
     return
+
+
+def create_dir(args):
+    if args.seed is None:
+        args.seed = int(time.time())
+    args.save_path += f'results/SIR/'
+    args.save_path += f"seed_{args.seed}__mode_{args.mode}"
+    os.makedirs(args.save_path, exist_ok=True)
+    return args
 
 
 def get_config():
@@ -350,7 +395,7 @@ def get_config():
 
     # Args settings
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--save_path', type=str, default='./results/SIR')
+    parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
     parser.add_argument('--mode', type=str, default='peak_number')
     args = parser.parse_args()
@@ -359,4 +404,10 @@ def get_config():
 
 if __name__ == '__main__':
     args = get_config()
+    args = create_dir(args)
     main(args)
+    save_path = args.save_path
+    print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
+    if os.path.exists(f"{save_path}__complete"):
+        shutil.rmtree(f"{save_path}__complete")
+    os.rename(save_path, f"{save_path}__complete")

@@ -115,22 +115,32 @@ def generate_data(beta, gamma, T, population, rng_key):
     return D_real
 
 
-def ground_truth_peak_infected_number(beta_lab_all, gamma, T, population, rng_key):
-    peak_infected_number = jnp.zeros_like(beta_lab_all)
-    repeat = 1000
-    for i, beta in tqdm(enumerate(beta_lab_all)):
+def ground_truth_peak_infected_number(beta_all, gamma, D_real, T, population, MCMC_fn, N_MCMC, log_posterior,
+                                      rate, rng_key):
+    peak_infected_number = jnp.zeros_like(beta_all)
+    for i, beta in enumerate(tqdm(beta_all)):
+        rng_key, _ = jax.random.split(rng_key)
+        log_posterior_fn = partial(log_posterior, beta_mean=0., beta_std=1.0, gamma=gamma, D_real=D_real,
+                                   population=population, beta_0=beta, rate=rate, rng_key=rng_key)
+
+        samples = MCMC_fn(rng_key, beta, N_MCMC, beta, log_posterior_fn, rate)
+        samples = jnp.unique(samples, axis=0)
+        rng_key, _ = jax.random.split(rng_key)
+        samples = jax.random.permutation(rng_key, samples)
+
         dummy = 0
-        for j in range(repeat):
-            D = generate_data(beta, gamma, T, population, rng_key)
+        for s in samples:
+            rng_key, _ = jax.random.split(rng_key)
+            D = generate_data(s, gamma, T, population, rng_key)
             dummy += D['dI'].max()
-        peak_infected_number = peak_infected_number.at[i].set(dummy / repeat)
+        peak_infected_number = peak_infected_number.at[i].set(dummy / len(samples))
     return peak_infected_number
 
 
-def ground_truth_peak_infected_time(beta_lab_all, gamma, T, population, rng_key):
-    peak_infected_time = jnp.zeros_like(beta_lab_all)
+def ground_truth_peak_infected_time(beta_0_all, gamma, T, population, MCMC_fn, repeat, rng_key):
+    peak_infected_time = jnp.zeros_like(beta_0_all)
     repeat = 1000
-    for i, beta in tqdm(enumerate(beta_lab_all)):
+    for i, beta in enumerate(tqdm(beta_0_all)):
         dummy = 0
         for j in range(repeat):
             D = generate_data(beta, gamma, T, population, rng_key)
