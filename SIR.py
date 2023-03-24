@@ -188,7 +188,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     Sigma_standardized = psi_y_x_std / Mu_std
     X_standardized, X_mean, X_std = SIR_utils.standardize(X)
     x_prime_standardized = (x_prime - X_mean) / X_std
-    noise = 1e-5
+    noise = 1e-2
 
     K_train_train = my_RBF(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)  # + jnp.diag(Sigma_standardized)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
@@ -222,15 +222,15 @@ def SIR(args, rng_key):
     Ny = 10
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
-    beta_0_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55])
+    beta_0_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.66, 0.75])
     # beta_0_array = jnp.array([0.15, 0.25])
-    # N_MCMC = 1000
     N_MCMC = 1000
-    N_test = 10
-    # N_test = 100
+    # N_MCMC = 100
+    # N_test = 10
+    N_test = 100
     Nx = len(beta_0_array)
     # beta_0_array = jax.random.uniform(rng_key, shape=(Nx,), minval=0.3, maxval=0.6)
-    beta_test_all = jnp.linspace(0.01, 0.60, N_test)
+    beta_test_all = jnp.linspace(0.01, 0.75, N_test)
     gamma_lab = 0.05
     rate = 100.0
     scale = 1. / rate
