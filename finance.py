@@ -52,7 +52,7 @@ def get_config():
     return args
 
 
-@jax.jit
+# @jax.jit
 def grad_y_log_py_x(y, x, y_mean, y_scale, sigma, T, t):
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
     y = y * y_scale + y_mean
@@ -60,7 +60,7 @@ def grad_y_log_py_x(y, x, y_mean, y_scale, sigma, T, t):
     return (-1. / y - part1) * y_scale
 
 
-@jax.jit
+# @jax.jit
 def py_x_fn(y, x, y_scale, y_mean, sigma, T, t):
     """
     :param y: Ny * 1
@@ -79,7 +79,7 @@ def py_x_fn(y, x, y_scale, y_mean, sigma, T, t):
     return p_y
 
 
-@jax.jit
+# @jax.jit
 def log_py_x_fn(y, x, y_scale, sigma, T, t):
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
     y_tilde = y * y_scale
