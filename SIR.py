@@ -190,7 +190,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     x_prime_standardized = (x_prime - X_mean) / X_std
     noise = 1e-5
 
-    K_train_train = my_RBF(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx) #+ jnp.diag(Sigma_standardized)
+    K_train_train = my_RBF(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)  # + jnp.diag(Sigma_standardized)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
     K_test_train = my_RBF(x_prime_standardized, X_standardized, lx)
     K_test_test = my_RBF(x_prime_standardized, x_prime_standardized, lx) + noise
@@ -199,7 +199,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
     mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-    std_y_x_prime_original = std_y_x_prime * Mu_std #+ jnp.mean(psi_y_x_std)
+    std_y_x_prime_original = std_y_x_prime * Mu_std  # + jnp.mean(psi_y_x_std)
 
     # plt.figure()
     # plt.plot(x_prime, mu_y_x_prime_original)
@@ -224,10 +224,10 @@ def SIR(args, rng_key):
     beta_real, gamma_real = 0.25, 0.05
     beta_0_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55])
     # beta_0_array = jnp.array([0.15, 0.25])
+    # N_MCMC = 1000
     N_MCMC = 1000
-    # N_MCMC = 100
-    # N_test = 10
-    N_test = 100
+    N_test = 10
+    # N_test = 100
     Nx = len(beta_0_array)
     # beta_0_array = jax.random.uniform(rng_key, shape=(Nx,), minval=0.3, maxval=0.6)
     beta_test_all = jnp.linspace(0.01, 0.60, N_test)
@@ -242,7 +242,6 @@ def SIR(args, rng_key):
 
     if args.mode == 'peak_number':
         f = peak_infected_number
-
         rng_key, _ = jax.random.split(rng_key)
         peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_test_all,
                                                                                  gamma_lab,
@@ -257,6 +256,18 @@ def SIR(args, rng_key):
         jnp.save(f'{args.save_path}/peak_infected_number_array.npy', peak_infected_number_array)
     elif args.mode == 'peak_time':
         f = peak_infected_time
+        rng_key, _ = jax.random.split(rng_key)
+        peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_test_all,
+                                                                             gamma_lab,
+                                                                             D_real,
+                                                                             target_date,
+                                                                             population,
+                                                                             MCMC,
+                                                                             N_MCMC,
+                                                                             log_posterior,
+                                                                             rate,
+                                                                             rng_key)
+        jnp.save(f'{args.save_path}/peak_infected_time_array.npy', peak_infected_time_array)
     else:
         pass
 
@@ -355,12 +366,18 @@ def SIR(args, rng_key):
     poly_mean, _ = SIR_baselines.polynomial(beta_0_array[:, None], beta_array_all[:, None],
                                             f_beta_array_all, beta_test_all[:, None])
 
+    jnp.save(f"{args.save_path}/BMC_mean.npy", BMC_mean.squeeze())
+    jnp.save(f"{args.save_path}/BMC_std.npy", BMC_std.squeeze())
+    jnp.save(f"{args.save_path}/KMS_mean.npy", KMS_mean.squeeze())
+    jnp.save(f"{args.save_path}/poly_mean.npy", poly_mean.squeeze())
+
     plt.figure()
     plt.plot(beta_test_all, BMC_mean, color='blue', label='BMC')
     plt.plot(beta_test_all, KMS_mean, color='red', label='KMS')
     plt.plot(beta_test_all, poly_mean, color='green', label='LSMC')
     if args.mode == 'peak_number':
-        plt.plot(beta_test_all, jnp.load(f'{args.save_path}/peak_infected_number_array.npy'), color='black', label='True')
+        plt.plot(beta_test_all, jnp.load(f'{args.save_path}/peak_infected_number_array.npy'), color='black',
+                 label='True')
     elif args.mode == 'peak_time':
         plt.plot(beta_test_all, jnp.load(f'{args.save_path}/peak_infected_time_array.npy'), color='black', label='True')
     else:

@@ -388,7 +388,7 @@ class CBQ:
         return
 
     def debug(self, Nx, Ny, psi_x_mean, St, St_prime, mu_y_x_prime_cbq, std_y_x_prime_cbq,
-                    mean_shrinkage_mean, mu_y_x_prime_IS, mu_y_x_prime_poly):
+                    KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
         plt.figure()
@@ -398,7 +398,7 @@ class CBQ:
         plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
         plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
         plt.plot(St_prime.squeeze(), mu_y_x_prime_poly.squeeze(), color='orange', label='poly')
-        plt.plot(St_prime.squeeze(), mean_shrinkage_mean.squeeze(), color='purple', label='mean shrinkage')
+        plt.plot(St_prime.squeeze(), KMS_mean.squeeze(), color='purple', label='mean shrinkage')
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
         plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{Ny}.pdf")
@@ -410,7 +410,7 @@ class CBQ:
         jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq.squeeze())
         jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS.squeeze())
         jnp.save(f"{args.save_path}/poly_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_poly.squeeze())
-        jnp.save(f"{args.save_path}/mean_shrinkage_mean_X_{Nx}_y_{Ny}.npy", mean_shrinkage_mean.squeeze())
+        jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean.squeeze())
         pause = True
         return
 
@@ -492,8 +492,8 @@ def cbq_option_pricing(args):
     poly_std_dict = {}
     IS_mean_dict = {}
     IS_std_dict = {}
-    mean_shrinkage_mean_dict = {}
-    mean_shrinkage_std_dict = {}
+    KMS_mean_dict = {}
+    KMS_std_dict = {}
     MC_list = []
 
     St_prime = jnp.linspace(20., 100., 100)[:, None]
@@ -513,8 +513,8 @@ def cbq_option_pricing(args):
         poly_std_array = jnp.array([])
         IS_mean_array = jnp.array([])
         IS_std_array = jnp.array([])
-        mean_shrinkage_mean_array = jnp.array([])
-        mean_shrinkage_std_array = jnp.array([])
+        KMS_mean_array = jnp.array([])
+        KMS_std_array = jnp.array([])
 
         for Ny in tqdm(Ny_array):
             rng_key, _ = jax.random.split(rng_key)
@@ -529,12 +529,12 @@ def cbq_option_pricing(args):
             mu_y_x_prime_cbq, std_y_x_prime_cbq = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
             mc_mean = loss.mean(1)[:, None]
             mc_std = 0 * mc_mean
-            mean_shrinkage_mean, mean_shrinkage_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+            KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
             mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, St_prime, St, ST, loss)
             mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime)
 
             CBQ_class.debug(Nx, Ny, psi_x_mean, St, St_prime, mu_y_x_prime_cbq, std_y_x_prime_cbq,
-                            mean_shrinkage_mean, mu_y_x_prime_IS, mu_y_x_prime_poly)
+                            KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly)
 
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq[test_ind])
             cbq_std_array = jnp.append(cbq_std_array, jnp.diag(std_y_x_prime_cbq)[test_ind])
@@ -542,8 +542,8 @@ def cbq_option_pricing(args):
             poly_std_array = jnp.append(poly_std_array, std_y_x_prime_poly[test_ind])
             IS_mean_array = jnp.append(IS_mean_array, mu_y_x_prime_IS[test_ind])
             IS_std_array = jnp.append(IS_std_array, std_y_x_prime_IS[test_ind])
-            mean_shrinkage_mean_array = jnp.append(mean_shrinkage_mean_array, mean_shrinkage_mean[test_ind])
-            mean_shrinkage_std_array = jnp.append(mean_shrinkage_std_array, mean_shrinkage_std[test_ind])
+            KMS_mean_array = jnp.append(KMS_mean_array, KMS_mean[test_ind])
+            KMS_std_array = jnp.append(KMS_std_array, KMS_std[test_ind])
 
         cbq_mean_dict[f"{Nx}"] = cbq_mean_array
         cbq_std_dict[f"{Nx}"] = cbq_std_array
@@ -551,8 +551,8 @@ def cbq_option_pricing(args):
         poly_std_dict[f"{Nx}"] = poly_std_array
         IS_mean_dict[f"{Nx}"] = IS_mean_array
         IS_std_dict[f"{Nx}"] = IS_std_array
-        mean_shrinkage_mean_dict[f"{Nx}"] = mean_shrinkage_mean_array
-        mean_shrinkage_std_dict[f"{Nx}"] = mean_shrinkage_std_array
+        KMS_mean_dict[f"{Nx}"] = KMS_mean_array
+        KMS_std_dict[f"{Nx}"] = KMS_std_array
 
     for Ny in Ny_array:
         rng_key, _ = jax.random.split(rng_key)
@@ -566,8 +566,8 @@ def cbq_option_pricing(args):
         pickle.dump(poly_mean_dict, f)
     with open(f"{args.save_path}/importance_sampling", 'wb') as f:
         pickle.dump(IS_mean_dict, f)
-    with open(f"{args.save_path}/mean_shrinkage", 'wb') as f:
-        pickle.dump(mean_shrinkage_mean_dict, f)
+    with open(f"{args.save_path}/KMS", 'wb') as f:
+        pickle.dump(KMS_mean_dict, f)
     jnp.save(f"{args.save_path}/MC", jnp.array(MC_list))
 
     fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
@@ -579,7 +579,7 @@ def cbq_option_pricing(args):
         axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
         axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='brown', label=f'Polynomial Nx = {Nx}')
         axs[i].plot(Ny_array, IS_mean_dict[f"{Nx}"], color='darkgreen', label=f'IS Nx = {Nx}')
-        axs[i].plot(Ny_array, mean_shrinkage_mean_dict[f"{Nx}"], color='darkorange', label=f'Mean Shrinkage Nx = {Nx}')
+        axs[i].plot(Ny_array, KMS_mean_dict[f"{Nx}"], color='darkorange', label=f'KMS Nx = {Nx}')
         axs[i].fill_between(Ny_array, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
                             cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
         axs[i].legend()
