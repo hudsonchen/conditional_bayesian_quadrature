@@ -190,7 +190,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     x_prime_standardized = (x_prime - X_mean) / X_std
     noise = 1e-5
 
-    K_train_train = my_RBF(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)
+    K_train_train = my_RBF(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx) #+ jnp.diag(Sigma_standardized)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
     K_test_train = my_RBF(x_prime_standardized, X_standardized, lx)
     K_test_test = my_RBF(x_prime_standardized, x_prime_standardized, lx) + noise
@@ -199,7 +199,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
     mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-    std_y_x_prime_original = std_y_x_prime * Mu_std + jnp.mean(psi_y_x_std)
+    std_y_x_prime_original = std_y_x_prime * Mu_std #+ jnp.mean(psi_y_x_std)
 
     # plt.figure()
     # plt.plot(x_prime, mu_y_x_prime_original)
@@ -224,8 +224,8 @@ def SIR(args, rng_key):
     beta_real, gamma_real = 0.25, 0.05
     beta_0_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55])
     # beta_0_array = jnp.array([0.15, 0.25])
-    # N_MCMC = 1000
-    N_MCMC = 100
+    N_MCMC = 1000
+    # N_MCMC = 100
     # N_test = 10
     N_test = 100
     Nx = len(beta_0_array)
@@ -352,7 +352,8 @@ def SIR(args, rng_key):
                            beta_0_array[:, None], beta_test_all[:, None], lx)
 
     # Least squared Monte Carlo
-    poly_mean, _ = SIR_baselines.polynomial(beta_0_array[:, None], beta_array_all[:, None], f_beta_array_all, beta_test_all[:, None])
+    poly_mean, _ = SIR_baselines.polynomial(beta_0_array[:, None], beta_array_all[:, None],
+                                            f_beta_array_all, beta_test_all[:, None])
 
     plt.figure()
     plt.plot(beta_test_all, BMC_mean, color='blue', label='BMC')
