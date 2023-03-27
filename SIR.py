@@ -224,10 +224,10 @@ def SIR(args, rng_key):
     beta_real, gamma_real = 0.25, 0.05
     beta_0_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.66, 0.75])
     # beta_0_array = jnp.array([0.15, 0.25])
-    # N_MCMC = 1000
-    N_MCMC = 100
-    N_test = 10
-    # N_test = 100
+    N_MCMC = 1000
+    # N_MCMC = 100
+    # N_test = 10
+    N_test = 100
     Nx = len(beta_0_array)
     # beta_0_array = jax.random.uniform(rng_key, shape=(Nx,), minval=0.3, maxval=0.6)
     beta_test_all = jnp.linspace(0.01, 0.75, N_test)
