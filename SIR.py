@@ -224,7 +224,7 @@ def SIR(args, rng_key):
     beta_real, gamma_real = 0.25, 0.05
     beta_0_array = jnp.array([0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.66, 0.75])
     # beta_0_array = jnp.array([0.15, 0.25])
-    N_MCMC = 1000
+    N_MCMC = 10000
     # N_MCMC = 100
     # N_test = 10
     N_test = 100
