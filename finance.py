@@ -68,7 +68,7 @@ def py_x_fn(y, x, y_scale, y_mean, sigma, T, t):
     :param y_scale: scalar
     :return: scalar
     """
-    # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
+    # p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
     y_tilde = y * y_scale + y_mean
     z = jnp.log(y_tilde / x)
     n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
@@ -81,7 +81,7 @@ def py_x_fn(y, x, y_scale, y_mean, sigma, T, t):
 
 # @jax.jit
 def log_py_x_fn(y, x, y_scale, sigma, T, t):
-    # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
+    # log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
     y_tilde = y * y_scale
     z = jnp.log(y_tilde / x)
     n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
@@ -111,6 +111,24 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
     part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
     part4 = dxdy_K
     return part1 + part2 + part3 + part4
+
+
+def log_normal_RBF(x, y, l, d_log_px, d_log_py):
+    return my_RBF(jnp.log(x), jnp.log(y), l)
+
+
+@jax.jit
+def phi_log_normal_RBF(y, l, a, b):
+    part1 = jnp.exp(-(a ** 2 + jnp.log(y) ** 2) / (2 * (b ** 2 + l ** 2)))
+    part2 = jnp.power(y, a / (b ** 2 + l ** 2))
+    part3 = b * jnp.sqrt(b ** (-2) + l ** (-2))
+    return part1 * part2 / part3
+
+
+@jax.jit
+def varphi_log_normal_RBF(l, a, b):
+    dummy = b ** 2 * jnp.sqrt(b ** (-2) + l ** (-2)) * jnp.sqrt(b ** (-2) + 1. / (b ** 2 + l ** 2))
+    return 1. / dummy
 
 
 @jax.jit
@@ -215,21 +233,15 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
 
 class CBQ:
     def __init__(self, kernel_x, kernel_y):
-        if kernel_y == 'rbf':
-            self.Ky = my_RBF
-            self.ly = 0.5
-        elif kernel_y == 'matern':
-            self.Ky = my_Matern
-            self.ly = 0.5
-        elif kernel_y == 'laplace':
-            self.Ky = my_Laplace
-            self.ly = 0.5
-        elif kernel_y == 'stein_matern':
+        if kernel_y == 'stein_matern':
             self.Ky = stein_Matern
         elif kernel_y == 'stein_laplace':
             self.Ky = stein_Laplace
         elif kernel_y == 'stein_rbf':
             self.Ky = stein_Gaussian
+        elif kernel_y == 'log_normal_RBF':
+            self.Ky = log_normal_RBF
+            self.ly = 0.1
         else:
             raise NotImplementedError
 
@@ -253,7 +265,11 @@ class CBQ:
         return
 
     # @partial(jax.jit, static_argnums=(0,))
-    def cbq_no_stein(self, X, Y, gY, rng_key, sigma):
+    def cbq_no_stein(self, X, Y, gY, rng_key):
+        sigma = 0.3
+        T = 2
+        t = 1
+
         Nx = X.shape[0]
         Ny = Y.shape[1]
         eps = 1e-6
@@ -262,20 +278,29 @@ class CBQ:
         for i in range(Nx):
             x = X[i]
             Yi = Y[i, :][:, None]
-            Yi_standardized, Yi_scale = finance_utils.scale(Yi)
+            # Yi_standardized, Yi_scale = finance_utils.scale(Yi)
+            Yi_standardized = Yi
             gYi = gY[i, :][:, None]
-            # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
+            # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y'|x)p(y|x)dydy'
 
-            K = self.Ky(Yi_standardized, Yi_standardized, self.ly) + eps * jnp.eye(Ny)
+            K = self.Ky(Yi_standardized, Yi_standardized, self.ly, None, None) + eps * jnp.eye(Ny)
             K_inv = jnp.linalg.inv(K)
-            phi = K.mean(1)
-            varphi = K.mean()
+            a = -sigma ** 2 * (T - t) / 2 + jnp.log(x)
+            b = jnp.sqrt(sigma ** 2 * (T - t))
+            phi = phi_log_normal_RBF(Yi_standardized, self.ly, a, b)
+            varphi = varphi_log_normal_RBF(self.ly, a, b)
             mu_standardized = phi.T @ K_inv @ gYi
             std_standardized = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
 
             Sigma = Sigma.at[i].set(std_standardized.squeeze())
             Mu = Mu.at[i].set(mu_standardized.squeeze())
 
+            # # Large sample mu
+            # print('True value', price(X[i], 10000, rng_key)[1].mean())
+            # print(f'MC with {Ny} number of Y', gYi.mean())
+            # print(f'BMC with {Ny} number of Y', mu_standardized.squeeze())
+            # print(f"=================")
+            pause = True
         return Mu, Sigma
 
     # @partial(jax.jit, static_argnums=(0,))
@@ -295,7 +320,7 @@ class CBQ:
         for i in range(Nx):
             x = X[i]
             Yi = Y[i, :][:, None]
-            Yi_standardized, Yi_scale, Yi_mean = finance_utils.scale(Yi)
+            Yi_standardized, Yi_mean, Yi_scale = finance_utils.standardize(Yi)
             gYi = gY[i, :][:, None]
 
             grad_y_log_py_x_fn = partial(grad_y_log_py_x, sigma=0.3, T=2, t=1, y_mean=Yi_mean, y_scale=Yi_scale)
@@ -402,8 +427,8 @@ class CBQ:
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
         plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{Ny}.pdf")
-        # plt.show()
-        plt.close()
+        plt.show()
+        # plt.close()
 
         jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean.squeeze())
         jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq.squeeze())
@@ -481,11 +506,11 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
-    Nx_array = [3, 5, 10, 15, 20, 30]
-    # Ny_array = [10, 30, 50]
+    Nx_array = [5, 10]
+    # Nx_array = [3, 5, 10, 15, 20, 30]
+    Ny_array = [10, 30, 50]
     # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    Ny_array = np.arange(3, 100, 3)
+    # Ny_array = np.arange(3, 100, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
     poly_mean_dict = {}

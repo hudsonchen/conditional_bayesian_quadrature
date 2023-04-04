@@ -54,7 +54,7 @@ def importance_sampling(py_x_fn, X_prime, X, Y, gY):
         for i in range(Nx):
             x = X[i]
             Yi = Y[i, :][:, None]
-            Yi_standardized, Yi_scale, Yi_mean = finance_utils.scale(Yi)
+            Yi_standardized, Yi_mean, Yi_scale = finance_utils.standardize(Yi)
             gYi = gY[i, :][:, None]
 
             py_x_standardized_fn = partial(py_x_fn, sigma=0.3, T=2, t=1, y_scale=Yi_scale, y_mean=Yi_mean)
@@ -63,4 +63,5 @@ def importance_sampling(py_x_fn, X_prime, X, Y, gY):
             weight = py_x_prime / py_x_i
             dummy_list.append((weight * gYi).mean())
         IS_list.append(np.array(dummy_list).mean())
+        pause = True
     return np.array(IS_list), np.array(IS_list) * 0
