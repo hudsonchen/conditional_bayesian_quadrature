@@ -60,7 +60,7 @@ def grad_y_log_py_x(y, x, y_mean, y_scale, sigma, T, t):
     return (-1. / y - part1) * y_scale
 
 
-# @jax.jit
+@jax.jit
 def py_x_fn(y, x, y_scale, y_mean, sigma, T, t):
     """
     :param y: Ny * 1
@@ -412,9 +412,11 @@ class CBQ:
         pause = True
         return
 
-    def debug(self, Nx, Ny, psi_x_mean, St, St_prime, mu_y_x_prime_cbq, std_y_x_prime_cbq,
-                    KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly):
+    def save(self, Nx, Ny, psi_x_mean, St, St_prime,
+             mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly,
+             time_cbq, time_IS, time_KMS, time_poly):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
+        KMS_mean = KMS_mean.squeeze()
 
         plt.figure()
         plt.ylim(-2, 15)
@@ -423,19 +425,37 @@ class CBQ:
         plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
         plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
         plt.plot(St_prime.squeeze(), mu_y_x_prime_poly.squeeze(), color='orange', label='poly')
-        plt.plot(St_prime.squeeze(), KMS_mean.squeeze(), color='purple', label='mean shrinkage')
+        plt.plot(St_prime.squeeze(), KMS_mean, color='purple', label='KMS')
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
         plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{Ny}.pdf")
-        plt.show()
-        # plt.close()
+        # plt.show()
+        plt.close()
 
         jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean.squeeze())
         jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq.squeeze())
         jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq.squeeze())
         jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS.squeeze())
         jnp.save(f"{args.save_path}/poly_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_poly.squeeze())
-        jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean.squeeze())
+        jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
+
+        L_BMC = jnp.maximum(mu_y_x_prime_cbq, 0).mean()
+        L_IS = jnp.maximum(mu_y_x_prime_IS, 0).mean()
+        L_poly = jnp.maximum(mu_y_x_prime_poly, 0).mean()
+        L_KMS = jnp.maximum(KMS_mean, 0).mean()
+        L_true = jnp.maximum(true_EgY_X, 0).mean()
+
+        rmse_dict = {}
+        rmse_dict['BMC'] = (L_true - L_BMC) ** 2
+        rmse_dict['IS'] = (L_true - L_IS) ** 2
+        rmse_dict['poly'] = (L_true - L_poly) ** 2
+        rmse_dict['KMS'] = (L_true - L_KMS) ** 2
+        with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+            pickle.dump(rmse_dict, f)
+
+        time_dict = {'BMC': time_cbq, 'IS': time_IS, 'poly': time_poly, 'KMS': time_KMS}
+        with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+            pickle.dump(time_dict, f)
         pause = True
         return
 
@@ -464,7 +484,7 @@ def price(St, N, rng_key):
     return ST, psi_ST_1 - psi_ST_2
 
 
-def save_true_value(args):
+def save_true_value(St, args):
     seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
@@ -477,7 +497,6 @@ def save_true_value(args):
     # sigma = 0.3
     # S0 = 50
 
-    St = jnp.linspace(20., 100., 100)[:, None]
     _, loss = price(St, 100000, rng_key)
     value = loss.mean(1)
     jnp.save(f"{args.save_path}/finance_X.npy", St)
@@ -488,7 +507,7 @@ def save_true_value(args):
     plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
     plt.title("True value for finance experiment")
     plt.savefig(f"{args.save_path}/true_distribution.pdf")
-    plt.show()
+    # plt.show()
     plt.close()
     return
 
@@ -521,7 +540,18 @@ def cbq_option_pricing(args):
     KMS_std_dict = {}
     MC_list = []
 
-    St_prime = jnp.linspace(20., 100., 100)[:, None]
+    time_cbq_dict = {}
+    time_poly_dict = {}
+    time_IS_dict = {}
+    time_KMS_dict = {}
+
+    test_num = 200
+    # S0 = jnp.array([[50]])
+    # St_prime, _ = price(S0, test_num, rng_key)
+    # St_prime = St_prime.reshape([test_num, 1])
+    # St_prime = np.sort(St_prime, axis=0)
+    St_prime = jnp.linspace(20., 120., test_num)[:, None]
+    save_true_value(St_prime, args)
     test_ind = 50
     St_prime_single = St_prime[test_ind][:, None]
     rng_key, _ = jax.random.split(rng_key)
@@ -531,6 +561,7 @@ def cbq_option_pricing(args):
     kernel_x = args.kernel_x
     kernel_y = args.kernel_y
     CBQ_class = CBQ(kernel_x=kernel_x, kernel_y=kernel_y)
+
     for Nx in Nx_array:
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
@@ -545,21 +576,33 @@ def cbq_option_pricing(args):
             rng_key, _ = jax.random.split(rng_key)
             # epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
             # St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-            St = jnp.linspace(20, 100, Nx)[:, None]
+            St = jnp.linspace(20, 120, Nx)[:, None]
             ST, loss = price(St, Ny, rng_key)
 
+            t0 = time.time()
+            mc_mean = loss.mean(1)[:, None]
+            mc_std = 0 * mc_mean
+            KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+            time_KMS = time.time() - t0
+
+            t0 = time.time()
+            mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, St_prime, St, ST, loss)
+            time_IS = time.time() - t0
+
+            t0 = time.time()
+            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime)
+            time_poly = time.time() - t0
+
+            t0 = time.time()
             # St is X, ST is Y, loss is g(Y)
             psi_x_mean, psi_x_std = CBQ_class.cbq(St, ST, loss, rng_key)
             psi_x_std = np.nan_to_num(psi_x_std, nan=0.3)
             mu_y_x_prime_cbq, std_y_x_prime_cbq = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
-            mc_mean = loss.mean(1)[:, None]
-            mc_std = 0 * mc_mean
-            KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
-            mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, St_prime, St, ST, loss)
-            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime)
+            time_cbq = time.time() - t0
 
-            CBQ_class.debug(Nx, Ny, psi_x_mean, St, St_prime, mu_y_x_prime_cbq, std_y_x_prime_cbq,
-                            KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly)
+            CBQ_class.save(Nx, Ny, psi_x_mean, St, St_prime,
+                           mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly,
+                           time_cbq, time_IS, time_KMS, time_poly)
 
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq[test_ind])
             cbq_std_array = jnp.append(cbq_std_array, jnp.diag(std_y_x_prime_cbq)[test_ind])
@@ -589,31 +632,43 @@ def cbq_option_pricing(args):
         pickle.dump(cbq_std_dict, f)
     with open(f"{args.save_path}/poly", 'wb') as f:
         pickle.dump(poly_mean_dict, f)
-    with open(f"{args.save_path}/importance_sampling", 'wb') as f:
+    with open(f"{args.save_path}/IS", 'wb') as f:
         pickle.dump(IS_mean_dict, f)
     with open(f"{args.save_path}/KMS", 'wb') as f:
         pickle.dump(KMS_mean_dict, f)
     jnp.save(f"{args.save_path}/MC", jnp.array(MC_list))
 
-    fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
-    for i, ax in enumerate(axs):
-        Nx = Nx_array[i]
-        axs[i].set_ylim(2, 16)
-        axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
-        axs[i].plot(Ny_array, MC_list, color='b', label='MC')
-        axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
-        axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='brown', label=f'Polynomial Nx = {Nx}')
-        axs[i].plot(Ny_array, IS_mean_dict[f"{Nx}"], color='darkgreen', label=f'IS Nx = {Nx}')
-        axs[i].plot(Ny_array, KMS_mean_dict[f"{Nx}"], color='darkorange', label=f'KMS Nx = {Nx}')
-        axs[i].fill_between(Ny_array, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
-                            cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
-        axs[i].legend()
-        # axs[i].set_xscale('log')
-    plt.tight_layout()
-    plt.suptitle("Finance Dataset")
-    plt.savefig(f"{args.save_path}/figures/all_methods.pdf")
-    plt.show()
+    with open(f"{args.save_path}/BMC_time", 'wb') as f:
+        pickle.dump(time_cbq_dict, f)
+    with open(f"{args.save_path}/poly_time", 'wb') as f:
+        pickle.dump(time_poly_dict, f)
+    with open(f"{args.save_path}/IS_time", 'wb') as f:
+        pickle.dump(time_IS_dict, f)
+    with open(f"{args.save_path}/KMS_time", 'wb') as f:
+        pickle.dump(time_KMS_dict, f)
+
+    """
+    This is old plotting code
+    # fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
+    # for i, ax in enumerate(axs):
+    #     Nx = Nx_array[i]
+    #     axs[i].set_ylim(2, 16)
+    #     axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
+    #     axs[i].plot(Ny_array, MC_list, color='b', label='MC')
+    #     axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
+    #     axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='brown', label=f'Polynomial Nx = {Nx}')
+    #     axs[i].plot(Ny_array, IS_mean_dict[f"{Nx}"], color='darkgreen', label=f'IS Nx = {Nx}')
+    #     axs[i].plot(Ny_array, KMS_mean_dict[f"{Nx}"], color='darkorange', label=f'KMS Nx = {Nx}')
+    #     axs[i].fill_between(Ny_array, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
+    #                         cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
+    #     axs[i].legend()
+    #     # axs[i].set_xscale('log')
+    # plt.tight_layout()
+    # plt.suptitle("Finance Dataset")
+    # plt.savefig(f"{args.save_path}/figures/all_methods.pdf")
+    # plt.show()
     # plt.close()
+    """
     return
 
 
@@ -644,7 +699,10 @@ def main(args):
 def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
-    args.save_path += f'results/finance/'
+    if 'stein' in args.kernel_y:
+        args.save_path += f'results/finance_stein/'
+    else:
+        args.save_path += f'results/finance/'
     args.save_path += f"seed_{args.seed}"
     os.makedirs(args.save_path, exist_ok=True)
     os.makedirs(f"{args.save_path}/figures/", exist_ok=True)
@@ -656,7 +714,6 @@ if __name__ == '__main__':
     args = create_dir(args)
     print(f'Device is {jax.devices()}')
     print(args.seed)
-    save_true_value(args)
     main(args)
     save_path = args.save_path
     print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
