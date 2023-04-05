@@ -391,49 +391,10 @@ class CBQ:
         std_y_x_prime_original = std_y_x_prime * Mu_std + jnp.mean(psi_y_x_std)
         return mu_y_x_prime_original, std_y_x_prime_original
 
-    # GP for debugging purposes, not it can only run without jax.jit
-    def GP_debug(self, psi_y_x_mean, psi_y_x_std, X, ny):
-        Nx = psi_y_x_mean.shape[0]
-        Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
-        Sigma_standardized = psi_y_x_std / Mu_std
-        X_standardized, X_mean, X_std = finance_utils.standardize(X)
-        noise = 0.001
-        x_debug = jnp.linspace(20, 120, 100)[:, None]
-        x_debug_standardized = (x_debug - X_mean) / X_std
-
-        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_train_debug = self.Kx(X_standardized, x_debug_standardized, self.lx)
-        mu_y_x_debug = K_train_debug.T @ K_train_train_inv @ Mu_standardized
-        var_y_x_debug = self.Kx(x_debug_standardized, x_debug_standardized,
-                                self.lx) + noise - K_train_debug.T @ K_train_train_inv @ K_train_debug
-        std_y_x_debug = jnp.sqrt(jnp.diag(var_y_x_debug))
-        mu_y_x_debug_original = mu_y_x_debug * Mu_std + Mu_mean
-        # TODO: Adding jnp.mean(Sigma_standardized) is a bit suspicious here.
-        std_y_x_debug_original = std_y_x_debug * Mu_std + jnp.mean(psi_y_x_std)
-
-        true_X = jnp.load(f"{args.save_path}/finance_X.npy")
-        true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
-
-        plt.figure()
-        plt.plot(x_debug.squeeze(), mu_y_x_debug_original.squeeze(), color='blue', label='predict')
-        plt.plot(true_X, true_EgY_X, color='red', label='true')
-        plt.scatter(X.squeeze(), psi_y_x_mean.squeeze())
-        plt.fill_between(x_debug.squeeze(), mu_y_x_debug_original.squeeze() - std_y_x_debug_original,
-                         mu_y_x_debug_original.squeeze() + std_y_x_debug_original, color='blue', alpha=0.2)
-        plt.legend()
-        plt.title(f"GP_finance_X_{Nx}_y_{ny}")
-        plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{ny}.pdf")
-        # plt.show()
-        plt.close()
-        pause = True
-        return
-
     def save(self, Nx, Ny, psi_x_mean, St, St_prime,
-             mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly,
-             time_cbq, time_IS, time_KMS, time_poly):
+             mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_LSMC,
+             time_cbq, time_IS, time_KMS, time_LSMC):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
-        KMS_mean = KMS_mean.squeeze()
 
         plt.figure()
         plt.ylim(-2, 15)
@@ -441,7 +402,7 @@ class CBQ:
         plt.scatter(St.squeeze(), psi_x_mean.squeeze())
         plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
         plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
-        plt.plot(St_prime.squeeze(), mu_y_x_prime_poly.squeeze(), color='orange', label='poly')
+        plt.plot(St_prime.squeeze(), mu_y_x_prime_LSMC.squeeze(), color='orange', label='LSMC')
         plt.plot(St_prime.squeeze(), KMS_mean, color='purple', label='KMS')
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
@@ -453,27 +414,50 @@ class CBQ:
         jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq.squeeze())
         jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq.squeeze())
         jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS.squeeze())
-        jnp.save(f"{args.save_path}/poly_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_poly.squeeze())
+        jnp.save(f"{args.save_path}/LSMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_LSMC.squeeze())
         jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
 
         L_BMC = jnp.maximum(mu_y_x_prime_cbq, 0).mean()
         L_IS = jnp.maximum(mu_y_x_prime_IS, 0).mean()
-        L_poly = jnp.maximum(mu_y_x_prime_poly, 0).mean()
+        L_LSMC = jnp.maximum(mu_y_x_prime_LSMC, 0).mean()
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
         L_true = jnp.maximum(true_EgY_X, 0).mean()
 
-        rmse_dict = {}
-        rmse_dict['BMC'] = (L_true - L_BMC) ** 2
-        rmse_dict['IS'] = (L_true - L_IS) ** 2
-        rmse_dict['poly'] = (L_true - L_poly) ** 2
-        rmse_dict['KMS'] = (L_true - L_KMS) ** 2
-        with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
-            pickle.dump(rmse_dict, f)
+        mse_dict = {}
+        mse_dict['BMC'] = (L_true - L_BMC) ** 2
+        mse_dict['IS'] = (L_true - L_IS) ** 2
+        mse_dict['LSMC'] = (L_true - L_LSMC) ** 2
+        mse_dict['KMS'] = (L_true - L_KMS) ** 2
+        with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+            pickle.dump(mse_dict, f)
 
-        time_dict = {'BMC': time_cbq, 'IS': time_IS, 'poly': time_poly, 'KMS': time_KMS}
+        time_dict = {'BMC': time_cbq, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
         with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
             pickle.dump(time_dict, f)
         pause = True
+        return
+
+    def save_large(self, Nx, Ny, KMS_mean, mu_y_x_prime_LSMC, time_KMS, time_LSMC):
+        true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
+
+        jnp.save(f"{args.save_path}/LSMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_LSMC.squeeze())
+        jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
+
+        L_LSMC = jnp.maximum(mu_y_x_prime_LSMC, 0).mean()
+        L_KMS = jnp.maximum(KMS_mean, 0).mean()
+        L_true = jnp.maximum(true_EgY_X, 0).mean()
+
+        mse_dict = {}
+        mse_dict['BMC'] = None
+        mse_dict['IS'] = None
+        mse_dict['LSMC'] = (L_true - L_LSMC) ** 2
+        mse_dict['KMS'] = (L_true - L_KMS) ** 2
+        with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+            pickle.dump(mse_dict, f)
+
+        time_dict = {'BMC': None, 'IS': None, 'LSMC': time_LSMC, 'KMS': time_KMS}
+        with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+            pickle.dump(time_dict, f)
         return
 
 
@@ -542,25 +526,20 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [5, 10]
-    # Nx_array = [3, 5, 10, 15, 20, 30]
-    Ny_array = [10, 30, 50]
+    # Nx_array = [5, 10]
+    Nx_array = [5, 10, 20, 30]
+    # Ny_array = [10, 30, 50]
     # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    # Ny_array = np.arange(3, 100, 3)
+    Ny_array = np.arange(3, 100, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
-    poly_mean_dict = {}
-    poly_std_dict = {}
+    LSMC_mean_dict = {}
+    LSMC_std_dict = {}
     IS_mean_dict = {}
     IS_std_dict = {}
     KMS_mean_dict = {}
     KMS_std_dict = {}
     MC_list = []
-
-    time_cbq_dict = {}
-    time_poly_dict = {}
-    time_IS_dict = {}
-    time_KMS_dict = {}
 
     test_num = 200
     # S0 = jnp.array([[50]])
@@ -582,8 +561,8 @@ def cbq_option_pricing(args):
     for Nx in Nx_array:
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
-        poly_mean_array = jnp.array([])
-        poly_std_array = jnp.array([])
+        LSMC_mean_array = jnp.array([])
+        LSMC_std_array = jnp.array([])
         IS_mean_array = jnp.array([])
         IS_std_array = jnp.array([])
         KMS_mean_array = jnp.array([])
@@ -600,6 +579,7 @@ def cbq_option_pricing(args):
             mc_mean = loss.mean(1)[:, None]
             mc_std = 0 * mc_mean
             KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+            KMS_mean = KMS_mean.squeeze()
             time_KMS = time.time() - t0
 
             t0 = time.time()
@@ -607,8 +587,8 @@ def cbq_option_pricing(args):
             time_IS = time.time() - t0
 
             t0 = time.time()
-            mu_y_x_prime_poly, std_y_x_prime_poly = polynomial(St, ST, loss, St_prime)
-            time_poly = time.time() - t0
+            mu_y_x_prime_LSMC, std_y_x_prime_LSMC = polynomial(St, ST, loss, St_prime)
+            time_LSMC = time.time() - t0
 
             t0 = time.time()
             # St is X, ST is Y, loss is g(Y)
@@ -618,13 +598,13 @@ def cbq_option_pricing(args):
             time_cbq = time.time() - t0
 
             CBQ_class.save(Nx, Ny, psi_x_mean, St, St_prime,
-                           mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_poly,
-                           time_cbq, time_IS, time_KMS, time_poly)
+                           mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_LSMC,
+                           time_cbq, time_IS, time_KMS, time_LSMC)
 
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq[test_ind])
             cbq_std_array = jnp.append(cbq_std_array, jnp.diag(std_y_x_prime_cbq)[test_ind])
-            poly_mean_array = jnp.append(poly_mean_array, mu_y_x_prime_poly[test_ind])
-            poly_std_array = jnp.append(poly_std_array, std_y_x_prime_poly[test_ind])
+            LSMC_mean_array = jnp.append(LSMC_mean_array, mu_y_x_prime_LSMC[test_ind])
+            LSMC_std_array = jnp.append(LSMC_std_array, std_y_x_prime_LSMC[test_ind])
             IS_mean_array = jnp.append(IS_mean_array, mu_y_x_prime_IS[test_ind])
             IS_std_array = jnp.append(IS_std_array, std_y_x_prime_IS[test_ind])
             KMS_mean_array = jnp.append(KMS_mean_array, KMS_mean[test_ind])
@@ -632,8 +612,8 @@ def cbq_option_pricing(args):
 
         cbq_mean_dict[f"{Nx}"] = cbq_mean_array
         cbq_std_dict[f"{Nx}"] = cbq_std_array
-        poly_mean_dict[f"{Nx}"] = poly_mean_array
-        poly_std_dict[f"{Nx}"] = poly_std_array
+        LSMC_mean_dict[f"{Nx}"] = LSMC_mean_array
+        LSMC_std_dict[f"{Nx}"] = LSMC_std_array
         IS_mean_dict[f"{Nx}"] = IS_mean_array
         IS_std_dict[f"{Nx}"] = IS_std_array
         KMS_mean_dict[f"{Nx}"] = KMS_mean_array
@@ -643,49 +623,24 @@ def cbq_option_pricing(args):
         rng_key, _ = jax.random.split(rng_key)
         MC_list.append(price(St_prime_single, Ny, rng_key)[1].mean())
 
-    with open(f"{args.save_path}/BMC_mean", 'wb') as f:
-        pickle.dump(cbq_mean_dict, f)
-    with open(f"{args.save_path}/BMC_std", 'wb') as f:
-        pickle.dump(cbq_std_dict, f)
-    with open(f"{args.save_path}/poly", 'wb') as f:
-        pickle.dump(poly_mean_dict, f)
-    with open(f"{args.save_path}/IS", 'wb') as f:
-        pickle.dump(IS_mean_dict, f)
-    with open(f"{args.save_path}/KMS", 'wb') as f:
-        pickle.dump(KMS_mean_dict, f)
-    jnp.save(f"{args.save_path}/MC", jnp.array(MC_list))
+    # For very very large Nx and Ny.
+    Nx = 1000
+    Ny = 1000
+    epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
+    St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
+    # St = jnp.linspace(20, 120, Nx)[:, None]
+    ST, loss = price(St, Ny, rng_key)
 
-    with open(f"{args.save_path}/BMC_time", 'wb') as f:
-        pickle.dump(time_cbq_dict, f)
-    with open(f"{args.save_path}/poly_time", 'wb') as f:
-        pickle.dump(time_poly_dict, f)
-    with open(f"{args.save_path}/IS_time", 'wb') as f:
-        pickle.dump(time_IS_dict, f)
-    with open(f"{args.save_path}/KMS_time", 'wb') as f:
-        pickle.dump(time_KMS_dict, f)
+    t0 = time.time()
+    mc_mean = loss.mean(1)[:, None]
+    mc_std = 0 * mc_mean
+    KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+    time_KMS = time.time() - t0
 
-    """
-    This is old plotting code
-    # fig, axs = plt.subplots(len(Nx_array), 1, figsize=(10, len(Nx_array) * 3))
-    # for i, ax in enumerate(axs):
-    #     Nx = Nx_array[i]
-    #     axs[i].set_ylim(2, 16)
-    #     axs[i].axhline(y=true_value, linestyle='--', color='black', label='true value')
-    #     axs[i].plot(Ny_array, MC_list, color='b', label='MC')
-    #     axs[i].plot(Ny_array, cbq_mean_dict[f"{Nx}"], color='r', label=f'CBQ Nx = {Nx}')
-    #     axs[i].plot(Ny_array, poly_mean_dict[f"{Nx}"], color='brown', label=f'Polynomial Nx = {Nx}')
-    #     axs[i].plot(Ny_array, IS_mean_dict[f"{Nx}"], color='darkgreen', label=f'IS Nx = {Nx}')
-    #     axs[i].plot(Ny_array, KMS_mean_dict[f"{Nx}"], color='darkorange', label=f'KMS Nx = {Nx}')
-    #     axs[i].fill_between(Ny_array, cbq_mean_dict[f"{Nx}"] - 2 * cbq_std_dict[f"{Nx}"],
-    #                         cbq_mean_dict[f"{Nx}"] + 2 * cbq_std_dict[f"{Nx}"], color='r', alpha=0.5)
-    #     axs[i].legend()
-    #     # axs[i].set_xscale('log')
-    # plt.tight_layout()
-    # plt.suptitle("Finance Dataset")
-    # plt.savefig(f"{args.save_path}/figures/all_methods.pdf")
-    # plt.show()
-    # plt.close()
-    """
+    t0 = time.time()
+    mu_y_x_prime_LSMC, std_y_x_prime_LSMC = polynomial(St, ST, loss, St_prime)
+    time_LSMC = time.time() - t0
+    CBQ_class.save_large(Nx, Ny, KMS_mean, mu_y_x_prime_LSMC, time_KMS, time_LSMC)
     return
 
 

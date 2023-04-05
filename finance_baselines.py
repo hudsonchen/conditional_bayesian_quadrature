@@ -6,24 +6,20 @@ import matplotlib.pyplot as plt
 
 
 def polynomial(X, Y, gY, X_prime, poly=3):
-    poly_list = []
-    for j in range(len(X_prime)):
-        x_prime = X_prime[j][:, None]
-        X_standardized, X_mean, X_std = finance_utils.standardize(X)
-        x_prime_standardized = (x_prime - X_mean) / X_std
-        X_poly = np.ones_like(X_standardized)
-        for i in range(1, poly + 1):
-            X_poly = np.concatenate((X_poly, X_standardized ** i), axis=1)
-        eps = 1e-6
-        theta = np.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
+    X_standardized, X_mean, X_std = finance_utils.standardize(X)
+    X_prime_standardized = (X_prime - X_mean) / X_std
+    X_poly = jnp.ones_like(X_standardized)
+    for i in range(1, poly + 1):
+        X_poly = jnp.concatenate((X_poly, X_standardized ** i), axis=1)
+    eps = 1e-6
+    theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
 
-        x_prime_poly = np.ones_like(x_prime_standardized)
-        for i in range(1, poly + 1):
-            x_prime_poly = np.concatenate((x_prime_poly, x_prime_standardized ** i), axis=1)
-        phi = (theta * x_prime_poly).sum()
-        poly_list.append(phi)
-    phi = np.array(poly_list)
-    std = np.zeros_like(phi)
+    X_prime_poly = jnp.ones_like(X_prime_standardized)
+    for i in range(1, poly + 1):
+        X_prime_poly = jnp.concatenate((X_prime_poly, X_prime_standardized ** i), axis=1)
+    phi = X_prime_poly @ theta
+
+    std = jnp.zeros_like(phi)
     # Debugging code
     # true_X = jnp.load('./data/finance_X.npy')
     # true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
@@ -64,4 +60,4 @@ def importance_sampling(py_x_fn, X_prime, X, Y, gY):
             dummy_list.append((weight * gYi).mean())
         IS_list.append(np.array(dummy_list).mean())
         pause = True
-    return np.array(IS_list), np.array(IS_list) * 0
+    return jnp.array(IS_list), jnp.array(IS_list) * 0
