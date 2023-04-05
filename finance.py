@@ -152,6 +152,23 @@ def stein_Laplace(x, y, l, d_log_px, d_log_py):
     return part1 + part2 + part3 + part4
 
 
+@partial(jax.jit, static_argnames=['Ky'])
+def nllk_func(l, c, A, y, gy, d_log_py, Ky, eps):
+    n = y.shape[0]
+    K = A * Ky(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
+    K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
+    nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
+    return nll[0][0]
+
+
+@partial(jax.jit, static_argnames=['optimizer', 'Ky'])
+def step(l, c, A, opt_state, optimizer, y, gy, d_log_py, Ky, eps):
+    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A, y, gy, d_log_py, Ky, eps)
+    updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
+    l, c, A = optax.apply_updates((l, c, A), updates)
+    return l, c, A, opt_state, nllk_value
+
+
 def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     """
     :param y:
@@ -172,21 +189,21 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     A_init = A = 1.0 / jnp.sqrt(n)
     opt_state = optimizer.init((l_init, c_init, A_init))
 
-    @jax.jit
-    def nllk_func(l, c, A):
-        # l = jnp.exp(log_l)
-        n = y.shape[0]
-        K = A * Ky(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
-        K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
-        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
-        return nll[0][0]
-
-    @jax.jit
-    def step(l, c, A, opt_state, rng_key):
-        nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A)
-        updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
-        l, c, A = optax.apply_updates((l, c, A), updates)
-        return l, c, A, opt_state, nllk_value
+    # @jax.jit
+    # def nllk_func(l, c, A):
+    #     # l = jnp.exp(log_l)
+    #     n = y.shape[0]
+    #     K = A * Ky(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
+    #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
+    #     nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
+    #     return nll[0][0]
+    #
+    # @jax.jit
+    # def step(l, c, A, opt_state, rng_key):
+    #     nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A)
+    #     updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
+    #     l, c, A = optax.apply_updates((l, c, A), updates)
+    #     return l, c, A, opt_state, nllk_value
 
     # # Debug code
     # l_debug_list = []
@@ -195,7 +212,7 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     # nll_debug_list = []
     for _ in range(100):
         rng_key, _ = jax.random.split(rng_key)
-        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
+        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, y, gy, d_log_py, Ky, eps)
         # # Debug code
         # if jnp.isnan(nllk_value):
         #     # l = jnp.exp(log_l)
