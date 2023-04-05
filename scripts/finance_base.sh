@@ -1,8 +1,10 @@
 #$ -l tmem=5G
 #$ -l h_vmem=5G
 #$ -l h_rt=24:0:0
-#$ -R y
+#$ -l nodes=1:ppn=2
+#$ -pe smp 2
 
+#$ -R y
 #$ -S /bin/bash
 #$ -j y
 #$ -N cbq_finance
@@ -20,4 +22,4 @@ which pip
 which python
 
 pwd
-XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1" python /home/zongchen/CBQ/finance.py $JOB_PARAMS
+XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2" python /home/zongchen/CBQ/finance.py $JOB_PARAMS

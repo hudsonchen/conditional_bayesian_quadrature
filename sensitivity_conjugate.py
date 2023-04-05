@@ -75,165 +75,15 @@ def posterior_full(X, Y, prior_cov, noise):
     return post_mean, post_cov
 
 
-@jax.jit
-def log_posterior(beta, X, Y, prior_cov, noise):
+def g(y, x_star, noise):
     """
-    :param prior_cov: D*1 array
-    :param beta: D*1 array
-    :param X: N*(D-1) array
-    :param Y: N*1 array
-    :param noise: std for Gaussian likelihood
-    :return:
-    """
-    D = prior_cov.shape[0]
-    N = Y.shape[0]
-    prior_cov = jnp.diag(prior_cov.squeeze())
-    log_prior = jax.scipy.stats.multivariate_normal.logpdf(beta.squeeze(),
-                                                           mean=jnp.zeros([D]),
-                                                           cov=prior_cov).sum()
-    X_with_one = jnp.hstack([X, jnp.ones([X.shape[0], 1])])
-    log_llk = jax.scipy.stats.multivariate_normal.logpdf((X_with_one @ beta - Y).squeeze(),
-                                                         mean=jnp.zeros([N]),
-                                                         cov=noise ** 2).sum()
-    return log_prior + log_llk
-
-
-log_posterior_vmap = jax.vmap(log_posterior, in_axes=(0, None, None, None, None), out_axes=0)
-
-
-def posterior(beta, X, Y, prior_cov, noise):
-    return jnp.exp(log_posterior_vmap(beta, X, Y, prior_cov, noise))
-
-
-def MCMC(rng_key, nsamples, init_params, log_prob, post_mean, post_var):
-    rng_key, _ = jax.random.split(rng_key)
-
-    @jax.jit
-    def run_chain(rng_key, state):
-        num_burnin_steps = int(100)
-        # kernel = tfp.mcmc.SimpleStepSizeAdaptation(
-        #     tfp.mcmc.HamiltonianMonteCarlo(target_log_prob_fn=log_prob,
-        #                                    num_leapfrog_steps=30,
-        #                                    step_size=1e-2),
-        #                                    num_adaptation_steps=int(num_burnin_steps * 0.8))
-
-        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-3)
-        # kernel = tfp.mcmc.RandomWalkMetropolis(log_prob)
-        return tfp.mcmc.sample_chain(num_results=nsamples,
-                                     num_burnin_steps=num_burnin_steps,
-                                     current_state=state,
-                                     kernel=kernel,
-                                     trace_fn=None,
-                                     seed=rng_key)
-
-    states = run_chain(rng_key, init_params)
-    # # Debug code
-    # D = states.shape[1]
-    # fig = plt.figure(figsize=(5 * D, 10))
-    # ax_list = fig.subplots(1, D)
-    # prior_std = jnp.sqrt(jnp.diag(post_var))
-    #
-    # for i, ax in enumerate(ax_list):
-    #     x = jnp.linspace(post_mean[i] - 3 * prior_std[i], post_mean[i] + 3 * prior_std[i], 100)
-    #     beta_post = states[:, i, :]
-    #     ax.plot(x, jax.scipy.stats.norm.pdf(x, post_mean[i], prior_std[i]), color='black', linewidth=5)
-    #     ax.hist(np.array(beta_post), bins=10, alpha=0.8, density=True)
-    # plt.show()
-    # pause = True
-    return states
-
-
-def g(y):
-    """
-    :param y: y is a N_MCMC * D * 1 array
+    :param y: w is a N_MCMC * D * 1 array
     """
     return y.sum(1).squeeze(axis=-1)
 
 
 def Monte_Carlo(gy):
     return gy.mean(0)
-
-
-def stein_Matern(x, y, l, d_log_px, d_log_py):
-    """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
-    """
-    N, D = x.shape
-    M = y.shape[0]
-
-    batch_kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
-    grad_x_K_fn = jax.grad(batch_kernel.apply, argnums=0)
-    vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
-    grad_y_K_fn = jax.grad(batch_kernel.apply, argnums=1)
-    vec_grad_y_K_fn = jax.vmap(grad_y_K_fn, in_axes=(0, 0), out_axes=0)
-
-    grad_xy_K_fn = jax.jacfwd(jax.jacrev(batch_kernel.apply, argnums=1), argnums=0)
-
-    def diag_sum_grad_xy_K_fn(x, y):
-        return jnp.diag(grad_xy_K_fn(x, y)).sum()
-
-    vec_grad_xy_K_fn = jax.vmap(diag_sum_grad_xy_K_fn, in_axes=(0, 0), out_axes=0)
-
-    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
-    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
-
-    K = batch_kernel.matrix(x, y)
-    dx_K = vec_grad_x_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dy_K = vec_grad_y_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, M)
-
-    part1 = d_log_px @ d_log_py.T * K
-    part2 = (d_log_py[None, :] * dx_K).sum(-1)
-    part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
-    part4 = dxdy_K
-
-    return part1 + part2 + part3 + part4
-
-
-def stein_Gaussian(x, y, l, d_log_px, d_log_py):
-    """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
-    """
-    N, D = x.shape
-    M = y.shape[0]
-
-    batch_kernel = tfp.math.psd_kernels.ExponentiatedQuadratic(amplitude=1., length_scale=l)
-    grad_x_K_fn = jax.grad(batch_kernel.apply, argnums=0)
-    vec_grad_x_K_fn = jax.vmap(grad_x_K_fn, in_axes=(0, 0), out_axes=0)
-    grad_y_K_fn = jax.grad(batch_kernel.apply, argnums=1)
-    vec_grad_y_K_fn = jax.vmap(grad_y_K_fn, in_axes=(0, 0), out_axes=0)
-
-    grad_xy_K_fn = jax.jacfwd(jax.jacrev(batch_kernel.apply, argnums=1), argnums=0)
-
-    def diag_sum_grad_xy_K_fn(x, y):
-        return jnp.diag(grad_xy_K_fn(x, y)).sum()
-
-    vec_grad_xy_K_fn = jax.vmap(diag_sum_grad_xy_K_fn, in_axes=(0, 0), out_axes=0)
-
-    x_dummy = jnp.stack([x] * N, axis=1).reshape(N * M, D)
-    y_dummy = jnp.stack([y] * M, axis=0).reshape(N * M, D)
-
-    K = batch_kernel.matrix(x, y)
-    dx_K = vec_grad_x_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dy_K = vec_grad_y_K_fn(x_dummy, y_dummy).reshape(N, M, D)
-    dxdy_K = vec_grad_xy_K_fn(x_dummy, y_dummy).reshape(N, M)
-
-    part1 = d_log_px @ d_log_py.T * K
-    part2 = (d_log_py[None, :] * dx_K).sum(-1)
-    part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
-    part4 = dxdy_K
-
-    return part1 + part2 + part3 + part4
 
 
 # @jax.jit
@@ -357,7 +207,6 @@ def main(args):
     # N_alpha_list = [3, 5, 10, 20, 30]
     # N_beta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     N_beta_list = [100]
-    N_MCMC = 5000
 
     cbq_mean_dict = {}
     cbq_std_dict = {}
@@ -369,23 +218,14 @@ def main(args):
     # This is the test point
     alpha_test = jax.random.uniform(rng_key, shape=(D, 1), minval=-1.0, maxval=1.0)
     cov_test = jnp.array([[prior_covariance] * D]).T + alpha_test
-    log_prob = partial(log_posterior, X=X, Y=Y, prior_cov=cov_test, noise=noise)
-    grad_log_prob = jax.grad(log_prob, argnums=0)
 
     post_mean, post_var = posterior_full(X, Y, cov_test, noise)
     g_test_true = post_mean.sum()
 
-    # MCMC for posterior sampling
-    init_params = jnp.array([[0.1] * D]).T
-    states_test = MCMC(rng_key, N_MCMC, init_params, log_prob, post_mean, post_var)
-    states_test = jnp.unique(states_test, axis=0)
-    rng_key, _ = jax.random.split(rng_key)
-    states_test = jax.random.permutation(rng_key, states_test)
-
     for n_alpha in N_alpha_list:
         rng_key, _ = jax.random.split(rng_key)
         alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
-        # This is X, size n_alpha*3
+        # This is X, size n_alpha * D
         cov_all = jnp.array([[prior_covariance] * D]) + alpha_all
         cbq_mean_array = jnp.array([])
         cbq_std_array = jnp.array([])
@@ -394,20 +234,7 @@ def main(args):
         IS_mean_array = jnp.array([])
         IS_std_array = jnp.array([])
 
-        states_all = {}
-        g_states_all = {}
-        for i in range(n_alpha):
-            cov = cov_all[i, :][:, None]
-            log_prob = partial(log_posterior, X=X, Y=Y, prior_cov=cov, noise=noise)
-            grad_log_prob = jax.grad(log_prob, argnums=0)
-
-            init_params = jnp.array([[0.] * D]).T
-            states_temp = MCMC(rng_key, N_MCMC, init_params, log_prob, post_mean, post_var)
-            states_temp = jnp.unique(states_temp, axis=0)
-            rng_key, _ = jax.random.split(rng_key)
-            states_temp = jax.random.permutation(rng_key, states_temp)
-            states_all[f'{i}'] = states_temp
-            g_states_all[f'{i}'] = g(states_temp)
+        post_mean, post_var = posterior_full(X, Y, cov_test, noise)
 
         for n_beta in tqdm(N_beta_list):
             psi_mean_array = jnp.array([])
@@ -415,8 +242,7 @@ def main(args):
             logging = sensitivity_utils.init_logging()
 
             # This is Y and g(Y)
-            states = jnp.zeros([n_alpha, n_beta, D, 1])
-            g_states = jnp.zeros([n_alpha, n_beta])
+            states = jax.random.multivariate_normal(rng_key, mean=post_mean, cov=post_var, shape=(n_beta, D))
 
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
