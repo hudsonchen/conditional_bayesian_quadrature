@@ -1,7 +1,6 @@
 #$ -l tmem=5G
 #$ -l h_vmem=5G
 #$ -l h_rt=24:0:0
-#$ -l nodes=1:ppn=2
 #$ -pe smp 2
 
 #$ -R y
