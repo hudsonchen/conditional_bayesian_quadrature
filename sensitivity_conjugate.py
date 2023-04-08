@@ -13,6 +13,7 @@ from tqdm import tqdm
 from kernels import *
 from utils import finance_utils, sensitivity_utils
 import time
+import optax
 from jax.config import config
 config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
@@ -88,29 +89,91 @@ def posterior_llk(theta, prior_cov_base, X, Y, alpha, noise):
     return jax.scipy.stats.multivariate_normal.pdf(theta, post_mean, post_cov)
 
 
-def g(y):
+def g1(y):
     """
     :param y: y is a N * D array
     """
     return y.sum(1)
 
 
+def g1_ground_truth(mu, Sigma):
+    return mu.sum()
+
+
+def g2(y):
+    """
+    :param y: y is a N * D array
+    """
+    return jnp.exp(-0.5 * ((y ** 2).sum(1)))
+
+
+def g2_ground_truth(mu, Sigma):
+    D = mu.shape[0]
+    analytical_1 = jnp.exp(-0.5 * mu.T @ jnp.linalg.inv(jnp.eye(D) + Sigma) @ mu)
+    analytical_2 = jnp.linalg.det(jnp.eye(D) + Sigma) ** (-0.5)
+    analytical = analytical_1 * analytical_2
+    return analytical
+
+
 def Monte_Carlo(gy):
     return gy.mean(0)
+
+
+@partial(jax.jit, static_argnames=['Ky'])
+def nllk_func(log_l, A, y, gy, Ky, eps):
+    N = y.shape[0]
+    l = jnp.exp(log_l)
+    K = A * Ky(y, y, l) + jnp.eye(N)
+    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
+    nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
+    return nll
+
+
+@partial(jax.jit, static_argnames=['optimizer', 'Ky'])
+def step(log_l, A, opt_state, optimizer, y, gy, Ky, eps):
+    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1))(log_l, A, y, gy, Ky, eps)
+    updates, opt_state = optimizer.update(grads, opt_state, (log_l, A))
+    log_l, A = optax.apply_updates((log_l, A), updates)
+    return log_l, A, opt_state, nllk_value
 
 
 # @jax.jit
 def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     """
     :param rng_key:
-    :param y: N * D
-    :param gy: N
+    :param y: (N, D)
+    :param gy: (N, )
     :return:
     """
     N, D = y.shape[0], y.shape[1]
+    learning_rate = 1e-2
+    optimizer = optax.adam(learning_rate)
     eps = 1e-6
-    l = 1.0
 
+    log_l_init = log_l = jnp.log(1.0)
+    A_init = A = 1.0
+    opt_state = optimizer.init((log_l_init, A_init))
+
+    # Debug code
+    l_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
+    Ky = my_RBF
+    for _ in range(0):
+        rng_key, _ = jax.random.split(rng_key)
+        log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, y, gy, Ky, eps)
+        # # Debug code
+        l_debug_list.append(jnp.exp(log_l))
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3 = fig.subplots(1, 3)
+    ax_1.plot(l_debug_list)
+    ax_2.plot(A_debug_list)
+    ax_3.plot(nll_debug_list)
+    plt.show()
+
+    l = jnp.exp(log_l)
     K = my_RBF(y, y, l)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
     phi = kme_RBF_Gaussian(mu_y_x, sigma_y_x, l, y)
@@ -133,10 +196,10 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime):
     """
     Nx = psi_y_x_mean.shape[0]
     Sigma = psi_y_x_std
-    eps = 0.01
-    lx = 5.0
+    eps = 0.001
+    lx = 10.0
 
-    K_train_train = my_RBF(X, X, lx) + jnp.diag(Sigma) + eps * jnp.eye(Nx)
+    K_train_train = my_RBF(X, X, lx) + eps * jnp.eye(Nx)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
     K_test_train = my_RBF(X_prime, X, lx)
     K_test_test = my_RBF(X_prime, X_prime, lx) + eps
@@ -151,26 +214,36 @@ def main(args):
     seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
     D = args.dim
-    prior_cov_base = 5.0
+    prior_cov_base = 2.5
     noise = 1.0
     sample_size = 1000
     test_num = 100
     X, Y = generate_data(rng_key, D, 10, noise)
 
-    N_alpha_list = [5, 10, 20]
+    if args.g_fn == 'g1':
+        g = g1
+        g_ground_truth_fn = g1_ground_truth
+    elif args.g_fn == 'g2':
+        g = g2
+        g_ground_truth_fn = g2_ground_truth
+    else:
+        raise ValueError('g_fn must be g1 or g2')
+
+    N_alpha_list = [5, 10, 20, 50]
     # N_alpha_list = [3, 5, 10, 20, 30]
     # N_theta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    N_theta_list = [50, 100, 200]
+    N_theta_list = [5, 10, 20]
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-2.0, maxval=2.0)
     cov_test_line = jnp.array([[prior_cov_base] * D]) + alpha_test_line
     post_mean_test_line, post_var_test_line = jnp.zeros([test_num, D]), jnp.zeros([test_num, D, D])
+    ground_truth = jnp.zeros(test_num)
     for i in range(test_num):
         post_mean, post_var = posterior_full(X, Y, cov_test_line[i, :], noise)
         post_mean_test_line = post_mean_test_line.at[i, :].set(post_mean)
         post_var_test_line = post_var_test_line.at[i, :, :].set(post_var)
-    ground_truth = post_mean_test_line.sum(1)
+        ground_truth = ground_truth.at[i].set(g_ground_truth_fn(post_mean, post_var))
     jnp.save(f"{args.save_path}/test_line.npy", alpha_test_line)
     jnp.save(f"{args.save_path}/ground_truth.npy", ground_truth)
 
@@ -216,14 +289,15 @@ def main(args):
                 MC_value = g_samples_i.mean()
                 mc_mean_array = jnp.append(mc_mean_array, MC_value)
 
-                # # # Debug
-                # true_value = mu_y_x_i.sum()
+                # # Debug
+                # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
                 # BMC_value = psi_mean * g_samples_i_scale
                 # print("=============")
                 # print('True value', true_value)
                 # print(f'MC with {n_theta} number of Y', MC_value)
                 # print(f'BMC with {n_theta} number of Y', BMC_value)
                 # print(f"=============")
+                # pause = True
 
             BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, alpha_all, alpha_test_line)
             KMS_mean, KMS_std = GP(mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line)
@@ -240,6 +314,7 @@ def main(args):
             mse_LSMC = jnp.mean((LSMC_mean - ground_truth) ** 2)
             mse_IS = jnp.mean((IS_mean - ground_truth) ** 2)
             print(f"=============")
+            print(f"True value", ground_truth[:10])
             print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
             print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
             print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
@@ -257,6 +332,7 @@ def get_config():
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
+    parser.add_argument('--g_fn', type=str, default=None)
     args = parser.parse_args()
     return args
 
