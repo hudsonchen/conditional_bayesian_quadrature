@@ -1,7 +1,8 @@
 import jax.numpy as jnp
 import jax
-import math
 from tensorflow_probability.substrates import jax as tfp
+from functools import partial
+
 
 def stein_Matern(x, y, l, d_log_px, d_log_py):
     """
@@ -175,6 +176,7 @@ def my_RBF(x, y, l):
 def jax_dist(x, y):
     return jnp.sqrt(((x - y) ** 2).sum(-1)).squeeze()
 
+
 distance = jax.vmap(jax_dist, in_axes=(None, 0), out_axes=1)
 sign_func = jax.vmap(jnp.greater, in_axes=(None, 0), out_axes=1)
 
@@ -204,9 +206,43 @@ def dxdy_Laplace(x, y, l):
     return part1
 
 
-def one_d_my_Laplace(x, y, l):
-    r = jax_dist(x, y).squeeze()
-    return jnp.exp(- r / l)
+def kme_RBF_Gaussian(mu, Sigma, l, y):
+    """
+    :param mu: Gaussian mean, (D, )
+    :param sigma: Gaussian covariance, (D, D)
+    :param l: lengthscale, scalar
+    :param y: sample: (N, D)
+    :return:
+    """
+    kme_RBF_Gaussian_func_ = partial(kme_RBF_Gaussian_func, mu, Sigma, l)
+    kme_RBF_Gaussian_vmap_func = jax.vmap(kme_RBF_Gaussian_func_)
+    return kme_RBF_Gaussian_vmap_func(y)
+
+
+def kme_RBF_Gaussian_func(mu, Sigma, l, y):
+    """
+    :param mu: Gaussian mean, (D, )
+    :param sigma: Gaussian covariance, (D, D)
+    :param l: lengthscale, scalar
+    :param y: sample: D,
+    :return: scalar
+    """
+    # From the kernel mean embedding document
+    D = mu.shape[0]
+    Lambda = jnp.eye(D) * l
+    Lambda_inv = jnp.eye(D) / l
+    part1 = jnp.linalg.det(jnp.eye(D) + Sigma @ Lambda_inv)
+    part2 = jnp.exp(-0.5 * (mu - y).T @ jnp.linalg.inv(Lambda + Sigma) @ (mu - y))
+    return part1 ** (-0.5) * part2
+
+
+def kme_double_RBF_Gaussian(mu, Sigma, l):
+    D = mu.shape[0]
+    Lambda = jnp.eye(D) * l
+    Lambda_inv = jnp.eye(D) / l
+    part1 = jnp.linalg.det(jnp.eye(D) + Sigma @ Lambda_inv)
+    part2 = jnp.linalg.det(jnp.eye(D) + Sigma @ jnp.linalg.inv(Lambda + Sigma))
+    return part1 ** (-0.5) * part2 ** (-0.5)
 
 
 def main():
