@@ -1,7 +1,7 @@
 #$ -l tmem=20G
 #$ -l h_vmem=10G
 #$ -l h_rt=24:0:0
-#$ -pe smp 2
+#$ -pe smp 10
 
 #$ -R y
 #$ -S /bin/bash

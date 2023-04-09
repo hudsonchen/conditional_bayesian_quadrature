@@ -213,16 +213,16 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime):
     learning_rate = 1e-2
     optimizer = optax.adam(learning_rate)
 
-    log_l_init = log_l = jnp.log(1.0)
+    log_l_init = log_l = jnp.log(3.0)
     A_init = A = 3.0
     opt_state = optimizer.init((log_l_init, A_init))
     Ky = my_RBF
 
-    # Debug code
+    # # Debug code
     # l_debug_list = []
     # A_debug_list = []
     # nll_debug_list = []
-    for _ in range(200):
+    for _ in range(100):
         rng_key, _ = jax.random.split(rng_key)
         log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, X, psi_y_x_mean, Ky, eps)
         A = A_init
@@ -257,7 +257,7 @@ def main(args):
     noise = 1.0
     sample_size = 1000
     test_num = 100
-    data_number = D + 10
+    data_number = 2 * D
     X, Y = generate_data(rng_key, D, data_number, noise)
 
     if args.g_fn == 'g1':
@@ -273,7 +273,7 @@ def main(args):
     # N_alpha_array = [3, 5, 10, 20, 30]
     # N_theta_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     # N_theta_array = jnp.array([5, 10, 20])
-    N_theta_array = jnp.arange(2, 30)
+    N_theta_array = jnp.arange(2, 20)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-2.0, maxval=2.0)
