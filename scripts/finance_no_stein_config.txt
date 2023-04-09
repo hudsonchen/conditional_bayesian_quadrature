@@ -1,0 +1,10 @@
+--kernel_x rbf --kernel_y log_normal_RBF --seed 1
+--kernel_x rbf --kernel_y log_normal_RBF --seed 2
+--kernel_x rbf --kernel_y log_normal_RBF --seed 3
+--kernel_x rbf --kernel_y log_normal_RBF --seed 4
+--kernel_x rbf --kernel_y log_normal_RBF --seed 5
+--kernel_x rbf --kernel_y log_normal_RBF --seed 6
+--kernel_x rbf --kernel_y log_normal_RBF --seed 7
+--kernel_x rbf --kernel_y log_normal_RBF --seed 8
+--kernel_x rbf --kernel_y log_normal_RBF --seed 9
+--kernel_x rbf --kernel_y log_normal_RBF --seed 10

@@ -15,6 +15,7 @@ from utils import finance_utils, sensitivity_utils
 import time
 import optax
 from jax.config import config
+
 config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
 
@@ -22,10 +23,14 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
+    os.environ[
+        "XLA_FLAGS"
+    ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OMP_NUM_THREAD"] = "1"
 else:
     pass
-
-eps = 1e-6
 
 plt.rcParams['axes.grid'] = True
 plt.rcParams['font.family'] = 'DeJavu Serif'
@@ -257,7 +262,7 @@ def main(args):
     noise = 1.0
     sample_size = 1000
     test_num = 100
-    data_number = 2 * D
+    data_number = D + 5
     X, Y = generate_data(rng_key, D, data_number, noise)
 
     if args.g_fn == 'g1':
@@ -270,8 +275,7 @@ def main(args):
         raise ValueError('g_fn must be g1 or g2')
 
     N_alpha_array = jnp.array([5, 10, 20, 50])
-    # N_alpha_array = [3, 5, 10, 20, 30]
-    # N_theta_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # N_alpha_array = jnp.arange(2, 50, 2)
     # N_theta_array = jnp.array([5, 10, 20])
     N_theta_array = jnp.arange(2, 20)
 
