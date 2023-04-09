@@ -534,7 +534,7 @@ def cbq_option_pricing(args):
     S0 = 50
     # Nx_array = [5, 10]
     Nx_array = [5, 10, 20, 30]
-    Ny_array = [10, 30, 50]
+    # Ny_array = [10, 30, 50]
     Ny_array = np.arange(3, 100, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
