@@ -57,7 +57,7 @@ def importance_sampling(py_x_fn, X_prime, X, Y, gY):
             py_x_prime = py_x_standardized_fn(Yi_standardized, x_prime)
             py_x_i = py_x_standardized_fn(Yi_standardized, x)
             weight = py_x_prime / py_x_i
-            dummy_list.append((weight * gYi).mean())
+            dummy_list.append((weight * gYi).mean() / weight.mean())
         IS_list.append(np.array(dummy_list).mean())
         pause = True
     return jnp.array(IS_list), jnp.array(IS_list) * 0

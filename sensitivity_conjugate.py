@@ -73,7 +73,19 @@ def posterior_full(X, Y, prior_cov, noise):
 
 
 @jax.jit
-def posterior_llk(theta, prior_cov_base, X, Y, alpha, noise):
+def normal_logpdf(x, mu, Sigma):
+    """
+    :param x: (D, )
+    :param mu: (D, )
+    :param Sigma: (D, D)
+    :return:
+    """
+    D = x.shape[0]
+    return jnp.log(2 * jnp.pi) * (-D / 2) + jnp.log(jnp.linalg.det(Sigma)) * (-0.5) - 0.5 * (x - mu).T @ jnp.linalg.inv(Sigma) @ (x - mu)
+
+
+@jax.jit
+def posterior_log_llk(theta, prior_cov_base, X, Y, alpha, noise):
     """
     :param theta: (N, D)
     :param prior_cov_base: scalar
@@ -86,7 +98,9 @@ def posterior_llk(theta, prior_cov_base, X, Y, alpha, noise):
     D = theta.shape[1]
     prior_cov = jnp.array([[prior_cov_base] * D]).T + alpha
     post_mean, post_cov = posterior_full(X, Y, prior_cov, noise)
-    return jax.scipy.stats.multivariate_normal.pdf(theta, post_mean, post_cov)
+    logpdf = partial(normal_logpdf, mu=post_mean, Sigma=post_cov)
+    logpdf_vmap = jax.vmap(logpdf)
+    return logpdf_vmap(theta)
 
 
 def g1(y):
@@ -153,25 +167,25 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     log_l_init = log_l = jnp.log(1.0)
     A_init = A = 1.0
     opt_state = optimizer.init((log_l_init, A_init))
+    Ky = my_RBF
 
     # Debug code
-    l_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
-    Ky = my_RBF
+    # l_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
     for _ in range(0):
         rng_key, _ = jax.random.split(rng_key)
         log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, y, gy, Ky, eps)
         # # Debug code
-        l_debug_list.append(jnp.exp(log_l))
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3 = fig.subplots(1, 3)
-    ax_1.plot(l_debug_list)
-    ax_2.plot(A_debug_list)
-    ax_3.plot(nll_debug_list)
-    plt.show()
+    #     l_debug_list.append(jnp.exp(log_l))
+    #     A_debug_list.append(A)
+    #     nll_debug_list.append(nllk_value)
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3 = fig.subplots(1, 3)
+    # ax_1.plot(l_debug_list)
+    # ax_2.plot(A_debug_list)
+    # ax_3.plot(nll_debug_list)
+    # plt.show()
 
     l = jnp.exp(log_l)
     K = my_RBF(y, y, l)
@@ -186,7 +200,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
 
 
 # @jax.jit
-def GP(psi_y_x_mean, psi_y_x_std, X, X_prime):
+def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime):
     """
     :param psi_y_x_mean: (n_alpha, )
     :param psi_y_x_std: (n_alpha, )
@@ -195,14 +209,39 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime):
     :return:
     """
     Nx = psi_y_x_mean.shape[0]
-    Sigma = psi_y_x_std
-    eps = 0.001
-    lx = 10.0
+    eps = 0.01
+    learning_rate = 1e-2
+    optimizer = optax.adam(learning_rate)
 
-    K_train_train = my_RBF(X, X, lx) + eps * jnp.eye(Nx)
+    log_l_init = log_l = jnp.log(1.0)
+    A_init = A = 3.0
+    opt_state = optimizer.init((log_l_init, A_init))
+    Ky = my_RBF
+
+    # Debug code
+    # l_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
+    for _ in range(200):
+        rng_key, _ = jax.random.split(rng_key)
+        log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, X, psi_y_x_mean, Ky, eps)
+        A = A_init
+        # Debug code
+    #     l_debug_list.append(jnp.exp(log_l))
+    #     A_debug_list.append(A)
+    #     nll_debug_list.append(nllk_value)
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3 = fig.subplots(1, 3)
+    # ax_1.plot(l_debug_list)
+    # ax_2.plot(A_debug_list)
+    # ax_3.plot(nll_debug_list)
+    # plt.show()
+
+    l = jnp.exp(log_l)
+    K_train_train = my_RBF(X, X, l) + eps * jnp.eye(Nx)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = my_RBF(X_prime, X, lx)
-    K_test_test = my_RBF(X_prime, X_prime, lx) + eps
+    K_test_train = my_RBF(X_prime, X, l)
+    K_test_test = my_RBF(X_prime, X_prime, l) + eps
     mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
     var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     std_y_x = jnp.sqrt(var_y_x)
@@ -218,7 +257,8 @@ def main(args):
     noise = 1.0
     sample_size = 1000
     test_num = 100
-    X, Y = generate_data(rng_key, D, 10, noise)
+    data_number = D + 10
+    X, Y = generate_data(rng_key, D, data_number, noise)
 
     if args.g_fn == 'g1':
         g = g1
@@ -229,10 +269,11 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    N_alpha_list = [5, 10, 20, 50]
-    # N_alpha_list = [3, 5, 10, 20, 30]
-    # N_theta_list = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    N_theta_list = [5, 10, 20]
+    N_alpha_array = jnp.array([5, 10, 20, 50])
+    # N_alpha_array = [3, 5, 10, 20, 30]
+    # N_theta_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # N_theta_array = jnp.array([5, 10, 20])
+    N_theta_array = jnp.arange(2, 30)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-2.0, maxval=2.0)
@@ -247,7 +288,7 @@ def main(args):
     jnp.save(f"{args.save_path}/test_line.npy", alpha_test_line)
     jnp.save(f"{args.save_path}/ground_truth.npy", ground_truth)
 
-    for n_alpha in N_alpha_list:
+    for n_alpha in N_alpha_array:
         rng_key, _ = jax.random.split(rng_key)
         # This is X, size n_alpha * D
         alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
@@ -269,7 +310,12 @@ def main(args):
             mu_y_x_all = mu_y_x_all.at[i, :].set(mu_y_x)
             var_y_x_all = var_y_x_all.at[i, :, :].set(var_y_x)
 
-        for n_theta in tqdm(N_theta_list):
+        mse_BMC_array = jnp.zeros(len(N_theta_array))
+        mse_KMS_array = jnp.zeros(len(N_theta_array))
+        mse_LSMC_array = jnp.zeros(len(N_theta_array))
+        mse_IS_array = jnp.zeros(len(N_theta_array))
+
+        for j, n_theta in enumerate(tqdm(N_theta_array)):
             psi_mean_array = jnp.array([])
             psi_std_array = jnp.array([])
             mc_mean_array = jnp.array([])
@@ -299,12 +345,13 @@ def main(args):
                 # print(f"=============")
                 # pause = True
 
-            BMC_mean, BMC_std = GP(psi_mean_array, psi_std_array, alpha_all, alpha_test_line)
-            KMS_mean, KMS_std = GP(mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line)
+            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line)
+            rng_key, _ = jax.random.split(rng_key)
+            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line)
             LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all[:, :n_theta, :],
                                              g_samples_all[:, :n_theta], alpha_test_line)
-            py_x_fn = partial(posterior_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
-            IS_mean, IS_std = importance_sampling(py_x_fn, alpha_all, samples_all[:, :n_theta, :],
+            log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
+            IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
                                                   g_samples_all[:, :n_theta], alpha_test_line)
             sensitivity_utils.save(args, n_alpha, n_theta, BMC_mean, BMC_std, KMS_mean, KMS_std, LSMC_mean,
                                    LSMC_std, IS_mean, IS_std)
@@ -313,20 +360,40 @@ def main(args):
             mse_KMS = jnp.mean((KMS_mean - ground_truth) ** 2)
             mse_LSMC = jnp.mean((LSMC_mean - ground_truth) ** 2)
             mse_IS = jnp.mean((IS_mean - ground_truth) ** 2)
-            print(f"=============")
-            print(f"True value", ground_truth[:10])
-            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            print(f"=============")
-            pause = True
+
+            mse_BMC_array = mse_BMC_array.at[j].set(mse_BMC)
+            mse_KMS_array = mse_KMS_array.at[j].set(mse_KMS)
+            mse_LSMC_array = mse_LSMC_array.at[j].set(mse_LSMC)
+            mse_IS_array = mse_IS_array.at[j].set(mse_IS)
+
+            # Debug
+            # print(f"=============")
+            # print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            # print(f"=============")
+            # pause = True
+
+        # plotting
+        plt.figure()
+        plt.plot(N_theta_array, mse_BMC_array, label='BMC')
+        plt.plot(N_theta_array, mse_KMS_array, label='KMS')
+        plt.plot(N_theta_array, mse_LSMC_array, label='LSMC')
+        plt.plot(N_theta_array, mse_IS_array, label='IS')
+        plt.legend()
+        plt.xlabel('Number of Y')
+        plt.xscale('log')
+        plt.ylabel('MSE')
+        plt.title(f"Conjugate sensitivity analysis with {n_alpha} number of X")
+        plt.savefig(f"{args.save_path}/sensitivity_conjugate_Nx_{n_alpha}.pdf")
+        plt.show()
+        plt.close()
     return
 
 
 def get_config():
     parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
-
     # Args settings
     parser.add_argument('--dim', type=int)
     parser.add_argument('--seed', type=int, default=None)
@@ -350,6 +417,7 @@ if __name__ == '__main__':
     args = get_config()
     create_dir(args)
     print(f'Device is {jax.devices()}')
+    print(f'Seed is {args.seed}')
     main(args)
     save_path = args.save_path
     print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")

@@ -1,4 +1,6 @@
 import jax.numpy as jnp
+from functools import partial
+import jax
 
 
 def polynomial(X, Y, gY, X_prime, poly=3):
@@ -26,10 +28,40 @@ def polynomial(X, Y, gY, X_prime, poly=3):
     return phi, std
 
 
-def importance_sampling(py_x_fn, X, Y, gY, X_prime):
+def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
+    Nx, Ny = Y.shape[0], Y.shape[1]
+    temp_array = jnp.zeros([Nx])
+    for i in range(Nx):
+        xi = X[i, :][:, None]
+        Yi = Y[i, :, :]
+        gYi = gY[i, :][:, None]
+        log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime[:, None])
+        log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
+        weight = jnp.exp(log_py_x_prime - log_py_x_i)
+        mu = (weight * gYi).mean()
+        temp_array = temp_array.at[i].set(mu)
+    return temp_array.mean()
+
+
+def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
     """
-    Self-normalized importance sampling
-    :param py_x_fn:
+    Vectorized importance sampling
+    :param log_py_x_fn:
+    :param X_prime: N_test*D
+    :param X: Nx*D
+    :param Y: Nx*Ny*D
+    :param gY: Nx*Ny
+    :return:
+    """
+    importance_sampling_fn = partial(importance_sampling_, log_py_x_fn, X, Y, gY)
+    importance_sampling_vmap = jax.vmap(importance_sampling_fn)
+    IS_mean = importance_sampling_vmap(X_prime)
+    return IS_mean, 0 * IS_mean
+
+
+def importance_sampling_old(log_py_x_fn, X, Y, gY, X_prime):
+    """
+    :param log_py_x_fn:
     :param X_prime: N_test*D
     :param X: Nx*D
     :param Y: Nx*Ny*D
@@ -46,9 +78,9 @@ def importance_sampling(py_x_fn, X, Y, gY, X_prime):
             xi = X[i, :][:, None]
             Yi = Y[i, :, :]
             gYi = gY[i, :][:, None]
-            py_x_prime = py_x_fn(theta=Yi, alpha=x_prime)
-            py_x_i = py_x_fn(theta=Yi, alpha=xi)
-            weight = py_x_prime / py_x_i
+            log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
+            log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
+            weight = jnp.exp(log_py_x_prime - log_py_x_i)
             mu = (weight * gYi).mean()
             IS_list.append(mu)
         IS_prime_list.append(jnp.array(IS_list).mean())

@@ -526,11 +526,11 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
-    Nx_array = [5, 10, 20, 30]
-    # Ny_array = [10, 30, 50]
+    Nx_array = [5, 10]
+    # Nx_array = [5, 10, 20, 30]
+    Ny_array = [10, 30, 50]
     # Ny_array = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    Ny_array = np.arange(3, 100, 3)
+    # Ny_array = np.arange(3, 100, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
     LSMC_mean_dict = {}
@@ -550,9 +550,9 @@ def cbq_option_pricing(args):
     save_true_value(St_prime, args)
     test_ind = 50
     St_prime_single = St_prime[test_ind][:, None]
-    rng_key, _ = jax.random.split(rng_key)
-    true_value = price(St_prime_single, 100000, rng_key)[1].mean()
-    print('True Value is:', true_value)
+    # rng_key, _ = jax.random.split(rng_key)
+    # true_value = price(St_prime_single, 100000, rng_key)[1].mean()
+    # print('True Value is:', true_value)
 
     kernel_x = args.kernel_x
     kernel_y = args.kernel_y
