@@ -28,6 +28,12 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
     print(os.getcwd())
+    os.environ[
+        "XLA_FLAGS"
+    ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OMP_NUM_THREAD"] = "1"
 else:
     pass
 

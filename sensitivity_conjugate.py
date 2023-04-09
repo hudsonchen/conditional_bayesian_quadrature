@@ -274,7 +274,7 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    N_alpha_array = jnp.array([5, 10, 20, 50])
+    N_alpha_array = jnp.array([5])
     # N_alpha_array = jnp.arange(2, 50, 2)
     # N_theta_array = jnp.array([5, 10, 20])
     N_theta_array = jnp.arange(2, 20)
