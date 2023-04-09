@@ -21,4 +21,4 @@ which pip
 which python
 
 pwd
-python /home/zongchen/CBQ/sensitivity.py $JOB_PARAMS
+python /home/zongchen/CBQ/sensitivity_conjugate.py $JOB_PARAMS
