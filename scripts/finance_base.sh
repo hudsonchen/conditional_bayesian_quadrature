@@ -1,7 +1,7 @@
 #$ -l tmem=20G
 #$ -l h_vmem=10G
 #$ -l h_rt=24:0:0
-#$ -pe smp 10
+#$ -pe smp 5
 
 #$ -R y
 #$ -S /bin/bash
@@ -21,4 +21,4 @@ which pip
 which python
 
 pwd
-XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2" python /home/zongchen/CBQ/finance.py $JOB_PARAMS
+XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1" python /home/zongchen/CBQ/finance.py $JOB_PARAMS
