@@ -178,9 +178,9 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     # l_debug_list = []
     # A_debug_list = []
     # nll_debug_list = []
-    for _ in range(0):
-        rng_key, _ = jax.random.split(rng_key)
-        log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, y, gy, Ky, eps)
+    # for _ in range(0):
+    #     rng_key, _ = jax.random.split(rng_key)
+    #     log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, y, gy, Ky, eps)
         # # Debug code
     #     l_debug_list.append(jnp.exp(log_l))
     #     A_debug_list.append(A)
@@ -278,6 +278,7 @@ def main(args):
     # N_alpha_array = jnp.arange(2, 50, 2)
     # N_theta_array = jnp.array([5, 10, 20])
     N_theta_array = jnp.arange(2, 20)
+    # N_theta_array = jnp.arange(2, 50)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-2.0, maxval=2.0)
@@ -426,6 +427,51 @@ def main(args):
         plt.savefig(f"{args.save_path}/sensitivity_conjugate_Nx_{n_alpha}.pdf")
         plt.show()
         plt.close()
+
+    # For very very large Nx and Ny. Test the performance of other methods
+    n_alpha = 1000
+    n_theta = 1000
+    rng_key, _ = jax.random.split(rng_key)
+    # This is X, size n_alpha * D
+    alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
+
+    # This is Y, size n_alpha * n_theta * D
+    samples_all = jnp.zeros([n_alpha, n_theta, D])
+    # This is g(Y), size n_alpha * sample_size
+    g_samples_all = jnp.zeros([n_alpha, n_theta])
+    mu_y_x_all = jnp.zeros([n_alpha, D])
+    var_y_x_all = jnp.zeros([n_alpha, D, D])
+
+    for i in range(n_alpha):
+        rng_key, _ = jax.random.split(rng_key)
+        prior_cov = jnp.array([[prior_cov_base] * D]).T + alpha_all[i, :]
+        mu_y_x, var_y_x = posterior_full(X, Y, prior_cov, noise)
+        samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x, cov=var_y_x, shape=(n_theta, ))
+        samples_all = samples_all.at[i, :, :].set(samples)
+        g_samples_all = g_samples_all.at[i, :].set(g(samples))
+        mu_y_x_all = mu_y_x_all.at[i, :].set(mu_y_x)
+        var_y_x_all = var_y_x_all.at[i, :, :].set(var_y_x)
+
+    mc_mean_array = g_samples_all.mean(axis=1)
+    rng_key, _ = jax.random.split(rng_key)
+    t0 = time.time()
+    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line)
+    time_KMS_large = time.time() - t0
+
+    t0 = time.time()
+    LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
+    time_LSMC_large = time.time() - t0
+    sensitivity_utils.save_large(args, n_alpha, n_theta, KMS_mean, KMS_std, LSMC_mean, LSMC_std,
+                                 ground_truth, time_KMS_large, time_LSMC_large)
+    # Debug code
+    print(f"=============")
+    mse_KMS = jnp.mean((KMS_mean - ground_truth) ** 2)
+    mse_LSMC = jnp.mean((LSMC_mean - ground_truth) ** 2)
+    print(f"KMS mse with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+    print(f"KMS time with {n_alpha} number of X and {n_theta} number of Y", time_KMS_large)
+    print(f"LSMC mse with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+    print(f"LSMC time with {n_alpha} number of X and {n_theta} number of Y", time_LSMC_large)
+    print(f"=============")
     return
 
 
