@@ -206,6 +206,7 @@ def dxdy_Laplace(x, y, l):
     return part1
 
 
+@jax.jit
 def kme_RBF_Gaussian(mu, Sigma, l, y):
     """
     :param mu: Gaussian mean, (D, )
@@ -219,6 +220,7 @@ def kme_RBF_Gaussian(mu, Sigma, l, y):
     return kme_RBF_Gaussian_vmap_func(y)
 
 
+@jax.jit
 def kme_RBF_Gaussian_func(mu, Sigma, l, y):
     """
     :param mu: Gaussian mean, (D, )

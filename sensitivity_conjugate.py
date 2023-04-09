@@ -315,11 +315,17 @@ def main(args):
         mse_LSMC_array = jnp.zeros(len(N_theta_array))
         mse_IS_array = jnp.zeros(len(N_theta_array))
 
+        time_BMC_array = jnp.zeros(len(N_theta_array))
+        time_KMS_array = jnp.zeros(len(N_theta_array))
+        time_LSMC_array = jnp.zeros(len(N_theta_array))
+        time_IS_array = jnp.zeros(len(N_theta_array))
+
         for j, n_theta in enumerate(tqdm(N_theta_array)):
             psi_mean_array = jnp.array([])
             psi_std_array = jnp.array([])
             mc_mean_array = jnp.array([])
 
+            t0 = time.time()
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
                 samples_i = samples_all[i, :n_theta, :]
@@ -329,6 +335,7 @@ def main(args):
                 var_y_x_i = var_y_x_all[i, :, :]
 
                 psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, samples_i, g_samples_i_standardized, mu_y_x_i, var_y_x_i)
+
                 psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_samples_i_scale)
                 psi_std_array = jnp.append(psi_std_array, psi_std * g_samples_i_scale)
 
@@ -345,16 +352,32 @@ def main(args):
                 # print(f"=============")
                 # pause = True
 
-            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line)
             rng_key, _ = jax.random.split(rng_key)
+            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line)
+            time_BMC = time.time() - t0
+            time_BMC_array = time_BMC_array.at[j].set(time_BMC)
+
+            rng_key, _ = jax.random.split(rng_key)
+            t0 = time.time()
             KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line)
+            time_KMS = time.time() - t0
+            time_KMS_array = time_KMS_array.at[j].set(time_KMS)
+
+            t0 = time.time()
             LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all[:, :n_theta, :],
                                              g_samples_all[:, :n_theta], alpha_test_line)
+            time_LSMC = time.time() - t0
+            time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
+
+            t0 = time.time()
             log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
             IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
                                                   g_samples_all[:, :n_theta], alpha_test_line)
+            time_IS = time.time() - t0
+            time_IS_array = time_IS_array.at[j].set(time_IS)
+
             sensitivity_utils.save(args, n_alpha, n_theta, BMC_mean, BMC_std, KMS_mean, KMS_std, LSMC_mean,
-                                   LSMC_std, IS_mean, IS_std)
+                                   LSMC_std, IS_mean, IS_std, ground_truth, time_BMC, time_KMS, time_LSMC, time_IS)
 
             mse_BMC = jnp.mean((BMC_mean - ground_truth) ** 2)
             mse_KMS = jnp.mean((KMS_mean - ground_truth) ** 2)
@@ -376,16 +399,26 @@ def main(args):
             # pause = True
 
         # plotting
-        plt.figure()
-        plt.plot(N_theta_array, mse_BMC_array, label='BMC')
-        plt.plot(N_theta_array, mse_KMS_array, label='KMS')
-        plt.plot(N_theta_array, mse_LSMC_array, label='LSMC')
-        plt.plot(N_theta_array, mse_IS_array, label='IS')
-        plt.legend()
-        plt.xlabel('Number of Y')
-        plt.xscale('log')
-        plt.ylabel('MSE')
-        plt.title(f"Conjugate sensitivity analysis with {n_alpha} number of X")
+        # Debug code
+        fig = plt.figure(figsize=(15, 6))
+        ax_1, ax_2 = fig.subplots(1, 2)
+        ax_1.plot(N_theta_array, mse_BMC_array, label='BMC')
+        ax_1.plot(N_theta_array, mse_KMS_array, label='KMS')
+        ax_1.plot(N_theta_array, mse_LSMC_array, label='LSMC')
+        ax_1.plot(N_theta_array, mse_IS_array, label='IS')
+        ax_1.legend()
+        ax_1.set_xlabel('Number of Y')
+        ax_1.set_yscale('log')
+        ax_1.set_ylabel('MSE')
+        ax_2.plot(N_theta_array, time_BMC_array, label='BMC')
+        ax_2.plot(N_theta_array, time_KMS_array, label='KMS')
+        ax_2.plot(N_theta_array, time_LSMC_array, label='LSMC')
+        ax_2.plot(N_theta_array, time_IS_array, label='IS')
+        ax_2.legend()
+        ax_2.set_xlabel('Number of Y')
+        ax_2.set_ylabel('Time')
+
+        plt.suptitle(f"Sensitivity analysis with {n_alpha} number of X")
         plt.savefig(f"{args.save_path}/sensitivity_conjugate_Nx_{n_alpha}.pdf")
         plt.show()
         plt.close()
