@@ -278,7 +278,7 @@ def main(args):
     N_alpha_array = jnp.arange(2, 50, 2)
     # N_theta_array = jnp.array([5, 10, 20])
     # N_theta_array = jnp.arange(2, 20)
-    N_theta_array = jnp.arange(2, 50)
+    N_theta_array = jnp.arange(2, 50, 2)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-2.0, maxval=2.0)
@@ -393,8 +393,6 @@ def main(args):
 
             sensitivity_utils.save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
                                    time_BMC, time_KMS, time_LSMC, time_IS)
-
-
 
             # Debug
             # print(f"=============")
