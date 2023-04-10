@@ -416,12 +416,13 @@ class CBQ:
         # plt.show()
         plt.close()
 
-        jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean.squeeze())
-        jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq.squeeze())
-        jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq.squeeze())
-        jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS.squeeze())
-        jnp.save(f"{args.save_path}/LSMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_LSMC.squeeze())
-        jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
+        # Saving this would explode the memory on cluster
+        # jnp.save(f"{args.save_path}/BMC_samples_X_{Nx}_y_{Ny}.npy", psi_x_mean.squeeze())
+        # jnp.save(f"{args.save_path}/BMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_cbq.squeeze())
+        # jnp.save(f"{args.save_path}/BMC_std_X_{Nx}_y_{Ny}.npy", std_y_x_prime_cbq.squeeze())
+        # jnp.save(f"{args.save_path}/IS_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_IS.squeeze())
+        # jnp.save(f"{args.save_path}/LSMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_LSMC.squeeze())
+        # jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
 
         L_BMC = jnp.maximum(mu_y_x_prime_cbq, 0).mean()
         L_IS = jnp.maximum(mu_y_x_prime_IS, 0).mean()
@@ -446,8 +447,9 @@ class CBQ:
     def save_large(self, Nx, Ny, KMS_mean, mu_y_x_prime_LSMC, time_KMS, time_LSMC):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
-        jnp.save(f"{args.save_path}/LSMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_LSMC.squeeze())
-        jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
+        # Saving this would explode the memory on cluster
+        # jnp.save(f"{args.save_path}/LSMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_LSMC.squeeze())
+        # jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
 
         L_LSMC = jnp.maximum(mu_y_x_prime_LSMC, 0).mean()
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
