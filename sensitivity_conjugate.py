@@ -463,17 +463,18 @@ def main(args):
     t0 = time.time()
     LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
     time_LSMC_large = time.time() - t0
-    sensitivity_utils.save_large(args, n_alpha, n_theta, KMS_mean, KMS_std, LSMC_mean, LSMC_std,
-                                 ground_truth, time_KMS_large, time_LSMC_large)
-    # Debug code
-    print(f"=============")
-    mse_KMS = jnp.mean((KMS_mean - ground_truth) ** 2)
-    mse_LSMC = jnp.mean((LSMC_mean - ground_truth) ** 2)
-    print(f"KMS mse with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-    print(f"KMS time with {n_alpha} number of X and {n_theta} number of Y", time_KMS_large)
-    print(f"LSMC mse with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-    print(f"LSMC time with {n_alpha} number of X and {n_theta} number of Y", time_LSMC_large)
-    print(f"=============")
+
+    mse_KMS_large = jnp.mean((KMS_mean - ground_truth) ** 2)
+    mse_LSMC_large = jnp.mean((LSMC_mean - ground_truth) ** 2)
+
+    sensitivity_utils.save_large(args, n_alpha, n_theta, mse_KMS_large, mse_LSMC_large, time_KMS_large, time_LSMC_large)
+    # # Debug code
+    # print(f"=============")
+    # print(f"KMS mse with {n_alpha} number of X and {n_theta} number of Y", mse_KMS_large)
+    # print(f"KMS time with {n_alpha} number of X and {n_theta} number of Y", time_KMS_large)
+    # print(f"LSMC mse with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC_large)
+    # print(f"LSMC time with {n_alpha} number of X and {n_theta} number of Y", time_LSMC_large)
+    # print(f"=============")
     return
 
 
