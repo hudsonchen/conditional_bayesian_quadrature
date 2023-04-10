@@ -3,17 +3,15 @@ import matplotlib.pyplot as plt
 import pickle
 
 
-def save(args, n_alpha, n_theta, BMC_mean, BMC_std, KMS_mean, KMS_std, LSMC_mean,
-         LSMC_std, IS_mean, IS_std, ground_truth, time_BMC, time_KMS, time_LSMC, time_IS):
-    jnp.save(f"{args.save_path}/BMC_mean_X_{n_alpha}_y_{n_theta}.npy", BMC_mean)
-    jnp.save(f"{args.save_path}/BMC_std_X_{n_alpha}_y_{n_theta}.npy", BMC_std)
-    jnp.save(f"{args.save_path}/LSMC_mean_X_{n_alpha}_y_{n_theta}.npy", LSMC_mean)
-    jnp.save(f"{args.save_path}/LSMC_std_X_{n_alpha}_y_{n_theta}.npy", LSMC_std)
-    jnp.save(f"{args.save_path}/KMS_mean_X_{n_alpha}_y_{n_theta}.npy", KMS_mean)
-    jnp.save(f"{args.save_path}/KMS_std_X_{n_alpha}_y_{n_theta}.npy", KMS_std)
-    jnp.save(f"{args.save_path}/IS_mean_X_{n_alpha}_y_{n_theta}.npy", IS_mean)
-    jnp.save(f"{args.save_path}/IS_std_X_{n_alpha}_y_{n_theta}.npy", IS_std)
-    jnp.save(f"{args.save_path}/ground_truth.npy", ground_truth)
+def save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
+                                   time_BMC, time_KMS, time_LSMC, time_IS):
+    mse_dict = {}
+    mse_dict["BMC"] = mse_BMC
+    mse_dict["KMS"] = mse_KMS
+    mse_dict["LSMC"] = mse_LSMC
+    mse_dict["IS"] = mse_IS
+    with open(f"{args.save_path}/mse_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
+        pickle.dump(mse_dict, f)
 
     time_dict = {}
     time_dict["BMC"] = time_BMC

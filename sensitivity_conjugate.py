@@ -381,9 +381,6 @@ def main(args):
             time_IS = time.time() - t0
             time_IS_array = time_IS_array.at[j].set(time_IS)
 
-            sensitivity_utils.save(args, n_alpha, n_theta, BMC_mean, BMC_std, KMS_mean, KMS_std, LSMC_mean,
-                                   LSMC_std, IS_mean, IS_std, ground_truth, time_BMC, time_KMS, time_LSMC, time_IS)
-
             mse_BMC = jnp.mean((BMC_mean - ground_truth) ** 2)
             mse_KMS = jnp.mean((KMS_mean - ground_truth) ** 2)
             mse_LSMC = jnp.mean((LSMC_mean - ground_truth) ** 2)
@@ -393,6 +390,11 @@ def main(args):
             mse_KMS_array = mse_KMS_array.at[j].set(mse_KMS)
             mse_LSMC_array = mse_LSMC_array.at[j].set(mse_LSMC)
             mse_IS_array = mse_IS_array.at[j].set(mse_IS)
+
+            sensitivity_utils.save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
+                                   time_BMC, time_KMS, time_LSMC, time_IS)
+
+
 
             # Debug
             # print(f"=============")

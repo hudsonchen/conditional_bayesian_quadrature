@@ -1,5 +1,5 @@
 #$ -l tmem=20G
-#$ -l h_vmem=10G
+#$ -l h_vmem=20G
 #$ -l h_rt=24:0:0
 #$ -pe smp 1
 
@@ -21,4 +21,5 @@ which pip
 which python
 
 pwd
-XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1" python /home/zongchen/CBQ/finance.py $JOB_PARAMS
+module load openmpi
+mpirun -np 1 python /home/zongchen/CBQ/finance.py $JOB_PARAMS
