@@ -1,5 +1,5 @@
-#$ -l tmem=20G
-#$ -l h_vmem=20G
+#$ -l tmem=32G
+#$ -l h_vmem=32G
 #$ -l h_rt=24:0:0
 #$ -pe smp 1
 
