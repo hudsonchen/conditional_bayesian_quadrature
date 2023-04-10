@@ -444,7 +444,7 @@ class CBQ:
         pause = True
         return
 
-    def save_large(self, Nx, Ny, KMS_mean, mu_y_x_prime_LSMC, time_KMS, time_LSMC):
+    def save_large(self, Nx, Ny, KMS_mean, mu_y_x_prime_LSMC, IS_mean, time_KMS, time_LSMC, time_IS):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
         # Saving this would explode the memory on cluster
@@ -453,19 +453,21 @@ class CBQ:
 
         L_LSMC = jnp.maximum(mu_y_x_prime_LSMC, 0).mean()
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
+        L_IS = jnp.maximum(IS_mean, 0).mean()
         L_true = jnp.maximum(true_EgY_X, 0).mean()
 
         mse_dict = {}
         mse_dict['BMC'] = None
-        mse_dict['IS'] = None
+        mse_dict['IS'] = (L_true - L_IS) ** 2
         mse_dict['LSMC'] = (L_true - L_LSMC) ** 2
         mse_dict['KMS'] = (L_true - L_KMS) ** 2
         with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
             pickle.dump(mse_dict, f)
 
-        time_dict = {'BMC': None, 'IS': None, 'LSMC': time_LSMC, 'KMS': time_KMS}
+        time_dict = {'BMC': None, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
         with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
             pickle.dump(time_dict, f)
+        pause = True
         return
 
 
@@ -534,10 +536,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
-    Nx_array = [5, 10, 20, 30]
-    # Ny_array = [10, 30, 50]
-    Ny_array = np.arange(3, 100, 3)
+    Nx_array = [5, 10]
+    # Nx_array = [5, 10, 20, 30]
+    Ny_array = [10, 30, 50]
+    # Ny_array = np.arange(3, 100, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
     LSMC_mean_dict = {}
@@ -594,7 +596,7 @@ def cbq_option_pricing(args):
             time_IS = time.time() - t0
 
             t0 = time.time()
-            mu_y_x_prime_LSMC, std_y_x_prime_LSMC = polynomial(St, ST, loss, St_prime)
+            mu_y_x_prime_LSMC, std_y_x_prime_LSMC = polynomial(args, St, ST, loss, St_prime)
             time_LSMC = time.time() - t0
 
             t0 = time.time()
@@ -607,7 +609,7 @@ def cbq_option_pricing(args):
             CBQ_class.save(Nx, Ny, psi_x_mean, St, St_prime,
                            mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_LSMC,
                            time_cbq, time_IS, time_KMS, time_LSMC)
-
+            pause = True
             cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq[test_ind])
             cbq_std_array = jnp.append(cbq_std_array, jnp.diag(std_y_x_prime_cbq)[test_ind])
             LSMC_mean_array = jnp.append(LSMC_mean_array, mu_y_x_prime_LSMC[test_ind])
@@ -641,13 +643,20 @@ def cbq_option_pricing(args):
     t0 = time.time()
     mc_mean = loss.mean(1)[:, None]
     mc_std = 0 * mc_mean
-    KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
-    time_KMS = time.time() - t0
+    KMS_mean_large, _ = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+    time_KMS_large = time.time() - t0
 
     t0 = time.time()
-    mu_y_x_prime_LSMC, std_y_x_prime_LSMC = polynomial(St, ST, loss, St_prime)
-    time_LSMC = time.time() - t0
-    CBQ_class.save_large(Nx, Ny, KMS_mean, mu_y_x_prime_LSMC, time_KMS, time_LSMC)
+    LSMC_mean_large, _ = polynomial(args, St, ST, loss, St_prime)
+    time_LSMC_large = time.time() - t0
+
+    t0 = time.time()
+    IS_mean_large, IS_std = importance_sampling(py_x_fn, St_prime, St, ST, loss)
+    time_IS_large = time.time() - t0
+
+    CBQ_class.save_large(Nx, Ny, KMS_mean_large, LSMC_mean_large, IS_mean_large,
+                         time_KMS_large, time_LSMC_large, time_IS_large)
+    pause = True
     return
 
 

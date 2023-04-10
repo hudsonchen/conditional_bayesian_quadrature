@@ -462,10 +462,16 @@ def main(args):
     LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
     time_LSMC_large = time.time() - t0
 
+    t0 = time.time()
+    IS_mean, IS_std = importance_sampling(rng_key, samples_all, g_samples_all, alpha_test_line)
+    time_IS_large = time.time() - t0
+
     mse_KMS_large = jnp.mean((KMS_mean - ground_truth) ** 2)
     mse_LSMC_large = jnp.mean((LSMC_mean - ground_truth) ** 2)
+    mse_IS_large = jnp.mean((IS_mean - ground_truth) ** 2)
 
-    sensitivity_utils.save_large(args, n_alpha, n_theta, mse_KMS_large, mse_LSMC_large, time_KMS_large, time_LSMC_large)
+    sensitivity_utils.save_large(args, n_alpha, n_theta, mse_KMS_large, mse_LSMC_large, mse_IS_large,
+                                 time_KMS_large, time_LSMC_large, time_IS_large)
     # # Debug code
     # print(f"=============")
     # print(f"KMS mse with {n_alpha} number of X and {n_theta} number of Y", mse_KMS_large)
