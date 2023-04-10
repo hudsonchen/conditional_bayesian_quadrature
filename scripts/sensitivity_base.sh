@@ -22,5 +22,5 @@ which python
 
 pwd
 
-module load mpirun
+module load openmpi
 mpirun -np 1 python /home/zongchen/CBQ/sensitivity_conjugate.py $JOB_PARAMS
