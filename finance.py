@@ -536,10 +536,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [5, 10]
-    # Nx_array = [5, 10, 20, 30]
-    Ny_array = [10, 30, 50]
-    # Ny_array = np.arange(3, 100, 3)
+    # Nx_array = [5, 10]
+    Nx_array = [5, 10, 20, 30]
+    # Ny_array = [10, 30, 50]
+    Ny_array = np.arange(3, 100, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
     LSMC_mean_dict = {}
