@@ -1,5 +1,5 @@
-#$ -l tmem=30G
-#$ -l h_vmem=30G
+#$ -l tmem=20G
+#$ -l h_vmem=20G
 #$ -l h_rt=12:0:0
 #$ -R y
 
@@ -20,4 +20,5 @@ which pip
 which python
 
 pwd
-python /home/zongchen/CBQ/SIR.py $JOB_PARAMS
+module load openmpi
+mpirun -np 1 python /home/zongchen/CBQ/SIR.py $JOB_PARAMS

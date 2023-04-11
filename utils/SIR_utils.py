@@ -130,6 +130,21 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     return
 
 
+def save_large(args, Nx, Ny, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, KMS_time, LSMC_time, IS_time):
+    time_dict = {'BMS': None, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
+    with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        pickle.dump(time_dict, f)
+
+    mse_dict = {}
+    mse_dict['IS'] = ((ground_truth_array - IS_mean) ** 2).mean()
+    mse_dict['LSMC'] = ((ground_truth_array - LSMC_mean) ** 2).mean()
+    mse_dict['KMS'] = ((ground_truth_array - KMS_mean) ** 2).mean()
+    mse_dict['BMS'] = None
+    with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        pickle.dump(mse_dict, f)
+    return
+
+
 def ground_truth_peak_infected_number(beta_all, gamma, D_real, T, population, MCMC_fn, N_MCMC, log_posterior,
                                       rate, rng_key):
     peak_infected_number = jnp.zeros_like(beta_all)

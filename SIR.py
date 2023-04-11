@@ -74,28 +74,30 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
         l, c, A = optax.apply_updates((l, c, A), updates)
         return l, c, A, opt_state, nllk_value
 
-    # # Debug code
+    # ========== Debug code ==========
     l_debug_list = []
     c_debug_list = []
     A_debug_list = []
     nll_debug_list = []
+    # ========== Debug code ==========
+
     for _ in range(100):
         rng_key, _ = jax.random.split(rng_key)
         l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
 
-    #     # Debug code
-        l_debug_list.append(l)
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
-    # # Debug code
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+    # ========== Debug code ==========
+    #     l_debug_list.append(l)
+    #     c_debug_list.append(c)
+    #     A_debug_list.append(A)
+    #     nll_debug_list.append(nllk_value)
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
+    # ========== Debug code ==========
 
     l, c, A = l, c, A
     K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
@@ -167,9 +169,10 @@ def peak_infected_time(infections):
 def SIR(args, rng_key):
     Ny_array = jnp.array([10, 20, 50])
     # Ny_array = jnp.arange(2, 60, 2)
-    Nx_array = jnp.array([10, 20, 30])
-    # N_test = 10
-    N_test = 100
+    # Nx_array = jnp.array([10, 20, 30])
+    Nx_array = jnp.array([10])
+    N_test = 10
+    # N_test = 100
 
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
@@ -219,7 +222,7 @@ def SIR(args, rng_key):
                 a = 1 + rate * beta_0
 
                 rng_key, _ = jax.random.split(rng_key)
-                samples = jax.random.gamma(rng_key, a, shape=(SamplesNum, ))
+                samples = jax.random.gamma(rng_key, a, shape=(SamplesNum,))
                 samples = samples * scale
 
                 rng_key, _ = jax.random.split(rng_key)
@@ -251,7 +254,8 @@ def SIR(args, rng_key):
                 beta_array_standardized, beta_array_mean, beta_array_std = SIR_utils.standardize(beta_array)
 
                 tt0 = time.time()
-                BMC_mean, BMC_std = Bayesian_Monte_Carlo(rng_key, beta_array_standardized[:, None], f_beta_array_standardized,
+                BMC_mean, BMC_std = Bayesian_Monte_Carlo(rng_key, beta_array_standardized[:, None],
+                                                         f_beta_array_standardized,
                                                          d_log_beta_array * beta_array_std, stein_Matern)
                 BMC_time_single = time.time() - tt0
 
@@ -283,7 +287,8 @@ def SIR(args, rng_key):
             # Importance sampling
             t0 = time.time()
             log_py_x_fn = partial(log_prior, rate=rate, rng_key=rng_key)
-            IS_mean, _ = SIR_baselines.importance_sampling(log_py_x_fn, beta_0_test[:, None], beta_0_array[:, None], beta_array_all, f_beta_array_all)
+            IS_mean, _ = SIR_baselines.importance_sampling(log_py_x_fn, beta_0_test[:, None], beta_0_array[:, None],
+                                                           beta_array_all, f_beta_array_all)
             IS_time = time.time() - t0
 
             # Kernel mean shrinkage estimator
