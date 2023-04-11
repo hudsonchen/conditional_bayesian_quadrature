@@ -28,12 +28,12 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
     print(os.getcwd())
-    os.environ[
-        "XLA_FLAGS"
-    ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
-    os.environ["OPENBLAS_NUM_THREADS"] = "1"
-    os.environ["MKL_NUM_THREADS"] = "1"
-    os.environ["OMP_NUM_THREAD"] = "1"
+    # os.environ[
+    #     "XLA_FLAGS"
+    # ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+    # os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    # os.environ["MKL_NUM_THREADS"] = "1"
+    # os.environ["OMP_NUM_THREAD"] = "1"
 else:
     pass
 
@@ -536,10 +536,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [5, 10]
+    # Nx_array = [30]
     Nx_array = [5, 10, 20, 30]
-    # Ny_array = [10, 30, 50]
-    Ny_array = np.arange(3, 100, 3)
+    # Ny_array = [30, 50]
+    Ny_array = jnp.arange(3, 100, 3)
     cbq_mean_dict = {}
     cbq_std_dict = {}
     LSMC_mean_dict = {}
