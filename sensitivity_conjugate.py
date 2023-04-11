@@ -463,7 +463,8 @@ def main(args):
     time_LSMC_large = time.time() - t0
 
     t0 = time.time()
-    IS_mean, IS_std = importance_sampling(rng_key, samples_all, g_samples_all, alpha_test_line)
+    log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
+    IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
     time_IS_large = time.time() - t0
 
     mse_KMS_large = jnp.mean((KMS_mean - ground_truth) ** 2)
