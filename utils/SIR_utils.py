@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from functools import partial
 import jax
-import numpy as np
+import pickle
 import pandas as pd
 from tensorflow_probability.substrates import jax as tfp
 from tqdm import tqdm
@@ -25,7 +25,7 @@ def non_zero_ind(A):
 
 def scale(A):
     m = A.mean()
-    m = 10000
+    # m = 10000
     return m, A / m
 
 
@@ -93,12 +93,26 @@ def generate_data(beta, gamma, T, dt, population, rng_key):
     return D['I']
 
 
-def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, beta_0_array):
+def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LSMC_mean, IS_mean,
+         ground_truth_array, beta_0_array, BMC_time, KMS_time, LSMC_time, IS_time):
     # jnp.save(f"{args.save_path}/BMC_mean.npy", BMC_mean.squeeze())
     # jnp.save(f"{args.save_path}/BMC_std.npy", BMC_std.squeeze())
     # jnp.save(f"{args.save_path}/KMS_mean.npy", KMS_mean.squeeze())
     # jnp.save(f"{args.save_path}/LSMC_mean.npy", LSMC_mean.squeeze())
 
+    time_dict = {'BMC': BMC_time, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
+    with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        pickle.dump(time_dict, f)
+
+    mse_dict = {}
+    mse_dict['BMC'] = ((ground_truth_array - BMC_mean) ** 2).mean()
+    mse_dict['IS'] = ((ground_truth_array - IS_mean) ** 2).mean()
+    mse_dict['LSMC'] = ((ground_truth_array - LSMC_mean) ** 2).mean()
+    mse_dict['KMS'] = ((ground_truth_array - KMS_mean) ** 2).mean()
+    with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        pickle.dump(mse_dict, f)
+
+    # ========== Debug code ==========
     plt.figure()
     plt.plot(beta_0_test, BMC_mean, color='blue', label='BMC')
     plt.plot(beta_0_test, KMS_mean, color='red', label='KMS')
@@ -108,9 +122,11 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     plt.scatter(beta_0_array, BMC_mean_array, color='orange')
     plt.fill_between(beta_0_test, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
     plt.legend()
+    plt.title(f"Nx={Nx}, Ny={Ny}")
     plt.savefig(f"{args.save_path}/figures/SIR_X_{Nx}_y_{Ny}.pdf")
     plt.show()
     pause = True
+    # ========== Debug code ==========
     return
 
 
