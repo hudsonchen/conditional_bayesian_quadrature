@@ -13,17 +13,17 @@ def polynomial(X, Y, gY, X_prime, poly=3):
         x_prime_standardized = (x_prime - X_mean) / X_std
         X_poly = np.ones_like(X_standardized)
         for i in range(1, poly + 1):
-            X_poly = np.concatenate((X_poly, X_standardized ** i), axis=1)
-        eps = 1e-6
-        theta = np.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
+            X_poly = jnp.concatenate((X_poly, X_standardized ** i), axis=1)
+        eps = 1.0
+        theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
 
-        x_prime_poly = np.ones_like(x_prime_standardized)
+        x_prime_poly = jnp.ones_like(x_prime_standardized)
         for i in range(1, poly + 1):
-            x_prime_poly = np.concatenate((x_prime_poly, x_prime_standardized ** i), axis=1)
+            x_prime_poly = jnp.concatenate((x_prime_poly, x_prime_standardized ** i), axis=1)
         phi = (theta * x_prime_poly).sum()
         poly_list.append(phi)
-    phi = np.array(poly_list)
-    std = np.zeros_like(phi)
+    phi = jnp.array(poly_list)
+    std = jnp.zeros_like(phi)
     # Debugging code
     # true_X = jnp.load('./data/finance_X.npy')
     # true_EgY_X = jnp.load('./data/finance_EgY_X.npy')
@@ -56,8 +56,8 @@ def importance_sampling(py_x_fn, X_prime, X, Y, gY):
             Yi = Y[i, :]
             gYi = gY[i, :]
 
-            py_x_i = py_x_fn(beta_tilde=Yi, beta_0=x)
-            py_x_prime = py_x_fn(beta_tilde=Yi, beta_0=x_prime)
+            py_x_i = py_x_fn(beta=Yi, beta_0=x)
+            py_x_prime = py_x_fn(beta=Yi, beta_0=x_prime)
             weight = py_x_prime / py_x_i
             dummy_list.append((weight * gYi).sum() / weight.sum())
         IS_list.append(np.array(dummy_list).mean())

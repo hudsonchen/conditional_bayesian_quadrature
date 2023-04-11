@@ -25,6 +25,7 @@ def non_zero_ind(A):
 
 def scale(A):
     m = A.mean()
+    m = 10000
     return m, A / m
 
 
@@ -60,39 +61,36 @@ def generate_data(beta, gamma, T, dt, population, rng_key):
     It, Rt = 50., 0.
     St = population - It - Rt
 
-    S_list = []
-    I_list = []
-    R_list = []
     iter_ = int(T / dt)
 
+    S_array = jnp.zeros([iter_])
+    I_array = jnp.zeros([iter_])
+    R_array = jnp.zeros([iter_])
+
     for i in range(iter_):
-        S_list.append(St)
-        I_list.append(It)
-        R_list.append(Rt)
+        S_array = S_array.at[i].set(St)
+        I_array = I_array.at[i].set(It)
+        R_array = R_array.at[i].set(Rt)
         St, It, Rt = time_step(beta, gamma, population, St, It, Rt, dt, rng_key)
 
-    S_array = np.array(S_list)
-    I_array = np.array(I_list)
-    R_array = np.array(R_list)
-
     # # Plot the data on three separate curves for S(t), I(t) and R(t)
-    fig = plt.figure(facecolor='w')
-    ax = fig.add_subplot(111, facecolor='#dddddd', axisbelow=True)
-    ax.plot(np.arange(iter_), S_array, 'b', alpha=0.5, lw=2, label='Susceptible')
-    ax.plot(np.arange(iter_), I_array, 'r', alpha=0.5, lw=2, label='Infected')
-    ax.plot(np.arange(iter_), R_array, 'g', alpha=0.5, lw=2, label='Recovered with immunity')
-    ax.set_xlabel('Time /days')
-    ax.yaxis.set_tick_params(length=0)
-    ax.xaxis.set_tick_params(length=0)
-    ax.grid(b=True, which='major', c='w', lw=2, ls='-')
-    legend = ax.legend()
-    legend.get_frame().set_alpha(0.5)
-    plt.title(f'Infection rate is {beta}')
-    plt.show()
+    # fig = plt.figure(facecolor='w')
+    # ax = fig.add_subplot(111, facecolor='#dddddd', axisbelow=True)
+    # ax.plot(np.arange(iter_), S_array, 'b', alpha=0.5, lw=2, label='Susceptible')
+    # ax.plot(np.arange(iter_), I_array, 'r', alpha=0.5, lw=2, label='Infected')
+    # ax.plot(np.arange(iter_), R_array, 'g', alpha=0.5, lw=2, label='Recovered with immunity')
+    # ax.set_xlabel('Time /days')
+    # ax.yaxis.set_tick_params(length=0)
+    # ax.xaxis.set_tick_params(length=0)
+    # ax.grid(b=True, which='major', c='w', lw=2, ls='-')
+    # legend = ax.legend()
+    # legend.get_frame().set_alpha(0.5)
+    # plt.title(f'Infection rate is {beta}')
+    # plt.show()
 
-    D_real = {'S': S_array, 'I': I_array, 'R': R_array}
+    D = {'S': S_array, 'I': I_array, 'R': R_array}
     pause = True
-    return D_real
+    return D['I']
 
 
 def ground_truth_peak_infected_number(beta_all, gamma, D_real, T, population, MCMC_fn, N_MCMC, log_posterior,

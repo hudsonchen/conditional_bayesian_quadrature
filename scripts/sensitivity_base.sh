@@ -1,6 +1,6 @@
 #$ -l tmem=20G
 #$ -l h_vmem=20G
-#$ -l h_rt=12:0:0
+#$ -l h_rt=6:0:0
 #$ -R y
 
 #$ -S /bin/bash
