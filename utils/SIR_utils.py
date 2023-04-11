@@ -124,7 +124,8 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     plt.legend()
     plt.title(f"Nx={Nx}, Ny={Ny}")
     plt.savefig(f"{args.save_path}/figures/SIR_X_{Nx}_y_{Ny}.pdf")
-    plt.show()
+    # plt.show()
+    plt.close()
     pause = True
     # ========== Debug code ==========
     return
