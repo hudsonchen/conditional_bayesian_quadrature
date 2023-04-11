@@ -53,8 +53,8 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     learning_rate = 1e-2
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
-    c_init = c = 1.0
-    l_init = l = 1.0
+    c_init = c = 1.5
+    l_init = l = 1.5
     A_init = A = 1.0 / jnp.sqrt(n)
     opt_state = optimizer.init((l_init, c_init, A_init))
 
@@ -75,27 +75,27 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
         return l, c, A, opt_state, nllk_value
 
     # # Debug code
-    # l_debug_list = []
-    # c_debug_list = []
-    # A_debug_list = []
-    # nll_debug_list = []
+    l_debug_list = []
+    c_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
     for _ in range(100):
         rng_key, _ = jax.random.split(rng_key)
         l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
 
     #     # Debug code
-    #     l_debug_list.append(l)
-    #     c_debug_list.append(c)
-    #     A_debug_list.append(A)
-    #     nll_debug_list.append(nllk_value)
-    # # # Debug code
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    # ax_1.plot(l_debug_list)
-    # ax_2.plot(c_debug_list)
-    # ax_3.plot(A_debug_list)
-    # ax_4.plot(nll_debug_list)
-    # plt.show()
+        l_debug_list.append(l)
+        c_debug_list.append(c)
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
+    # # Debug code
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
 
     l, c, A = l, c, A
     K = A * kernel_y(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
@@ -166,7 +166,7 @@ def peak_infected_time(infections):
 
 def SIR(args, rng_key):
     # Ny_list = [2, 3, 5, 7, 10]
-    Ny = 10
+    Ny_array = jnp.array([10, 20, 50])
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
     beta_0_array = jnp.array([0.15, 0.25, 0.35, 0.45])
@@ -201,102 +201,89 @@ def SIR(args, rng_key):
         temp = generate_data_vmap(beta_samples)
         ground_truth_array = ground_truth_array.at[i].set(f(temp).mean())
 
-    BMC_mean_array = jnp.zeros([Nx])
-    BMC_std_array = jnp.zeros([Nx])
-    MC_mean_array = jnp.zeros([Nx])
-    MC_std_array = jnp.zeros([Nx])
+    for Ny in Ny_array:
+        BMC_mean_array = jnp.zeros([Nx])
+        BMC_std_array = jnp.zeros([Nx])
+        MC_mean_array = jnp.zeros([Nx])
+        MC_std_array = jnp.zeros([Nx])
 
-    # beta_array_all is Y, beta_0_array is X, f_beta_array_all is f(Y)
-    beta_array_all = jnp.zeros([Nx, Ny])
-    f_beta_array_all = jnp.zeros([Nx, Ny])
+        # beta_array_all is Y, beta_0_array is X, f_beta_array_all is f(Y)
+        beta_array_all = jnp.zeros([Nx, Ny])
+        f_beta_array_all = jnp.zeros([Nx, Ny])
 
-    for j in tqdm(range(Nx)):
-        beta_0 = beta_0_array[j]
-        a = 1 + rate * beta_0
+        for j in tqdm(range(Nx)):
+            beta_0 = beta_0_array[j]
+            a = 1 + rate * beta_0
 
-        rng_key, _ = jax.random.split(rng_key)
-        samples = jax.random.gamma(rng_key, a, shape=(SamplesNum, ))
-        samples = samples * scale
-
-        rng_key, _ = jax.random.split(rng_key)
-        beta_array = samples[:Ny]
-
-        log_prior_fn = partial(log_prior, beta_0=beta_0, rate=rate, rng_key=rng_key)
-        grad_log_prior_fn = jax.grad(log_prior_fn)
-
-        f_beta_array = jnp.zeros([Ny])
-        d_log_beta_array = jnp.zeros([Ny, 1])
-
-        for i in range(Ny):
-            beta = beta_array[i]
             rng_key, _ = jax.random.split(rng_key)
-            D = SIR_utils.generate_data(beta, gamma_real, T, dt, population, rng_key)
-            f_beta = f(D)
-            d_log_beta = grad_log_prior_fn(beta)
-            f_beta_array = f_beta_array.at[i].set(f_beta)
-            d_log_beta_array = d_log_beta_array.at[i, :].set(d_log_beta)
+            samples = jax.random.gamma(rng_key, a, shape=(SamplesNum, ))
+            samples = samples * scale
 
-        beta_array_all = beta_array_all.at[j, :].set(beta_array)
-        f_beta_array_all = f_beta_array_all.at[j, :].set(f_beta_array)
+            rng_key, _ = jax.random.split(rng_key)
+            beta_array = samples[:Ny]
 
-        MC = Monte_Carlo(f_beta_array)
-        f_beta_array_scale, f_beta_array_standardized = SIR_utils.scale(f_beta_array)
+            log_prior_fn = partial(log_prior, beta_0=beta_0, rate=rate, rng_key=rng_key)
+            grad_log_prior_fn = jax.grad(log_prior_fn)
 
-        rng_key, _ = jax.random.split(rng_key)
-        beta_array_standardized, beta_array_mean, beta_array_std = SIR_utils.standardize(beta_array)
-        BMC_mean, BMC_std = Bayesian_Monte_Carlo(rng_key, beta_array_standardized[:, None], f_beta_array_standardized,
-                                                 d_log_beta_array * beta_array_std, stein_Matern)
-        BMC_mean = BMC_mean * f_beta_array_scale
-        BMC_std = BMC_std * f_beta_array_scale
-        BMC_mean_array = BMC_mean_array.at[j].set(BMC_mean)
-        BMC_std_array = BMC_std_array.at[j].set(BMC_std)
-        MC_mean_array = MC_mean_array.at[j].set(MC)
+            f_beta_array = jnp.zeros([Ny])
+            d_log_beta_array = jnp.zeros([Ny, 1])
 
-        # Debug code =================
-        large_samples = generate_data_vmap(samples)
-        f_beta_MC_large_sample = f(large_samples).mean()
-        print('True value (MC with large samples)', f_beta_MC_large_sample)
-        print(f'MC with {Ny} number of Y', MC)
-        print(f'BMC with {Ny} number of Y', BMC_mean)
-        print(f"=================")
-        pause = True
-        # Debug code =================
+            for i in range(Ny):
+                beta = beta_array[i]
+                rng_key, _ = jax.random.split(rng_key)
+                D = SIR_utils.generate_data(beta, gamma_real, T, dt, population, rng_key)
+                f_beta = f(D)
+                d_log_beta = grad_log_prior_fn(beta)
+                f_beta_array = f_beta_array.at[i].set(f_beta)
+                d_log_beta_array = d_log_beta_array.at[i, :].set(d_log_beta)
 
-    lx = 1.0
-    BMC_mean, BMC_std = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
-                           beta_0_array[:, None], beta_0_test[:, None], lx)
-    BMC_mean = BMC_mean.squeeze()
-    BMC_std = jnp.diag(BMC_std).squeeze()
+            beta_array_all = beta_array_all.at[j, :].set(beta_array)
+            f_beta_array_all = f_beta_array_all.at[j, :].set(f_beta_array)
 
-    # Importance sampling
-    py_x_fn = partial(log_prior, rate=rate, rng_key=rng_key)
-    IS_mean, _ = SIR_baselines.importance_sampling(py_x_fn, beta_0_test, beta_0_array, beta_array_all, f_beta_array_all)
+            MC = Monte_Carlo(f_beta_array)
+            f_beta_array_scale, f_beta_array_standardized = SIR_utils.scale(f_beta_array)
 
-    # Kernel mean shrinkage estimator
-    KMS_mean, KMS_std = GP(MC_mean_array[:, None], MC_std_array[:, None],
-                           beta_0_array[:, None], beta_0_test[:, None], lx)
+            rng_key, _ = jax.random.split(rng_key)
+            beta_array_standardized, beta_array_mean, beta_array_std = SIR_utils.standardize(beta_array)
+            BMC_mean, BMC_std = Bayesian_Monte_Carlo(rng_key, beta_array_standardized[:, None], f_beta_array_standardized,
+                                                     d_log_beta_array * beta_array_std, stein_Matern)
+            BMC_mean = BMC_mean * f_beta_array_scale
+            BMC_std = BMC_std * f_beta_array_scale
+            BMC_mean_array = BMC_mean_array.at[j].set(BMC_mean)
+            BMC_std_array = BMC_std_array.at[j].set(BMC_std)
+            MC_mean_array = MC_mean_array.at[j].set(MC)
 
-    # Least squared Monte Carlo
-    LSMC_mean, _ = SIR_baselines.polynomial(beta_0_array[:, None], beta_array_all[:, None],
-                                            f_beta_array_all, beta_0_test[:, None])
+            # Debug code =================
+            large_samples = generate_data_vmap(samples)
+            f_beta_MC_large_sample = f(large_samples).mean()
+            print('True value (MC with large samples)', f_beta_MC_large_sample)
+            print(f'MC with {Ny} number of Y', MC)
+            print(f'BMC with {Ny} number of Y', BMC_mean)
+            print(f"=================")
+            pause = True
+            # Debug code =================
 
-    # jnp.save(f"{args.save_path}/BMC_mean.npy", BMC_mean.squeeze())
-    # jnp.save(f"{args.save_path}/BMC_std.npy", BMC_std.squeeze())
-    # jnp.save(f"{args.save_path}/KMS_mean.npy", KMS_mean.squeeze())
-    # jnp.save(f"{args.save_path}/LSMC_mean.npy", LSMC_mean.squeeze())
+        lx = 1.0
+        BMC_mean, BMC_std = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
+                               beta_0_array[:, None], beta_0_test[:, None], lx)
+        BMC_mean = BMC_mean.squeeze()
+        BMC_std = jnp.diag(BMC_std).squeeze()
 
-    plt.figure()
-    plt.plot(beta_0_test, BMC_mean, color='blue', label='BMC')
-    plt.plot(beta_0_test, KMS_mean, color='red', label='KMS')
-    plt.plot(beta_0_test, LSMC_mean, color='green', label='LSMC')
-    plt.plot(beta_0_test, ground_truth_array, color='black', label='True')
-    plt.scatter(beta_0_array, BMC_mean_array, color='orange')
-    plt.fill_between(beta_0_test, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
-    plt.legend()
-    plt.savefig(f"{args.save_path}/plot.pdf")
-    plt.show()
+        # Importance sampling
+        log_py_x_fn = partial(log_prior, rate=rate, rng_key=rng_key)
+        IS_mean, _ = SIR_baselines.importance_sampling(log_py_x_fn, beta_0_test[:, None], beta_0_array[:, None], beta_array_all, f_beta_array_all)
 
-    pause = True
+        # Kernel mean shrinkage estimator
+        KMS_mean, KMS_std = GP(MC_mean_array[:, None], MC_std_array[:, None],
+                               beta_0_array[:, None], beta_0_test[:, None], lx)
+
+        # Least squared Monte Carlo
+        LSMC_mean, _ = SIR_baselines.polynomial(beta_0_array[:, None], beta_array_all[:, None],
+                                                f_beta_array_all, beta_0_test[:, None])
+
+        SIR_utils.save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
+                       LSMC_mean, IS_mean, ground_truth_array, beta_0_array)
+
     return
 
 

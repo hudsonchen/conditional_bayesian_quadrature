@@ -412,7 +412,7 @@ class CBQ:
         plt.plot(St_prime.squeeze(), KMS_mean, color='purple', label='KMS')
         plt.legend()
         plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
-        plt.savefig(f"{args.save_path}/figures/GP_finance_X_{Nx}_y_{Ny}.pdf")
+        plt.savefig(f"{args.save_path}/figures/finance_X_{Nx}_y_{Ny}.pdf")
         # plt.show()
         plt.close()
 

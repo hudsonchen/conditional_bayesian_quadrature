@@ -93,6 +93,26 @@ def generate_data(beta, gamma, T, dt, population, rng_key):
     return D['I']
 
 
+def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, beta_0_array):
+    # jnp.save(f"{args.save_path}/BMC_mean.npy", BMC_mean.squeeze())
+    # jnp.save(f"{args.save_path}/BMC_std.npy", BMC_std.squeeze())
+    # jnp.save(f"{args.save_path}/KMS_mean.npy", KMS_mean.squeeze())
+    # jnp.save(f"{args.save_path}/LSMC_mean.npy", LSMC_mean.squeeze())
+
+    plt.figure()
+    plt.plot(beta_0_test, BMC_mean, color='blue', label='BMC')
+    plt.plot(beta_0_test, KMS_mean, color='red', label='KMS')
+    plt.plot(beta_0_test, LSMC_mean, color='green', label='LSMC')
+    plt.plot(beta_0_test, ground_truth_array, color='black', label='True')
+    plt.plot(beta_0_test, IS_mean, color='orange', label='IS')
+    plt.scatter(beta_0_array, BMC_mean_array, color='orange')
+    plt.fill_between(beta_0_test, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
+    plt.legend()
+    plt.savefig(f"{args.save_path}/figures/SIR_X_{Nx}_y_{Ny}.pdf")
+    plt.show()
+    pause = True
+    return
+
 def ground_truth_peak_infected_number(beta_all, gamma, D_real, T, population, MCMC_fn, N_MCMC, log_posterior,
                                       rate, rng_key):
     peak_infected_number = jnp.zeros_like(beta_all)
