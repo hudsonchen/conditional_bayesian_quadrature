@@ -38,21 +38,17 @@ def standardize(Z):
 
 
 @jax.jit
-def time_step(beta, gamma, population, St, It, Rt, rng_key):
-    Pt = It / population
-    rng_key, _ = jax.random.split(rng_key)
-    dist = tfd.Binomial(total_count=St, probs=1 - jnp.exp(-beta * Pt))
-    delta_It = dist.sample(seed=rng_key)
-    rng_key, _ = jax.random.split(rng_key)
-    dist = tfd.Binomial(total_count=It, probs=gamma)
-    delta_Rt = dist.sample(seed=rng_key)
-    St = St - delta_It
-    It = It + delta_It - delta_Rt
-    Rt = Rt + delta_Rt
-    return St, It, Rt, delta_It, delta_Rt
+def time_step(beta, gamma, population, St, It, Rt, dt, rng_key):
+    dS = -beta * St * It * dt / population
+    dI = (beta * St * It / population - gamma * It) * dt
+    dR = gamma * It * dt
+    St = St + dS
+    It = It + dI
+    Rt = Rt + dR
+    return St, It, Rt
 
 
-def generate_data(beta, gamma, T, population, rng_key):
+def generate_data(beta, gamma, T, dt, population, rng_key):
     """
     :param beta: float, infection rate
     :param gamma: float, recovery rate
@@ -67,50 +63,34 @@ def generate_data(beta, gamma, T, population, rng_key):
     S_list = []
     I_list = []
     R_list = []
-    delta_It_list = []
-    delta_Rt_list = []
-    # Note the index here
-    # S_0 to S_{T-1}, I_0 to I_{T-1}, R_0 to R_{T-1}
-    # delta_I1 to delta_IT, delta_R1 to delta_RT
-    for i in range(T):
+    iter_ = int(T / dt)
+
+    for i in range(iter_):
         S_list.append(St)
         I_list.append(It)
         R_list.append(Rt)
-        St, It, Rt, delta_It, delta_Rt = time_step(beta, gamma, population, St, It, Rt, rng_key)
-        delta_It_list.append(delta_It)
-        delta_Rt_list.append(delta_Rt)
+        St, It, Rt = time_step(beta, gamma, population, St, It, Rt, dt, rng_key)
 
     S_array = np.array(S_list)
     I_array = np.array(I_list)
     R_array = np.array(R_list)
-    delta_It_array = np.array(delta_It_list)
-    delta_Rt_array = np.array(delta_Rt_list)
 
     # # Plot the data on three separate curves for S(t), I(t) and R(t)
-    # fig = plt.figure(facecolor='w')
-    # ax = fig.add_subplot(111, facecolor='#dddddd', axisbelow=True)
-    # ax.plot(np.arange(T), S_array, 'b', alpha=0.5, lw=2, label='Susceptible')
-    # ax.plot(np.arange(T), I_array, 'r', alpha=0.5, lw=2, label='Infected')
-    # ax.plot(np.arange(T), R_array, 'g', alpha=0.5, lw=2, label='Recovered with immunity')
-    # ax.set_xlabel('Time /days')
-    # ax.yaxis.set_tick_params(length=0)
-    # ax.xaxis.set_tick_params(length=0)
-    # ax.grid(b=True, which='major', c='w', lw=2, ls='-')
-    # legend = ax.legend()
-    # legend.get_frame().set_alpha(0.5)
-    # plt.title(f'Infection rate is {beta}')
-    # plt.show()
+    fig = plt.figure(facecolor='w')
+    ax = fig.add_subplot(111, facecolor='#dddddd', axisbelow=True)
+    ax.plot(np.arange(iter_), S_array, 'b', alpha=0.5, lw=2, label='Susceptible')
+    ax.plot(np.arange(iter_), I_array, 'r', alpha=0.5, lw=2, label='Infected')
+    ax.plot(np.arange(iter_), R_array, 'g', alpha=0.5, lw=2, label='Recovered with immunity')
+    ax.set_xlabel('Time /days')
+    ax.yaxis.set_tick_params(length=0)
+    ax.xaxis.set_tick_params(length=0)
+    ax.grid(b=True, which='major', c='w', lw=2, ls='-')
+    legend = ax.legend()
+    legend.get_frame().set_alpha(0.5)
+    plt.title(f'Infection rate is {beta}')
+    plt.show()
 
-    D_real = {'S': S_array, 'I': I_array, 'R': R_array, 'dI': delta_It_array, 'dR': delta_Rt_array}
-    # non_zero_ind = SIR_utils.non_zero_ind(delta_It_array)
-    # St_real_non_zero = S_array[non_zero_ind]
-    # It_real_non_zero = I_array[non_zero_ind]
-    # Rt_real_non_zero = R_array[non_zero_ind]
-    # delta_It_real_non_zero = delta_It_array[non_zero_ind]
-    # delta_Rt_real_non_zero = delta_Rt_array[non_zero_ind]
-    # D_real_remove_zero = {'S': St_real_non_zero, 'I': It_real_non_zero,
-    #                       'R': Rt_real_non_zero, 'dI': delta_It_real_non_zero,
-    #                       'dR': delta_Rt_real_non_zero}
+    D_real = {'S': S_array, 'I': I_array, 'R': R_array}
     pause = True
     return D_real
 

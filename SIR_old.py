@@ -35,6 +35,42 @@ elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
 else:
     pass
 
+
+def MCMC(rng_key, beta_0, nsamples, init_params, log_prob, rate):
+    rng_key, _ = jax.random.split(rng_key)
+
+    @jax.jit
+    def run_chain(rng_key, state):
+        num_burnin_steps = int(1e3)
+        # kernel = tfp.mcmc.SimpleStepSizeAdaptation(
+        #     tfp.mcmc.HamiltonianMonteCarlo(
+        #         target_log_prob_fn=log_prob,
+        #         num_leapfrog_steps=100,
+        #         step_size=1e-2),
+        #     num_adaptation_steps=int(num_burnin_steps * 0.8))
+
+        kernel = tfp.mcmc.NoUTurnSampler(log_prob, 1e-4)
+        samples = tfp.mcmc.sample_chain(num_results=nsamples,
+                                        num_burnin_steps=num_burnin_steps,
+                                        current_state=state,
+                                        kernel=kernel,
+                                        trace_fn=None,
+                                        seed=rng_key)
+        return samples
+
+    states = run_chain(rng_key, init_params)
+    # # # Debug code
+    # scale = 1. / rate
+    # interval = jnp.linspace(0, 1, 100)
+    # interval_pdf = 1. / scale * jax.scipy.stats.gamma.pdf(interval / scale, a=1 + rate * beta_0)
+    # plt.figure()
+    # plt.plot(interval, interval_pdf)
+    # plt.hist(np.array(states), bins=30, alpha=0.8, density=False)
+    # plt.show()
+    # pause = True
+    return states
+
+
 def Monte_Carlo(gy):
     return gy.mean(0)
 
@@ -111,17 +147,30 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
 
 
 # @jax.jit
-def prior(beta, beta_0, rate, rng_key):
+def posterior(beta_tilde, beta_mean, beta_std, gamma, D_real, population, beta_0, rate, rng_key):
     scale = 1. / rate
-    pdf = 1. / scale * jax.scipy.stats.gamma.pdf(beta / scale, a=1 + rate * beta_0, loc=beta_0)
-    return pdf
+    beta = beta_tilde * beta_std + beta_mean
+    prior_beta = jax.scipy.stats.gamma.pdf(beta / scale, a=1 + rate * beta_0)
+    S_real, I_real, _, delta_I_real, _ = D_real['S'], D_real['I'], D_real['R'], D_real['dI'], D_real['dR']
+
+    P_sim = 1 - jnp.exp(-beta * (I_real / population))
+    part1 = delta_I_real * jnp.log(P_sim)
+    part2 = -beta * I_real / population * (S_real - delta_I_real)
+    return prior_beta * jnp.exp(part1) * jnp.exp(part2)
 
 
 # @jax.jit
-def log_prior(beta, beta_0, rate, rng_key):
+def log_posterior(beta_tilde, beta_mean, beta_std, gamma, D_real, population, beta_0, rate, rng_key):
     scale = 1. / rate
-    logpdf = 1. / scale * jax.scipy.stats.gamma.logpdf(beta / scale, a=1 + rate * beta_0, loc=beta_0)
-    return logpdf
+    beta = beta_tilde * beta_std + beta_mean
+    log_prior_beta = jax.scipy.stats.gamma.logpdf(beta / scale, a=1 + rate * beta_0)
+    # log_prior_beta = jax.scipy.stats.gamma.logpdf(beta, a=1., loc=beta_0, scale=scale)
+    S_real, I_real, _, delta_I_real, _ = D_real['S'], D_real['I'], D_real['R'], D_real['dI'], D_real['dR']
+
+    P_sim = 1 - jnp.exp(-beta * (I_real / population))
+    part1 = delta_I_real * jnp.log(P_sim)
+    part2 = -beta * I_real / population * (S_real - delta_I_real)
+    return (log_prior_beta + (part1 + part2).sum())
 
 
 # @jax.jit
@@ -187,6 +236,40 @@ def SIR(args, rng_key):
     scale = 1. / rate
     T = 10
     target_date = 150
+
+    rng_key, _ = jax.random.split(rng_key)
+    D_real = SIR_utils.generate_data(beta_real, gamma_real, T, population, rng_key)
+
+    if args.mode == 'peak_number':
+        f = peak_infected_number
+        rng_key, _ = jax.random.split(rng_key)
+        peak_infected_number_array = SIR_utils.ground_truth_peak_infected_number(beta_test_all,
+                                                                                 gamma_lab,
+                                                                                 D_real,
+                                                                                 target_date,
+                                                                                 population,
+                                                                                 MCMC,
+                                                                                 N_MCMC,
+                                                                                 log_posterior,
+                                                                                 rate,
+                                                                                 rng_key)
+        jnp.save(f'{args.save_path}/peak_infected_number_array.npy', peak_infected_number_array)
+    elif args.mode == 'peak_time':
+        f = peak_infected_time
+        rng_key, _ = jax.random.split(rng_key)
+        peak_infected_time_array = SIR_utils.ground_truth_peak_infected_time(beta_test_all,
+                                                                             gamma_lab,
+                                                                             D_real,
+                                                                             target_date,
+                                                                             population,
+                                                                             MCMC,
+                                                                             N_MCMC,
+                                                                             log_posterior,
+                                                                             rate,
+                                                                             rng_key)
+        jnp.save(f'{args.save_path}/peak_infected_time_array.npy', peak_infected_time_array)
+    else:
+        pass
 
     bmc_mean_array = jnp.zeros([Nx])
     bmc_std_array = jnp.zeros([Nx])
