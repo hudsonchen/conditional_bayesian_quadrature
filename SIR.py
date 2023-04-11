@@ -301,6 +301,7 @@ def create_dir(args):
     args.save_path += f'results/SIR/'
     args.save_path += f"seed_{args.seed}__mode_{args.mode}"
     os.makedirs(args.save_path, exist_ok=True)
+    os.makedirs(args.save_path + '/figures/', exist_ok=True)
     return args
 
 

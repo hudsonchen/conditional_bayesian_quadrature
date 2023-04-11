@@ -103,8 +103,8 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     plt.plot(beta_0_test, BMC_mean, color='blue', label='BMC')
     plt.plot(beta_0_test, KMS_mean, color='red', label='KMS')
     plt.plot(beta_0_test, LSMC_mean, color='green', label='LSMC')
-    plt.plot(beta_0_test, ground_truth_array, color='black', label='True')
     plt.plot(beta_0_test, IS_mean, color='orange', label='IS')
+    plt.plot(beta_0_test, ground_truth_array, color='black', label='True')
     plt.scatter(beta_0_array, BMC_mean_array, color='orange')
     plt.fill_between(beta_0_test, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
     plt.legend()
@@ -112,6 +112,7 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     plt.show()
     pause = True
     return
+
 
 def ground_truth_peak_infected_number(beta_all, gamma, D_real, T, population, MCMC_fn, N_MCMC, log_posterior,
                                       rate, rng_key):
