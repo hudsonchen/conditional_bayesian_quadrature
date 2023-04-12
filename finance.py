@@ -539,7 +539,7 @@ def cbq_option_pricing(args):
     # Nx_array = [30]
     Nx_array = [5, 10, 20, 30]
     # Ny_array = [30, 50]
-    Ny_array = jnp.arange(3, 100, 3)
+    Ny_array = jnp.arange(3, 100, 3).tolist()
     cbq_mean_dict = {}
     cbq_std_dict = {}
     LSMC_mean_dict = {}
