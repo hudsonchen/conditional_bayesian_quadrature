@@ -276,10 +276,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    # N_alpha_array = jnp.array([5])
+    # N_alpha_array = jnp.array([6])
     N_alpha_array = jnp.arange(2, 32, 4)
     # N_theta_array = jnp.array([30])
-    N_theta_array = jnp.arange(5, 100, 5)
+    N_theta_array = jnp.arange(5, 105, 5)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)

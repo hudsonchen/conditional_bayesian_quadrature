@@ -168,11 +168,11 @@ def peak_infected_time(infections):
 
 def SIR(args, rng_key):
     # Ny_array = jnp.array([10, 20, 50])
-    Ny_array = jnp.arange(2, 60, 2)
-    Nx_array = jnp.array([5, 10, 20])
+    Ny_array = jnp.arange(5, 60, 5)
+    Nx_array = jnp.array([5])
     # Nx_array = jnp.array([10])
-    # N_test = 10
-    N_test = 100
+    N_test = 10
+    # N_test = 100
 
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
@@ -266,13 +266,13 @@ def SIR(args, rng_key):
                 MC_mean_array = MC_mean_array.at[j].set(MC)
 
                 # ========== Debug code ==========
-                # large_samples = generate_data_vmap(samples)
-                # f_beta_MC_large_sample = f(large_samples).mean()
-                # print('True value (MC with large samples)', f_beta_MC_large_sample)
-                # print(f'MC with {Ny} number of Y', MC)
-                # print(f'BMC with {Ny} number of Y', BMC_mean)
-                # print(f"=================")
-                # pause = True
+                large_samples = generate_data_vmap(samples)
+                f_beta_MC_large_sample = f(large_samples).mean()
+                print('True value (MC with large samples)', f_beta_MC_large_sample)
+                print(f'MC with {Ny} number of Y', MC)
+                print(f'BMC with {Ny} number of Y', BMC_mean)
+                print(f"=================")
+                pause = True
                 # ========== Debug code ===========
 
             lx = 1.0
