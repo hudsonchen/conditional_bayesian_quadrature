@@ -23,12 +23,12 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
-    os.environ[
-        "XLA_FLAGS"
-    ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
-    os.environ["OPENBLAS_NUM_THREADS"] = "1"
-    os.environ["MKL_NUM_THREADS"] = "1"
-    os.environ["OMP_NUM_THREAD"] = "1"
+    # os.environ[
+    #     "XLA_FLAGS"
+    # ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+    # os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    # os.environ["MKL_NUM_THREADS"] = "1"
+    # os.environ["OMP_NUM_THREAD"] = "1"
 else:
     pass
 
@@ -274,11 +274,11 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    # N_alpha_array = jnp.array([5])
-    N_alpha_array = jnp.arange(2, 50, 2)
-    # N_theta_array = jnp.array([5, 10, 20])
-    # N_theta_array = jnp.arange(2, 20)
-    N_theta_array = jnp.arange(2, 50, 2)
+    N_alpha_array = jnp.array([5])
+    # N_alpha_array = jnp.arange(2, 50, 2)
+    # N_theta_array = jnp.array([30])
+    N_theta_array = jnp.arange(2, 30, 2)
+    # N_theta_array = jnp.arange(2, 50, 2)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-2.0, maxval=2.0)
@@ -394,14 +394,15 @@ def main(args):
             sensitivity_utils.save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
                                    time_BMC, time_KMS, time_LSMC, time_IS)
 
-            # Debug
-            # print(f"=============")
-            # print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            # print(f"=============")
-            # pause = True
+            # ============= Debug code =============
+            print(f"=============")
+            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            print(f"=============")
+            pause = True
+            # ============= Debug code =============
 
         # plotting
         # Debug code

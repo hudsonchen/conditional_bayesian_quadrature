@@ -38,7 +38,7 @@ def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
         log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime[:, None])
         log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
         weight = jnp.exp(log_py_x_prime - log_py_x_i)
-        mu = (weight * gYi).mean()
+        mu = (weight * gYi).mean() / (weight.mean())
         temp_array = temp_array.at[i].set(mu)
     return temp_array.mean()
 
@@ -81,7 +81,7 @@ def importance_sampling_old(log_py_x_fn, X, Y, gY, X_prime):
             log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
             log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
             weight = jnp.exp(log_py_x_prime - log_py_x_i)
-            mu = (weight * gYi).mean()
+            mu = (weight * gYi).mean() / (weight.mean())
             IS_list.append(mu)
         IS_prime_list.append(jnp.array(IS_list).mean())
         pause = True
