@@ -210,7 +210,7 @@ def dxdy_Laplace(x, y, l):
 def kme_RBF_Gaussian(mu, Sigma, l, y):
     """
     :param mu: Gaussian mean, (D, )
-    :param sigma: Gaussian covariance, (D, D)
+    :param Sigma: Gaussian covariance, (D, D)
     :param l: lengthscale, scalar
     :param y: sample: (N, D)
     :return:
@@ -231,17 +231,20 @@ def kme_RBF_Gaussian_func(mu, Sigma, l, y):
     """
     # From the kernel mean embedding document
     D = mu.shape[0]
-    Lambda = jnp.eye(D) * l
-    Lambda_inv = jnp.eye(D) / l
+    l_ = l ** 2
+    Lambda = jnp.eye(D) * l_
+    Lambda_inv = jnp.eye(D) / l_
     part1 = jnp.linalg.det(jnp.eye(D) + Sigma @ Lambda_inv)
     part2 = jnp.exp(-0.5 * (mu - y).T @ jnp.linalg.inv(Lambda + Sigma) @ (mu - y))
     return part1 ** (-0.5) * part2
 
 
+@jax.jit
 def kme_double_RBF_Gaussian(mu, Sigma, l):
+    l_ = l ** 2
     D = mu.shape[0]
-    Lambda = jnp.eye(D) * l
-    Lambda_inv = jnp.eye(D) / l
+    Lambda = jnp.eye(D) * l_
+    Lambda_inv = jnp.eye(D) / l_
     part1 = jnp.linalg.det(jnp.eye(D) + Sigma @ Lambda_inv)
     part2 = jnp.linalg.det(jnp.eye(D) + Sigma @ jnp.linalg.inv(Lambda + Sigma))
     return part1 ** (-0.5) * part2 ** (-0.5)

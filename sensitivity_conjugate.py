@@ -61,15 +61,14 @@ def generate_data(rng_key, D, N, noise):
 @jax.jit
 def posterior_full(X, Y, prior_cov, noise):
     """
-    :param prior_cov: D*1 array
-    :param X: N*(D-1) array
-    :param Y: N*1 array
+    :param prior_cov: (D, )
+    :param X: (N, D-1)
+    :param Y: (N, 1)
     :param noise: float
     :return:
     """
     X_with_one = jnp.hstack([X, jnp.ones([X.shape[0], 1])])
-    prior_cov = jnp.diag(prior_cov.squeeze())
-    prior_cov_inv = jnp.diag(1. / prior_cov.squeeze())
+    prior_cov_inv = jnp.diag(1. / prior_cov)
     beta_inv = noise ** 2
     beta = 1. / beta_inv
     post_cov = jnp.linalg.inv(prior_cov_inv + beta * X_with_one.T @ X_with_one)
@@ -96,12 +95,12 @@ def posterior_log_llk(theta, prior_cov_base, X, Y, alpha, noise):
     :param prior_cov_base: scalar
     :param X: data
     :param Y: data
-    :param alpha: (D, 1)
+    :param alpha: (D, )
     :param noise: scalar
     :return:
     """
     D = theta.shape[1]
-    prior_cov = jnp.array([[prior_cov_base] * D]).T + alpha
+    prior_cov = jnp.array([prior_cov_base] * D) + alpha
     post_mean, post_cov = posterior_full(X, Y, prior_cov, noise)
     logpdf = partial(normal_logpdf, mu=post_mean, Sigma=post_cov)
     logpdf_vmap = jax.vmap(logpdf)
@@ -169,7 +168,10 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
 
-    log_l_init = log_l = jnp.log(1.0)
+    median = jnp.median(distance(y, y))
+    l = median / jnp.sqrt(D)
+    # l = 1.0 / jnp.sqrt(D)
+    log_l_init = log_l = jnp.log(l)
     A_init = A = 1.0
     opt_state = optimizer.init((log_l_init, A_init))
     Ky = my_RBF
@@ -258,11 +260,11 @@ def main(args):
     seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
     D = args.dim
-    prior_cov_base = 2.5
+    prior_cov_base = 2.0
     noise = 1.0
     sample_size = 1000
     test_num = 100
-    data_number = D + 5
+    data_number = 5
     X, Y = generate_data(rng_key, D, data_number, noise)
 
     if args.g_fn == 'g1':
@@ -274,14 +276,14 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    N_alpha_array = jnp.array([5])
+    N_alpha_array = jnp.array([4])
     # N_alpha_array = jnp.arange(2, 50, 2)
     # N_theta_array = jnp.array([30])
     N_theta_array = jnp.arange(2, 30, 2)
     # N_theta_array = jnp.arange(2, 50, 2)
 
     # This is the test point
-    alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-2.0, maxval=2.0)
+    alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
     cov_test_line = jnp.array([[prior_cov_base] * D]) + alpha_test_line
     post_mean_test_line, post_var_test_line = jnp.zeros([test_num, D]), jnp.zeros([test_num, D, D])
     ground_truth = jnp.zeros(test_num)
@@ -307,7 +309,7 @@ def main(args):
 
         for i in range(n_alpha):
             rng_key, _ = jax.random.split(rng_key)
-            prior_cov = jnp.array([[prior_cov_base] * D]).T + alpha_all[i, :]
+            prior_cov = jnp.array([prior_cov_base] * D) + alpha_all[i, :]
             mu_y_x, var_y_x = posterior_full(X, Y, prior_cov, noise)
             samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x, cov=var_y_x, shape=(1000, ))
             samples_all = samples_all.at[i, :, :].set(samples)
@@ -347,7 +349,7 @@ def main(args):
                 MC_value = g_samples_i.mean()
                 mc_mean_array = jnp.append(mc_mean_array, MC_value)
 
-                # # Debug
+                # ============= Debug code =============
                 # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
                 # BMC_value = psi_mean * g_samples_i_scale
                 # print("=============")
@@ -356,6 +358,7 @@ def main(args):
                 # print(f'BMC with {n_theta} number of Y', BMC_value)
                 # print(f"=============")
                 # pause = True
+                # ============= Debug code =============
 
             rng_key, _ = jax.random.split(rng_key)
             BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line)
@@ -404,8 +407,7 @@ def main(args):
             pause = True
             # ============= Debug code =============
 
-        # plotting
-        # Debug code
+        # ============= Debug code =============
         fig = plt.figure(figsize=(15, 6))
         ax_1, ax_2 = fig.subplots(1, 2)
         ax_1.plot(N_theta_array, mse_BMC_array, label='BMC')
@@ -428,6 +430,7 @@ def main(args):
         plt.savefig(f"{args.save_path}/sensitivity_conjugate_Nx_{n_alpha}.pdf")
         plt.show()
         plt.close()
+        # ============= Debug code =============
 
     # For very very large Nx and Ny. Test the performance of other methods
     n_alpha = 1000
@@ -445,7 +448,7 @@ def main(args):
 
     for i in range(n_alpha):
         rng_key, _ = jax.random.split(rng_key)
-        prior_cov = jnp.array([[prior_cov_base] * D]).T + alpha_all[i, :]
+        prior_cov = jnp.array([prior_cov_base] * D) + alpha_all[i, :]
         mu_y_x, var_y_x = posterior_full(X, Y, prior_cov, noise)
         samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x, cov=var_y_x, shape=(n_theta, ))
         samples_all = samples_all.at[i, :, :].set(samples)

@@ -44,6 +44,7 @@ def save_large(args, n_alpha, n_theta, mse_KMS, mse_LSMC, mse_IS, time_KMS, time
 
 def scale(Z):
     s = Z.mean()
+    s = 1.
     standardized = Z / s
     return standardized, s
 

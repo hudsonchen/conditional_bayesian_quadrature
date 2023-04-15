@@ -32,10 +32,10 @@ def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
     Nx, Ny = Y.shape[0], Y.shape[1]
     temp_array = jnp.zeros([Nx])
     for i in range(Nx):
-        xi = X[i, :][:, None]
+        xi = X[i, :]
         Yi = Y[i, :, :]
-        gYi = gY[i, :][:, None]
-        log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime[:, None])
+        gYi = gY[i, :]
+        log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
         log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
         weight = jnp.exp(log_py_x_prime - log_py_x_i)
         mu = (weight * gYi).mean() / (weight.mean())
@@ -73,11 +73,11 @@ def importance_sampling_old(log_py_x_fn, X, Y, gY, X_prime):
     IS_prime_list = []
     for j in range(N_test):
         IS_list = []
-        x_prime = X_prime[j, :][:, None]
+        x_prime = X_prime[j, :]
         for i in range(Nx):
-            xi = X[i, :][:, None]
+            xi = X[i, :]
             Yi = Y[i, :, :]
-            gYi = gY[i, :][:, None]
+            gYi = gY[i, :]
             log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
             log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
             weight = jnp.exp(log_py_x_prime - log_py_x_i)
