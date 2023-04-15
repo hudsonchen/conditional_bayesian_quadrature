@@ -160,7 +160,7 @@ def dxdy_Matern(x, y, l):
     return dxdy_K
 
 
-# @jax.jit
+@jax.jit
 def my_RBF(x, y, l):
     """
     :param x: N*D
@@ -224,7 +224,7 @@ def kme_RBF_Gaussian(mu, Sigma, l, y):
 def kme_RBF_Gaussian_func(mu, Sigma, l, y):
     """
     :param mu: Gaussian mean, (D, )
-    :param sigma: Gaussian covariance, (D, D)
+    :param Sigma: Gaussian covariance, (D, D)
     :param l: lengthscale, scalar
     :param y: sample: D,
     :return: scalar

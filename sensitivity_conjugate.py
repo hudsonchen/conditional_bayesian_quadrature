@@ -122,15 +122,16 @@ def g2(y):
     """
     :param y: y is a N * D array
     """
-    return jnp.exp(-0.5 * ((y ** 2).sum(1)))
+    D = y.shape[1]
+    return 10 * jnp.exp(-0.5 * ((y ** 2).sum(1) / (D ** 1))) + (y ** 2).sum(1)
 
 
 def g2_ground_truth(mu, Sigma):
     D = mu.shape[0]
-    analytical_1 = jnp.exp(-0.5 * mu.T @ jnp.linalg.inv(jnp.eye(D) + Sigma) @ mu)
-    analytical_2 = jnp.linalg.det(jnp.eye(D) + Sigma) ** (-0.5)
+    analytical_1 = jnp.exp(-0.5 * mu.T @ jnp.linalg.inv(jnp.eye(D) * (D ** 1) + Sigma) @ mu)
+    analytical_2 = jnp.linalg.det(jnp.eye(D) + Sigma / (D ** 1)) ** (-0.5)
     analytical = analytical_1 * analytical_2
-    return analytical
+    return 10 * analytical + jnp.diag(Sigma).sum() + mu.T @ mu
 
 
 def Monte_Carlo(gy):
@@ -168,9 +169,8 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
 
-    median = jnp.median(distance(y, y))
-    l = median / jnp.sqrt(D)
-    # l = 1.0 / jnp.sqrt(D)
+    l = 1.0 * D
+    # l = 1.0
     log_l_init = log_l = jnp.log(l)
     A_init = A = 1.0
     opt_state = optimizer.init((log_l_init, A_init))
@@ -216,7 +216,7 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime):
     :return:
     """
     Nx = psi_y_x_mean.shape[0]
-    eps = 0.01
+    eps = 1e-6
     learning_rate = 1e-2
     optimizer = optax.adam(learning_rate)
 
@@ -276,11 +276,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    N_alpha_array = jnp.array([4])
-    # N_alpha_array = jnp.arange(2, 50, 2)
+    # N_alpha_array = jnp.array([5])
+    N_alpha_array = jnp.arange(2, 32, 4)
     # N_theta_array = jnp.array([30])
-    N_theta_array = jnp.arange(2, 30, 2)
-    # N_theta_array = jnp.arange(2, 50, 2)
+    N_theta_array = jnp.arange(5, 100, 5)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -398,13 +397,13 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS)
 
             # ============= Debug code =============
-            print(f"=============")
-            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            print(f"=============")
-            pause = True
+            # print(f"=============")
+            # print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            # print(f"=============")
+            # pause = True
             # ============= Debug code =============
 
         # ============= Debug code =============
@@ -428,7 +427,7 @@ def main(args):
 
         plt.suptitle(f"Sensitivity analysis with {n_alpha} number of X")
         plt.savefig(f"{args.save_path}/sensitivity_conjugate_Nx_{n_alpha}.pdf")
-        plt.show()
+        # plt.show()
         plt.close()
         # ============= Debug code =============
 

@@ -38,7 +38,7 @@ def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
         log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
         log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
         weight = jnp.exp(log_py_x_prime - log_py_x_i)
-        mu = (weight * gYi).mean() / (weight.mean())
+        mu = (weight * gYi).mean() / (weight.mean() + 0.1)
         temp_array = temp_array.at[i].set(mu)
     return temp_array.mean()
 
