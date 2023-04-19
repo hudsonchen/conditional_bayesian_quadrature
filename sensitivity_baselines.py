@@ -28,50 +28,51 @@ def polynomial(X, Y, gY, X_prime, poly=3):
     return phi, std
 
 
-def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
-    # xi = X[i, :]
-    # Yi = Y[i, :, :]
-    # gYi = gY[i, :]
-    tree = (X, Y, gY)
-    importance_sampling_single_fn = jax.jit(partial(importance_sampling_single, log_py_x_fn=log_py_x_fn, x_prime=x_prime))
-    importance_sampling_single_vmap = jax.jit(jax.vmap(importance_sampling_single_fn, in_axes=((0, 0, 0), )))
-    temp_array = importance_sampling_single_vmap(tree)
-    return temp_array.mean()
+# def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
+#     # xi = X[i, :]
+#     # Yi = Y[i, :, :]
+#     # gYi = gY[i, :]
+#     tree = (X, Y, gY)
+#     importance_sampling_single_fn = jax.jit(partial(importance_sampling_single, log_py_x_fn=log_py_x_fn, x_prime=x_prime))
+#     importance_sampling_single_vmap = jax.jit(jax.vmap(importance_sampling_single_fn, in_axes=((0, 0, 0), )))
+#     temp_array = importance_sampling_single_vmap(tree)
+#     return temp_array.mean()
+#
+#
+# @partial(jax.jit, static_argnums=(1,))
+# def importance_sampling_single(tree, log_py_x_fn, x_prime):
+#     """
+#     :param log_py_x_fn:
+#     :param tree: consists of xi: (D, ), Yi: (Ny, D), gYi: (Ny, )
+#     :param x_prime:
+#     :return:
+#     """
+#     xi, Yi, gYi = tree
+#     log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
+#     log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
+#     weight = jnp.exp(log_py_x_prime - log_py_x_i)
+#     mu = (weight * gYi).mean() / (weight.mean() + 0.01)
+#     return mu
+#
+#
+# def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
+#     """
+#     Vectorized importance sampling
+#     :param log_py_x_fn:
+#     :param X_prime: N_test*D
+#     :param X: Nx*D
+#     :param Y: Nx*Ny*D
+#     :param gY: Nx*Ny
+#     :return:
+#     """
+#     importance_sampling_fn = jax.jit(partial(importance_sampling_, log_py_x_fn, X, Y, gY))
+#     importance_sampling_vmap = jax.jit(jax.vmap(importance_sampling_fn))
+#     IS_mean = importance_sampling_vmap(X_prime)
+#     return IS_mean, 0 * IS_mean
 
 
-@partial(jax.jit, static_argnums=(1,))
-def importance_sampling_single(tree, log_py_x_fn, x_prime):
-    """
-    :param log_py_x_fn:
-    :param tree: consists of xi: (D, ), Yi: (Ny, D), gYi: (Ny, )
-    :param x_prime:
-    :return:
-    """
-    xi, Yi, gYi = tree
-    log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
-    log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
-    weight = jnp.exp(log_py_x_prime - log_py_x_i)
-    mu = (weight * gYi).mean() / (weight.mean() + 0.01)
-    return mu
-
-
+@partial(jax.jit, static_argnums=(0,))
 def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
-    """
-    Vectorized importance sampling
-    :param log_py_x_fn:
-    :param X_prime: N_test*D
-    :param X: Nx*D
-    :param Y: Nx*Ny*D
-    :param gY: Nx*Ny
-    :return:
-    """
-    importance_sampling_fn = jax.jit(partial(importance_sampling_, log_py_x_fn, X, Y, gY))
-    importance_sampling_vmap = jax.jit(jax.vmap(importance_sampling_fn))
-    IS_mean = importance_sampling_vmap(X_prime)
-    return IS_mean, 0 * IS_mean
-
-
-def importance_sampling_old(log_py_x_fn, X, Y, gY, X_prime):
     """
     :param log_py_x_fn:
     :param X_prime: N_test*D
@@ -82,19 +83,19 @@ def importance_sampling_old(log_py_x_fn, X, Y, gY, X_prime):
     """
     Nx, Ny = Y.shape[0], Y.shape[1]
     N_test = X_prime.shape[0]
-    IS_prime_list = []
-    for j in range(N_test):
-        IS_list = []
-        x_prime = X_prime[j, :]
-        for i in range(Nx):
-            xi = X[i, :]
-            Yi = Y[i, :, :]
-            gYi = gY[i, :]
-            log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
-            log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
-            weight = jnp.exp(log_py_x_prime - log_py_x_i)
-            mu = (weight * gYi).mean() / (weight.mean() + 0.01)
-            IS_list.append(mu)
-        IS_prime_list.append(jnp.array(IS_list).mean())
-        pause = True
-    return jnp.array(IS_prime_list), 0
+    # log_py_x_prime is (Nx, Ny, N_test)
+    log_py_x_prime = log_py_x_fn(theta=Y, alpha=X_prime)
+    # log_py_x_i is (Nx, Ny, Nx)
+    log_py_x_i = log_py_x_fn(theta=Y, alpha=X)
+
+    # log_py_x_prime is (Nx, Ny, N_test)
+    log_py_x_prime = log_py_x_prime.transpose(2, 0, 1)
+    # log_py_x_i is (Nx, Nx, Ny)
+    log_py_x_i = log_py_x_i.transpose(2, 0, 1)
+
+    # weight is (N_test, Nx, Ny)
+    weight = jnp.exp(log_py_x_prime - jnp.diagonal(log_py_x_i, axis1=0, axis2=1).transpose(1, 0))
+    # mu is (N_test, Nx)
+    mu = (weight * gY).mean(2) / (weight.mean(2))
+    IS_mean = mu.mean(1)
+    return IS_mean, 0

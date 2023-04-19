@@ -61,14 +61,17 @@ def generate_data(rng_key, D, N, noise):
 @jax.jit
 def posterior_full(X, Y, prior_cov, noise):
     """
-    :param prior_cov: (D, )
+    :param prior_cov: (N3, D)
     :param X: (N, D-1)
     :param Y: (N, 1)
     :param noise: float
-    :return:
+    :return: (N3, D), (N3, D, D)
     """
     X_with_one = jnp.hstack([X, jnp.ones([X.shape[0], 1])])
-    prior_cov_inv = jnp.diag(1. / prior_cov)
+    D = prior_cov.shape[-1]
+    prior_cov_inv = 1. / prior_cov
+    # (N3, D, D)
+    prior_cov_inv = jnp.einsum('ij,jk->ijk', prior_cov_inv, jnp.eye(D))
     beta_inv = noise ** 2
     beta = 1. / beta_inv
     post_cov = jnp.linalg.inv(prior_cov_inv + beta * X_with_one.T @ X_with_one)
@@ -79,28 +82,38 @@ def posterior_full(X, Y, prior_cov, noise):
 @jax.jit
 def normal_logpdf(x, mu, Sigma):
     """
-    :param x: (N, D)
-    :param mu: (D, )
-    :param Sigma: (D, D)
-    :return:
+    :param x: (N1, N2, D)
+    :param mu: (N3, D)
+    :param Sigma: (N3, D, D)
+    :return: (N1, N2, N3)
     """
-    D = x.shape[1]
-    return jnp.log(2 * jnp.pi) * (-D / 2) + jnp.log(jnp.linalg.det(Sigma)) * (-0.5) - 0.5 * (x - mu.T) @ jnp.linalg.inv(Sigma) @ (x - mu.T).T
+    D = x.shape[-1]
+    x_expanded = jnp.expand_dims(x, 2)
+    mean_expanded = jnp.expand_dims(mu, (0, 1))
+    # covariance_expanded = jnp.expand_dims(covariance, 0)
+
+    diff = x_expanded - mean_expanded
+    precision_matrix = jnp.linalg.inv(Sigma)
+    exponent = -0.5 * jnp.einsum('nijk,jkl,nijl->nij', diff, precision_matrix, diff)
+    normalization = -0.5 * (D * jnp.log(2 * jnp.pi) - 0.5 * jnp.log(jnp.linalg.det(Sigma)))
+    return normalization + exponent
 
 
 @jax.jit
 def posterior_log_llk(theta, prior_cov_base, X, Y, alpha, noise):
     """
-    :param theta: (N1, D)
+    :param theta: (N1, N2, D)
     :param prior_cov_base: scalar
     :param X: data
     :param Y: data
-    :param alpha: (N2, N3, D)
+    :param alpha: (N3, D)
     :param noise: scalar
     :return:
     """
-    D = theta.shape[1]
-    prior_cov = jnp.array([prior_cov_base] * D) + alpha
+    D = theta.shape[2]
+    # prior_cov is (N3, D)
+    prior_cov = jnp.array([[prior_cov_base] * D]) + alpha
+    # post_mean is (N3, D), post_cov is (N3, D, D), theta is (N1, N2, D)
     post_mean, post_cov = posterior_full(X, Y, prior_cov, noise)
     return normal_logpdf(theta, post_mean, post_cov)
 
@@ -125,6 +138,11 @@ def g2(y):
 
 
 def g2_ground_truth(mu, Sigma):
+    """
+    :param mu: (D, )
+    :param Sigma: (D, D)
+    :return: scalar
+    """
     D = mu.shape[0]
     analytical_1 = jnp.exp(-0.5 * mu.T @ jnp.linalg.inv(jnp.eye(D) * (D ** 1) + Sigma) @ mu)
     analytical_2 = jnp.linalg.det(jnp.eye(D) + Sigma / (D ** 1)) ** (-0.5)
@@ -263,6 +281,7 @@ def main(args):
     sample_size = 1000
     test_num = 100
     data_number = 5
+    # X is (N, D-1), Y is (N, 1)
     X, Y = generate_data(rng_key, D, data_number, noise)
 
     if args.g_fn == 'g1':
@@ -282,13 +301,13 @@ def main(args):
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
     cov_test_line = jnp.array([[prior_cov_base] * D]) + alpha_test_line
-    post_mean_test_line, post_var_test_line = jnp.zeros([test_num, D]), jnp.zeros([test_num, D, D])
     ground_truth = jnp.zeros(test_num)
+
+    post_mean, post_var = posterior_full(X, Y, cov_test_line, noise)
+    # post_mean: (test_num, D), post_var: (test_num, D, D)
     for i in range(test_num):
-        post_mean, post_var = posterior_full(X, Y, cov_test_line[i, :], noise)
-        post_mean_test_line = post_mean_test_line.at[i, :].set(post_mean)
-        post_var_test_line = post_var_test_line.at[i, :, :].set(post_var)
-        ground_truth = ground_truth.at[i].set(g_ground_truth_fn(post_mean, post_var))
+        ground_truth = ground_truth.at[i].set(g_ground_truth_fn(post_mean[i, :], post_var[i, :, :]))
+
     jnp.save(f"{args.save_path}/test_line.npy", alpha_test_line)
     jnp.save(f"{args.save_path}/ground_truth.npy", ground_truth)
 
@@ -301,18 +320,15 @@ def main(args):
         samples_all = jnp.zeros([n_alpha, sample_size, D])
         # This is g(Y), size n_alpha * sample_size
         g_samples_all = jnp.zeros([n_alpha, sample_size])
-        mu_y_x_all = jnp.zeros([n_alpha, D])
-        var_y_x_all = jnp.zeros([n_alpha, D, D])
+
+        prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
+        mu_y_x_all, var_y_x_all = posterior_full(X, Y, prior_cov, noise)
 
         for i in range(n_alpha):
             rng_key, _ = jax.random.split(rng_key)
-            prior_cov = jnp.array([prior_cov_base] * D) + alpha_all[i, :]
-            mu_y_x, var_y_x = posterior_full(X, Y, prior_cov, noise)
-            samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x, cov=var_y_x, shape=(1000, ))
+            samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :], shape=(1000, ))
             samples_all = samples_all.at[i, :, :].set(samples)
             g_samples_all = g_samples_all.at[i, :].set(g(samples))
-            mu_y_x_all = mu_y_x_all.at[i, :].set(mu_y_x)
-            var_y_x_all = var_y_x_all.at[i, :, :].set(var_y_x)
 
         mse_BMC_array = jnp.zeros(len(N_theta_array))
         mse_KMS_array = jnp.zeros(len(N_theta_array))
@@ -380,11 +396,8 @@ def main(args):
             IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
                                                   g_samples_all[:, :n_theta], alpha_test_line)
             time_IS = time.time() - t0
-            IS_mean_old, IS_std_old = importance_sampling_old(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
-                                                              g_samples_all[:, :n_theta], alpha_test_line)
             print("IS time", time_IS)
-            print("IS_mean new", IS_mean[:5])
-            print("IS_mean old", IS_mean_old[:5])
+            print("IS_mean", IS_mean[:5])
             time_IS_array = time_IS_array.at[j].set(time_IS)
 
             mse_BMC = jnp.mean((BMC_mean - ground_truth) ** 2)
@@ -446,18 +459,15 @@ def main(args):
     samples_all = jnp.zeros([n_alpha, n_theta, D])
     # This is g(Y), size n_alpha * sample_size
     g_samples_all = jnp.zeros([n_alpha, n_theta])
-    mu_y_x_all = jnp.zeros([n_alpha, D])
-    var_y_x_all = jnp.zeros([n_alpha, D, D])
+
+    prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
+    mu_y_x_all, var_y_x_all = posterior_full(X, Y, prior_cov, noise)
 
     for i in range(n_alpha):
         rng_key, _ = jax.random.split(rng_key)
-        prior_cov = jnp.array([prior_cov_base] * D) + alpha_all[i, :]
-        mu_y_x, var_y_x = posterior_full(X, Y, prior_cov, noise)
-        samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x, cov=var_y_x, shape=(n_theta, ))
+        samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :], shape=(n_theta, ))
         samples_all = samples_all.at[i, :, :].set(samples)
         g_samples_all = g_samples_all.at[i, :].set(g(samples))
-        mu_y_x_all = mu_y_x_all.at[i, :].set(mu_y_x)
-        var_y_x_all = var_y_x_all.at[i, :, :].set(var_y_x)
 
     mc_mean_array = g_samples_all.mean(axis=1)
     rng_key, _ = jax.random.split(rng_key)
