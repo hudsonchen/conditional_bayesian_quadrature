@@ -71,7 +71,7 @@ def polynomial(X, Y, gY, X_prime, poly=3):
 #     return IS_mean, 0 * IS_mean
 
 
-@partial(jax.jit, static_argnums=(0,))
+# @partial(jax.jit, static_argnums=(0,))
 def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
     """
     :param log_py_x_fn:
@@ -81,8 +81,6 @@ def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
     :param gY: Nx*Ny
     :return:
     """
-    Nx, Ny = Y.shape[0], Y.shape[1]
-    N_test = X_prime.shape[0]
     # log_py_x_prime is (Nx, Ny, N_test)
     log_py_x_prime = log_py_x_fn(theta=Y, alpha=X_prime)
     # log_py_x_i is (Nx, Ny, Nx)

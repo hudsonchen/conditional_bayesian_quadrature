@@ -99,7 +99,7 @@ def normal_logpdf(x, mu, Sigma):
     return normalization + exponent
 
 
-@jax.jit
+# @jax.jit
 def posterior_log_llk(theta, prior_cov_base, X, Y, alpha, noise):
     """
     :param theta: (N1, N2, D)
@@ -392,7 +392,7 @@ def main(args):
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 
             t0 = time.time()
-            log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
+            log_py_x_fn = jax.jit(partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base))
             IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
                                                   g_samples_all[:, :n_theta], alpha_test_line)
             time_IS = time.time() - t0
@@ -480,8 +480,8 @@ def main(args):
     time_LSMC_large = time.time() - t0
     print(f"Time for LSMC is {time_LSMC_large} seconds.")
 
+    log_py_x_fn = jax.jit(partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base))
     t0 = time.time()
-    log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
     IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
     time_IS_large = time.time() - t0
     print(f"Time for IS is {time_IS_large} seconds.")
