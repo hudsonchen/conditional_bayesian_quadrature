@@ -86,17 +86,17 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
         l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
 
     # ========== Debug code ==========
-    #     l_debug_list.append(l)
-    #     c_debug_list.append(c)
-    #     A_debug_list.append(A)
-    #     nll_debug_list.append(nllk_value)
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    # ax_1.plot(l_debug_list)
-    # ax_2.plot(c_debug_list)
-    # ax_3.plot(A_debug_list)
-    # ax_4.plot(nll_debug_list)
-    # plt.show()
+        l_debug_list.append(l)
+        c_debug_list.append(c)
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
     # ========== Debug code ==========
 
     l, c, A = l, c, A
@@ -167,8 +167,8 @@ def peak_infected_time(infections):
 
 
 def SIR(args, rng_key):
-    # Ny_array = jnp.array([10, 20, 50])
-    Ny_array = jnp.arange(5, 60, 5)
+    Ny_array = jnp.array([10, 20, 50])
+    # Ny_array = jnp.arange(5, 60, 5)
     Nx_array = jnp.array([5])
     # Nx_array = jnp.array([10])
     N_test = 10
@@ -181,7 +181,7 @@ def SIR(args, rng_key):
     scale = 1. / rate
     T = 150
     dt = 1.0
-    SamplesNum = 1000
+    SamplesNum = 5000
 
     generate_data_fn = partial(SIR_utils.generate_data, gamma=gamma_real, population=population,
                                T=T, dt=dt, rng_key=rng_key)
@@ -268,7 +268,7 @@ def SIR(args, rng_key):
                 # ========== Debug code ==========
                 large_samples = generate_data_vmap(samples)
                 f_beta_MC_large_sample = f(large_samples).mean()
-                print('True value (MC with large samples)', f_beta_MC_large_sample)
+                print(f'True value (MC with {SamplesNum} samples)', f_beta_MC_large_sample)
                 print(f'MC with {Ny} number of Y', MC)
                 print(f'BMC with {Ny} number of Y', BMC_mean)
                 print(f"=================")

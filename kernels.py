@@ -249,6 +249,21 @@ def kme_double_RBF_Gaussian(mu, Sigma, l):
     part2 = jnp.linalg.det(jnp.eye(D) + Sigma @ jnp.linalg.inv(Lambda + Sigma))
     return part1 ** (-0.5) * part2 ** (-0.5)
 
+# def kme_Matern_Gamma(alpha, beta, l, y):
+#     """
+#     :param alpha: scalar
+#     :param beta: scalar
+#     :param l: scalar
+#     :param y: (N, )
+#     :return: (N, )
+#     """
+#     aprime = alpha + 1
+#     bprime = beta + (jnp.sqrt(3.) / (l ** 2))
+#     poly_term = (jnp.sqrt(3.) / (l ** 2) * ((beta ** alpha) / (bprime ** aprime)) * alpha) \
+#                 + (1. - jnp.sqrt(3) / (l ** 2) * y) * ((beta / bprime) ** alpha)
+#     exp_term = jnp.exp(jnp.sqrt(3.) * y / (l ** 2))
+#     return poly_term * exp_term
+
 
 def main():
     seed = 0
