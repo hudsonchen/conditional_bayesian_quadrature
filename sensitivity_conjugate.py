@@ -79,32 +79,30 @@ def posterior_full(X, Y, prior_cov, noise):
 @jax.jit
 def normal_logpdf(x, mu, Sigma):
     """
-    :param x: (D, )
+    :param x: (N, D)
     :param mu: (D, )
     :param Sigma: (D, D)
     :return:
     """
-    D = x.shape[0]
-    return jnp.log(2 * jnp.pi) * (-D / 2) + jnp.log(jnp.linalg.det(Sigma)) * (-0.5) - 0.5 * (x - mu).T @ jnp.linalg.inv(Sigma) @ (x - mu)
+    D = x.shape[1]
+    return jnp.log(2 * jnp.pi) * (-D / 2) + jnp.log(jnp.linalg.det(Sigma)) * (-0.5) - 0.5 * (x - mu.T) @ jnp.linalg.inv(Sigma) @ (x - mu.T).T
 
 
 @jax.jit
 def posterior_log_llk(theta, prior_cov_base, X, Y, alpha, noise):
     """
-    :param theta: (N, D)
+    :param theta: (N1, D)
     :param prior_cov_base: scalar
     :param X: data
     :param Y: data
-    :param alpha: (D, )
+    :param alpha: (N2, N3, D)
     :param noise: scalar
     :return:
     """
     D = theta.shape[1]
     prior_cov = jnp.array([prior_cov_base] * D) + alpha
     post_mean, post_cov = posterior_full(X, Y, prior_cov, noise)
-    logpdf = partial(normal_logpdf, mu=post_mean, Sigma=post_cov)
-    logpdf_vmap = jax.vmap(logpdf)
-    return logpdf_vmap(theta)
+    return normal_logpdf(theta, post_mean, post_cov)
 
 
 def g1(y):
@@ -276,10 +274,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    # N_alpha_array = jnp.array([6])
-    N_alpha_array = jnp.arange(2, 32, 4)
-    # N_theta_array = jnp.array([30])
-    N_theta_array = jnp.arange(5, 105, 5)
+    N_alpha_array = jnp.array([5, 10])
+    # N_alpha_array = jnp.arange(2, 32, 4)
+    N_theta_array = jnp.array([30])
+    # N_theta_array = jnp.arange(5, 105, 5)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -374,6 +372,7 @@ def main(args):
             LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all[:, :n_theta, :],
                                              g_samples_all[:, :n_theta], alpha_test_line)
             time_LSMC = time.time() - t0
+            print("LSMC time", time_LSMC)
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 
             t0 = time.time()
@@ -381,6 +380,11 @@ def main(args):
             IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
                                                   g_samples_all[:, :n_theta], alpha_test_line)
             time_IS = time.time() - t0
+            IS_mean_old, IS_std_old = importance_sampling_old(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
+                                                              g_samples_all[:, :n_theta], alpha_test_line)
+            print("IS time", time_IS)
+            print("IS_mean new", IS_mean[:5])
+            print("IS_mean old", IS_mean_old[:5])
             time_IS_array = time_IS_array.at[j].set(time_IS)
 
             mse_BMC = jnp.mean((BMC_mean - ground_truth) ** 2)
@@ -464,11 +468,13 @@ def main(args):
     t0 = time.time()
     LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
     time_LSMC_large = time.time() - t0
+    print(f"Time for LSMC is {time_LSMC_large} seconds.")
 
     t0 = time.time()
     log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
     IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
     time_IS_large = time.time() - t0
+    print(f"Time for IS is {time_IS_large} seconds.")
 
     mse_KMS_large = jnp.mean((KMS_mean - ground_truth) ** 2)
     mse_LSMC_large = jnp.mean((LSMC_mean - ground_truth) ** 2)

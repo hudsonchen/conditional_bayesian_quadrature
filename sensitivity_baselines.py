@@ -29,18 +29,30 @@ def polynomial(X, Y, gY, X_prime, poly=3):
 
 
 def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
-    Nx, Ny = Y.shape[0], Y.shape[1]
-    temp_array = jnp.zeros([Nx])
-    for i in range(Nx):
-        xi = X[i, :]
-        Yi = Y[i, :, :]
-        gYi = gY[i, :]
-        log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
-        log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
-        weight = jnp.exp(log_py_x_prime - log_py_x_i)
-        mu = (weight * gYi).mean() / (weight.mean() + 0.01)
-        temp_array = temp_array.at[i].set(mu)
+    # xi = X[i, :]
+    # Yi = Y[i, :, :]
+    # gYi = gY[i, :]
+    tree = (X, Y, gY)
+    importance_sampling_single_fn = jax.jit(partial(importance_sampling_single, log_py_x_fn=log_py_x_fn, x_prime=x_prime))
+    importance_sampling_single_vmap = jax.jit(jax.vmap(importance_sampling_single_fn, in_axes=((0, 0, 0), )))
+    temp_array = importance_sampling_single_vmap(tree)
     return temp_array.mean()
+
+
+@partial(jax.jit, static_argnums=(1,))
+def importance_sampling_single(tree, log_py_x_fn, x_prime):
+    """
+    :param log_py_x_fn:
+    :param tree: consists of xi: (D, ), Yi: (Ny, D), gYi: (Ny, )
+    :param x_prime:
+    :return:
+    """
+    xi, Yi, gYi = tree
+    log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
+    log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
+    weight = jnp.exp(log_py_x_prime - log_py_x_i)
+    mu = (weight * gYi).mean() / (weight.mean() + 0.01)
+    return mu
 
 
 def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
@@ -53,8 +65,8 @@ def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
     :param gY: Nx*Ny
     :return:
     """
-    importance_sampling_fn = partial(importance_sampling_, log_py_x_fn, X, Y, gY)
-    importance_sampling_vmap = jax.vmap(importance_sampling_fn)
+    importance_sampling_fn = jax.jit(partial(importance_sampling_, log_py_x_fn, X, Y, gY))
+    importance_sampling_vmap = jax.jit(jax.vmap(importance_sampling_fn))
     IS_mean = importance_sampling_vmap(X_prime)
     return IS_mean, 0 * IS_mean
 
@@ -81,7 +93,7 @@ def importance_sampling_old(log_py_x_fn, X, Y, gY, X_prime):
             log_py_x_prime = log_py_x_fn(theta=Yi, alpha=x_prime)
             log_py_x_i = log_py_x_fn(theta=Yi, alpha=xi)
             weight = jnp.exp(log_py_x_prime - log_py_x_i)
-            mu = (weight * gYi).mean() / (weight.mean())
+            mu = (weight * gYi).mean() / (weight.mean() + 0.01)
             IS_list.append(mu)
         IS_prime_list.append(jnp.array(IS_list).mean())
         pause = True
