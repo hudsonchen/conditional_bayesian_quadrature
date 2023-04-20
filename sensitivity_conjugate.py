@@ -11,7 +11,7 @@ import argparse
 from sensitivity_baselines import *
 from tqdm import tqdm
 from kernels import *
-from utils import finance_utils, sensitivity_utils
+from utils import sensitivity_utils
 import time
 import optax
 from jax.config import config

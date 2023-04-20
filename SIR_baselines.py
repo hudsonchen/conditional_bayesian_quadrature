@@ -29,19 +29,26 @@ def polynomial(X, Y, gY, X_prime, poly=2):
     return phi, std
 
 
-def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
-    Nx, Ny = Y.shape
-    x_prime = x_prime[:, None]
-    dummy = jnp.zeros(Nx)
-    for i in range(Nx):
-        x = X[i]
-        Yi = Y[i, :][:, None]
-        gYi = gY[i, :][:, None]
+def importance_sampling_single(tree, log_py_x_fn, x_prime):
+    """
+    :param log_py_x_fn:
+    :param tree: consists of xi: scalar, Yi: (Ny, ), gYi: (Ny, )
+    :param x_prime:
+    :return:
+    """
+    xi, Yi, gYi = tree
+    log_py_x_prime = log_py_x_fn(beta=Yi, beta_0=x_prime)
+    log_py_x_i = log_py_x_fn(beta=Yi, beta_0=xi)
+    weight = jnp.exp(log_py_x_prime - log_py_x_i)
+    mu = (weight * gYi).mean() / weight.mean()
+    return mu
 
-        log_py_x_i = log_py_x_fn(beta=Yi, beta_0=x)
-        log_py_x_prime = log_py_x_fn(beta=Yi, beta_0=x_prime)
-        weight = jnp.exp(log_py_x_prime - log_py_x_i)
-        dummy = dummy.at[i].set((weight * gYi).sum() / weight.sum())
+
+def importance_sampling_(log_py_x_fn, X, Y, gY, x_prime):
+    importance_sampling_single_fn = partial(importance_sampling_single, log_py_x_fn=log_py_x_fn, x_prime=x_prime)
+    importance_sampling_single_vmap = jax.vmap(importance_sampling_single_fn, in_axes=((0, 0, 0),))
+    tree = (X, Y, gY)
+    dummy = importance_sampling_single_vmap(tree)
     return dummy.mean()
 
 

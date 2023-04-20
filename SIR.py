@@ -75,10 +75,10 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     #     return l, c, A, opt_state, nllk_value
 
     # ========== Debug code ==========
-    l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
+    # l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
     # ========== Debug code ==========
 
     # for _ in range(0):
@@ -124,7 +124,7 @@ def log_prior(beta, beta_0, rate, rng_key):
 
 
 # @jax.jit
-def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
+def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, eps):
     """
     :param psi_y_x_mean: n_alpha*1
     :param psi_y_x_std: n_alpha*1
@@ -138,12 +138,27 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, lx):
     Sigma_standardized = psi_y_x_std / Mu_std
     X_standardized, X_mean, X_std = SIR_utils.standardize(X)
     x_prime_standardized = (x_prime - X_mean) / X_std
-    noise = 1e-2
 
-    K_train_train = my_RBF(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)  # + jnp.diag(Sigma_standardized)
+    l_array = jnp.array([0.3, 1.0, 3.0])
+    nll_array = 0 * l_array
+    A_list = []
+
+    for i, l in enumerate(l_array):
+        K_no_scale = my_RBF(X_standardized, X_standardized, l)
+        A = Mu_standardized.T @ K_no_scale @ Mu_standardized / Nx
+        A_list.append(A)
+        K = A * K_no_scale
+        K_inv = jnp.linalg.inv(K + eps * jnp.eye(Nx))
+        nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / Nx
+        nll_array = nll_array.at[i].set(nll[0][0])
+
+    l = l_array[nll_array.argmin()]
+    A = A_list[nll_array.argmin()]
+
+    K_train_train = my_RBF(X_standardized, X_standardized, l) + eps * jnp.eye(Nx) #+ jnp.diag(Sigma_standardized)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = my_RBF(x_prime_standardized, X_standardized, lx)
-    K_test_test = my_RBF(x_prime_standardized, x_prime_standardized, lx) + noise
+    K_test_train = my_RBF(x_prime_standardized, X_standardized, l)
+    K_test_test = my_RBF(x_prime_standardized, x_prime_standardized, l) + eps
     mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
     var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     std_y_x_prime = jnp.sqrt(var_y_x_prime)
@@ -168,12 +183,12 @@ def peak_infected_time(infections):
 
 
 def SIR(args, rng_key):
-    Ny_array = jnp.array([10, 20, 50])
-    # Ny_array = jnp.arange(5, 60, 5)
-    Nx_array = jnp.array([5])
-    # Nx_array = jnp.arange(5, 60, 5)
-    N_test = 10
-    # N_test = 100
+    # Ny_array = jnp.array([10, 20, 50])
+    Ny_array = jnp.arange(5, 60, 10)
+    # Nx_array = jnp.array([5])
+    Nx_array = jnp.arange(5, 60, 10)
+    # N_test = 3
+    N_test = 100
 
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
@@ -206,7 +221,7 @@ def SIR(args, rng_key):
         ground_truth_array = ground_truth_array.at[i].set(f(temp).mean())
 
     for Nx in Nx_array:
-        beta_0_array = jnp.linspace(0.1, 0.75, Nx)
+        beta_0_array = jnp.linspace(0.1, 0.8, Nx)
 
         for Ny in Ny_array:
             BMC_mean_array = jnp.zeros([Nx])
@@ -258,7 +273,7 @@ def SIR(args, rng_key):
                 BMC_mean, BMC_std = Bayesian_Monte_Carlo(rng_key, beta_array_standardized[:, None],
                                                          f_beta_array_standardized,
                                                          d_log_beta_array * beta_array_std, stein_Matern)
-                BMC_time_single = time.time() - tt0
+                tt1 = time.time()
 
                 BMC_mean = BMC_mean * f_beta_array_scale
                 BMC_std = BMC_std * f_beta_array_scale
@@ -276,14 +291,13 @@ def SIR(args, rng_key):
                 # pause = True
                 # ========== Debug code ===========
 
-            lx = 1.0
             t0 = time.time()
             BMC_mean, BMC_std = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
-                                   beta_0_array[:, None], beta_0_test[:, None], lx)
-            BMC_time = time.time() - t0 + BMC_time_single * Nx
+                                   beta_0_array[:, None], beta_0_test[:, None], eps=0.01)
+            BMC_time = time.time() - t0 + (tt1 - tt0) * Nx
 
             BMC_mean = BMC_mean.squeeze()
-            BMC_std = jnp.diag(BMC_std).squeeze()
+            BMC_std = jnp.diag(BMC_std.squeeze())
 
             # Importance sampling
             t0 = time.time()
@@ -295,7 +309,7 @@ def SIR(args, rng_key):
             # Kernel mean shrinkage estimator
             t0 = time.time()
             KMS_mean, KMS_std = GP(MC_mean_array[:, None], MC_std_array[:, None],
-                                   beta_0_array[:, None], beta_0_test[:, None], lx)
+                                   beta_0_array[:, None], beta_0_test[:, None], eps=0.01)
             KMS_time = time.time() - t0
 
             # Least squared Monte Carlo
@@ -304,8 +318,11 @@ def SIR(args, rng_key):
                                                     f_beta_array_all, beta_0_test[:, None])
             LSMC_time = time.time() - t0
 
+            calibration = SIR_utils.calibrate(ground_truth_array, BMC_mean, BMC_std)
+
             SIR_utils.save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
-                           LSMC_mean, IS_mean, ground_truth_array, beta_0_array, BMC_time, KMS_time, LSMC_time, IS_time)
+                           LSMC_mean, IS_mean, ground_truth_array, beta_0_array, BMC_time, KMS_time, LSMC_time, IS_time,
+                           calibration)
 
     return
 
