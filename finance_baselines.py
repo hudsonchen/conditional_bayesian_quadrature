@@ -34,21 +34,22 @@ def polynomial(args, X, Y, gY, X_prime, poly=4):
     return phi, std
 
 
-def importance_sampling_(py_x_fn, X, Y, gY, x_prime):
-    Nx, Ny = Y.shape
-    x_prime = x_prime[:, None]
-    dummy = jnp.zeros(Nx)
-    for i in range(Nx):
-        x = X[i]
-        Yi = Y[i, :][:, None]
-        Yi_standardized, Yi_mean, Yi_scale = finance_utils.standardize(Yi)
-        gYi = gY[i, :][:, None]
+def importance_sampling_single(tree, py_x_fn, x_prime):
+    x, Yi, gYi = tree
+    Yi_standardized, Yi_mean, Yi_scale = finance_utils.standardize(Yi)
+    py_x_standardized_fn = partial(py_x_fn, sigma=0.3, T=2, t=1, y_scale=Yi_scale, y_mean=Yi_mean)
+    py_x_prime = py_x_standardized_fn(Yi_standardized, x_prime)
+    py_x_i = py_x_standardized_fn(Yi_standardized, x)
+    weight = py_x_prime / py_x_i
+    return (weight * gYi).mean() / weight.mean()
 
-        py_x_standardized_fn = partial(py_x_fn, sigma=0.3, T=2, t=1, y_scale=Yi_scale, y_mean=Yi_mean)
-        py_x_prime = py_x_standardized_fn(Yi_standardized, x_prime)
-        py_x_i = py_x_standardized_fn(Yi_standardized, x)
-        weight = py_x_prime / py_x_i
-        dummy = dummy.at[i].set((weight * gYi).mean() / weight.mean())
+
+def importance_sampling_(py_x_fn, X, Y, gY, x_prime):
+    x_prime = x_prime[:, None]
+    importance_sampling_single_fn = partial(importance_sampling_single, py_x_fn=py_x_fn, x_prime=x_prime)
+    importance_sampling_single_vmap = jax.vmap(importance_sampling_single_fn, in_axes=((0, 0, 0),))
+    tree = (X, Y, gY)
+    dummy = importance_sampling_single_vmap(tree)
     return dummy.mean()
 
 
