@@ -191,7 +191,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     N, D = y.shape[0], y.shape[1]
     eps = 1e-6
 
-    l_array = jnp.array([0.3, 1.0, 3.0]) * D
+    l_array = jnp.array([0.1, 0.3, 1.0, 3.0]) * D
     nll_array = 0 * l_array
     A_list = []
 
@@ -280,7 +280,7 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([5, 10, 20])
+    # N_alpha_array = jnp.array([10, 20])
     N_alpha_array = jnp.concatenate((jnp.array([2, 5]), jnp.arange(5, 110, 10)))
     # N_theta_array = jnp.array([10, 20, 30])
     N_theta_array = jnp.arange(5, 105, 5)
@@ -334,8 +334,9 @@ def main(args):
 
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
-                samples_i = samples_all[i, :n_theta, :]
-                g_samples_i = g_samples_all[i, :n_theta]
+                index = jax.random.permutation(rng_key, jnp.arange(sample_size))[:n_theta]
+                samples_i = samples_all[i, index, :]
+                g_samples_i = g_samples_all[i, index]
                 mu_y_x_i = mu_y_x_all[i, :]
                 var_y_x_i = var_y_x_all[i, :, :]
 
@@ -358,7 +359,7 @@ def main(args):
                 # print(f'BMC with {n_theta} number of Y', BMC_value)
                 # print(f'BMC uncertainty {psi_std}')
                 # print(f"=============")
-                # pause = True
+                pause = True
                 # ============= Debug code =============
 
             rng_key, _ = jax.random.split(rng_key)
@@ -401,38 +402,38 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            print(f"=============")
-            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            print(f"=============")
-            pause = True
+            # print(f"=============")
+            # print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            # print(f"=============")
+            # pause = True
             # ============= Debug code =============
 
-        # ============= Debug code =============
-        fig = plt.figure(figsize=(15, 6))
-        ax_1, ax_2 = fig.subplots(1, 2)
-        ax_1.plot(N_theta_array, mse_BMC_array, label='BMC')
-        ax_1.plot(N_theta_array, mse_KMS_array, label='KMS')
-        ax_1.plot(N_theta_array, mse_LSMC_array, label='LSMC')
-        ax_1.plot(N_theta_array, mse_IS_array, label='IS')
-        ax_1.legend()
-        ax_1.set_xlabel('Number of Y')
-        ax_1.set_yscale('log')
-        ax_1.set_ylabel('MSE')
-        ax_2.plot(N_theta_array, time_BMC_array, label='BMC')
-        ax_2.plot(N_theta_array, time_KMS_array, label='KMS')
-        ax_2.plot(N_theta_array, time_LSMC_array, label='LSMC')
-        ax_2.plot(N_theta_array, time_IS_array, label='IS')
-        ax_2.legend()
-        ax_2.set_xlabel('Number of Y')
-        ax_2.set_ylabel('Time')
-
-        plt.suptitle(f"Sensitivity analysis with {n_alpha} number of X")
-        plt.savefig(f"{args.save_path}/sensitivity_conjugate_Nx_{n_alpha}.pdf")
-        # plt.show()
-        plt.close()
+        # # ============= Debug code =============
+        # fig = plt.figure(figsize=(15, 6))
+        # ax_1, ax_2 = fig.subplots(1, 2)
+        # ax_1.plot(N_theta_array, mse_BMC_array, label='BMC')
+        # ax_1.plot(N_theta_array, mse_KMS_array, label='KMS')
+        # ax_1.plot(N_theta_array, mse_LSMC_array, label='LSMC')
+        # ax_1.plot(N_theta_array, mse_IS_array, label='IS')
+        # ax_1.legend()
+        # ax_1.set_xlabel('Number of Y')
+        # ax_1.set_yscale('log')
+        # ax_1.set_ylabel('MSE')
+        # ax_2.plot(N_theta_array, time_BMC_array, label='BMC')
+        # ax_2.plot(N_theta_array, time_KMS_array, label='KMS')
+        # ax_2.plot(N_theta_array, time_LSMC_array, label='LSMC')
+        # ax_2.plot(N_theta_array, time_IS_array, label='IS')
+        # ax_2.legend()
+        # ax_2.set_xlabel('Number of Y')
+        # ax_2.set_ylabel('Time')
+        #
+        # plt.suptitle(f"Sensitivity analysis with {n_alpha} number of X")
+        # plt.savefig(f"{args.save_path}/sensitivity_conjugate_Nx_{n_alpha}.pdf")
+        # # plt.show()
+        # plt.close()
         # ============= Debug code =============
 
     # For very very large Nx and Ny. Test the performance of other methods
