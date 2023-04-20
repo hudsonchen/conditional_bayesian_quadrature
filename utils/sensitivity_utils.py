@@ -5,7 +5,7 @@ from scipy.stats import norm
 
 
 def save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
-                                   time_BMC, time_KMS, time_LSMC, time_IS):
+         time_BMC, time_KMS, time_LSMC, time_IS, calibration):
     mse_dict = {}
     mse_dict["BMC"] = mse_BMC
     mse_dict["KMS"] = mse_KMS
@@ -21,6 +21,8 @@ def save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
     time_dict["IS"] = time_IS
     with open(f"{args.save_path}/time_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
         pickle.dump(time_dict, f)
+
+    jnp.save(f"{args.save_path}/calibration_X_{n_alpha}_y_{n_theta}", calibration)
     return
 
 
@@ -45,7 +47,6 @@ def save_large(args, n_alpha, n_theta, mse_KMS, mse_LSMC, mse_IS, time_KMS, time
 
 def scale(Z):
     s = Z.mean()
-    s = 1.
     standardized = Z / s
     return standardized, s
 

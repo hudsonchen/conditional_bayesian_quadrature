@@ -181,44 +181,28 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     :return:
     """
     N, D = y.shape[0], y.shape[1]
-    learning_rate = 1e-2
-    optimizer = optax.adam(learning_rate)
     eps = 1e-6
 
-    l = 1.0 * D
-    # l = 1.0
-    log_l_init = log_l = jnp.log(l)
-    A_init = A = 1.0
-    opt_state = optimizer.init((log_l_init, A_init))
-    Ky = my_RBF
+    l_array = jnp.array([0.3, 1.0, 3.0]) * D
+    nll_array = 0 * l_array
+    A_list = []
 
-    # ============= Debug code =============
-    l_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
-    # ============= Debug code =============
+    for i, l in enumerate(l_array):
+        K_no_scale = my_RBF(y, y, l)
+        A = gy.T @ K_no_scale @ gy / N
+        A_list.append(A)
+        K = A * K_no_scale
+        K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
+        nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
+        nll_array = nll_array.at[i].set(nll)
 
-    for _ in range(100):
-        rng_key, _ = jax.random.split(rng_key)
-        log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, y, gy, Ky, jnp.zeros(N), eps)
+    l = l_array[nll_array.argmin()]
+    A = A_list[nll_array.argmin()]
 
-    # ============= Debug code =============
-        l_debug_list.append(jnp.exp(log_l))
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3 = fig.subplots(1, 3)
-    ax_1.plot(l_debug_list)
-    ax_2.plot(A_debug_list)
-    ax_3.plot(nll_debug_list)
-    plt.show()
-    # ============= Debug code =============
-
-    l = jnp.exp(log_l)
     K = A * my_RBF(y, y, l)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
     phi = A * kme_RBF_Gaussian(mu_y_x, sigma_y_x, l, y)
-    varphi = kme_double_RBF_Gaussian(mu_y_x, sigma_y_x, l)
+    varphi = A * kme_double_RBF_Gaussian(mu_y_x, sigma_y_x, l)
 
     BMC_mean = phi.T @ K_inv @ gy
     BMC_std = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
@@ -227,7 +211,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
 
 
 # @jax.jit
-def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime):
+def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
     :param psi_y_x_mean: (n_alpha, )
     :param psi_y_x_std: (n_alpha, )
@@ -235,42 +219,27 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime):
     :param X_prime: (N_test, D)
     :return:
     """
-    Nx = psi_y_x_mean.shape[0]
-    eps = 1e-6
-    learning_rate = 1e-2
-    optimizer = optax.adam(learning_rate)
+    n_alpha, D = X.shape[0], X.shape[1]
+    l_array = jnp.array([0.3, 0.6, 1.0, 1.5, 2.0, 3.0]) * D
+    nll_array = 0 * l_array
+    A_list = []
 
-    log_l_init = log_l = jnp.log(3.0)
-    A_init = A = 3.0
-    opt_state = optimizer.init((log_l_init, A_init))
-    Ky = my_RBF
+    for i, l in enumerate(l_array):
+        K_no_scale = my_RBF(X, X, l)
+        A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
+        A_list.append(A)
+        K = A * K_no_scale
+        K_inv = jnp.linalg.inv(K + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2))
+        nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n_alpha
+        nll_array = nll_array.at[i].set(nll)
 
-    # ============= Debug code =============
-    # l_debug_list = []
-    # A_debug_list = []
-    # nll_debug_list = []
-    # ============= Debug code =============
-    for _ in range(100):
-        rng_key, _ = jax.random.split(rng_key)
-        log_l, A, opt_state, nllk_value = step(log_l, A, opt_state, optimizer, X, psi_y_x_mean, Ky, psi_y_x_std, eps)
+    l = l_array[nll_array.argmin()]
+    A = A_list[nll_array.argmin()]
 
-    # ============= Debug code =============
-    #     l_debug_list.append(jnp.exp(log_l))
-    #     A_debug_list.append(A)
-    #     nll_debug_list.append(nllk_value)
-    # fig = plt.figure(figsize=(15, 6))
-    # ax_1, ax_2, ax_3 = fig.subplots(1, 3)
-    # ax_1.plot(l_debug_list)
-    # ax_2.plot(A_debug_list)
-    # ax_3.plot(nll_debug_list)
-    # plt.show()
-    # ============= Debug code =============
-
-    l = jnp.exp(log_l)
-    K_train_train = my_RBF(X, X, l) + jnp.diag(psi_y_x_std ** 2) + eps * jnp.eye(Nx)
+    K_train_train = A * my_RBF(X, X, l) + jnp.diag(psi_y_x_std ** 2) + eps * jnp.eye(n_alpha)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = my_RBF(X_prime, X, l)
-    K_test_test = my_RBF(X_prime, X_prime, l) + eps
+    K_test_train = A * my_RBF(X_prime, X, l)
+    K_test_test = A * my_RBF(X_prime, X_prime, l) + eps
     mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
     var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_y_x = jnp.abs(var_y_x)
@@ -300,10 +269,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2')
 
-    N_alpha_array = jnp.array([5, 10, 20])
-    # N_alpha_array = jnp.arange(2, 32, 4)
-    N_theta_array = jnp.array([10, 20, 30])
-    # N_theta_array = jnp.arange(5, 105, 5)
+    # N_alpha_array = jnp.array([5, 10, 20])
+    N_alpha_array = jnp.arange(5, 105, 5)
+    # N_theta_array = jnp.array([10, 20, 30])
+    N_theta_array = jnp.arange(5, 105, 5)
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -352,43 +321,45 @@ def main(args):
             psi_std_array = jnp.array([])
             mc_mean_array = jnp.array([])
 
-            t0 = time.time()
+
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
                 samples_i = samples_all[i, :n_theta, :]
                 g_samples_i = g_samples_all[i, :n_theta]
-                g_samples_i_standardized, g_samples_i_scale = sensitivity_utils.scale(g_samples_i)
                 mu_y_x_i = mu_y_x_all[i, :]
                 var_y_x_i = var_y_x_all[i, :, :]
 
-                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, samples_i, g_samples_i_standardized, mu_y_x_i, var_y_x_i)
+                tt0 = time.time()
+                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
+                tt1 = time.time()
 
-                psi_mean_array = jnp.append(psi_mean_array, psi_mean * g_samples_i_scale)
-                psi_std_array = jnp.append(psi_std_array, psi_std)
+                psi_mean_array = jnp.append(psi_mean_array, psi_mean)
+                psi_std_array = jnp.append(psi_std_array, psi_std if not jnp.isnan(psi_std) else 0.01)
 
                 MC_value = g_samples_i.mean()
                 mc_mean_array = jnp.append(mc_mean_array, MC_value)
 
                 # ============= Debug code =============
-                true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
-                BMC_value = psi_mean * g_samples_i_scale
-                print("=============")
-                print('True value', true_value)
-                print(f'MC with {n_theta} number of Y', MC_value)
-                print(f'BMC with {n_theta} number of Y', BMC_value)
-                print(f'BMC uncertainty {psi_std}')
-                print(f"=============")
-                pause = True
+                # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
+                # BMC_value = psi_mean
+                # print("=============")
+                # print('True value', true_value)
+                # print(f'MC with {n_theta} number of Y', MC_value)
+                # print(f'BMC with {n_theta} number of Y', BMC_value)
+                # print(f'BMC uncertainty {psi_std}')
+                # print(f"=============")
+                # pause = True
                 # ============= Debug code =============
 
             rng_key, _ = jax.random.split(rng_key)
-            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line)
-            time_BMC = time.time() - t0
+            t0 = time.time()
+            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line, eps=1e-6)
+            time_BMC = time.time() - t0 + (tt1 - tt0) * n_alpha
             time_BMC_array = time_BMC_array.at[j].set(time_BMC)
 
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
-            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line)
+            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-2)
             time_KMS = time.time() - t0
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
@@ -417,7 +388,7 @@ def main(args):
 
             calibration = sensitivity_utils.calibrate(ground_truth, BMC_mean, jnp.diag(BMC_std))
             sensitivity_utils.save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
-                                   time_BMC, time_KMS, time_LSMC, time_IS)
+                                   time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
 
             # ============= Debug code =============
@@ -479,7 +450,7 @@ def main(args):
     mc_mean_array = g_samples_all.mean(axis=1)
     rng_key, _ = jax.random.split(rng_key)
     t0 = time.time()
-    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line)
+    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-3)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
