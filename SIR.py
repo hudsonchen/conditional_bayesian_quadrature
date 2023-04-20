@@ -171,7 +171,7 @@ def SIR(args, rng_key):
     Ny_array = jnp.array([10, 20, 50])
     # Ny_array = jnp.arange(5, 60, 5)
     Nx_array = jnp.array([5])
-    # Nx_array = jnp.array([10])
+    # Nx_array = jnp.arange(5, 60, 5)
     N_test = 10
     # N_test = 100
 
@@ -267,13 +267,13 @@ def SIR(args, rng_key):
                 MC_mean_array = MC_mean_array.at[j].set(MC)
 
                 # ========== Debug code ==========
-                large_samples = generate_data_vmap(samples)
-                f_beta_MC_large_sample = f(large_samples).mean()
-                print(f'True value (MC with {SamplesNum} samples)', f_beta_MC_large_sample)
-                print(f'MC with {Ny} number of Y', MC)
-                print(f'BMC with {Ny} number of Y', BMC_mean)
-                print(f"=================")
-                pause = True
+                # large_samples = generate_data_vmap(samples)
+                # f_beta_MC_large_sample = f(large_samples).mean()
+                # print(f'True value (MC with {SamplesNum} samples)', f_beta_MC_large_sample)
+                # print(f'MC with {Ny} number of Y', MC)
+                # print(f'BMC with {Ny} number of Y', BMC_mean)
+                # print(f"=================")
+                # pause = True
                 # ========== Debug code ===========
 
             lx = 1.0

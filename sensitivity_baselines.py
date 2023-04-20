@@ -94,6 +94,6 @@ def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
     # weight is (N_test, Nx, Ny)
     weight = jnp.exp(log_py_x_prime - jnp.diagonal(log_py_x_i, axis1=0, axis2=1).transpose(1, 0))
     # mu is (N_test, Nx)
-    mu = (weight * gY).mean(2) / (weight.mean(2))
+    mu = (weight * gY).mean(2) / (weight.mean(2) + 0.01)
     IS_mean = mu.mean(1)
     return IS_mean, 0
