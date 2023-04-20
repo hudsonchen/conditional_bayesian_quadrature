@@ -150,6 +150,14 @@ def g2_ground_truth(mu, Sigma):
     return 10 * analytical + jnp.diag(Sigma).sum() + mu.T @ mu
 
 
+def g3(y):
+    return (y ** 2).sum(1)
+
+
+def g3_ground_truth(mu, Sigma):
+    return jnp.diag(Sigma).sum() + mu.T @ mu
+
+
 def Monte_Carlo(gy):
     return gy.mean(0)
 
@@ -266,11 +274,14 @@ def main(args):
     elif args.g_fn == 'g2':
         g = g2
         g_ground_truth_fn = g2_ground_truth
+    elif args.g_fn == 'g3':
+        g = g3
+        g_ground_truth_fn = g3_ground_truth
     else:
-        raise ValueError('g_fn must be g1 or g2')
+        raise ValueError('g_fn must be g1 or g2 or g3')
 
     # N_alpha_array = jnp.array([5, 10, 20])
-    N_alpha_array = jnp.arange(5, 105, 5)
+    N_alpha_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 110, 10)))
     # N_theta_array = jnp.array([10, 20, 30])
     N_theta_array = jnp.arange(5, 105, 5)
 
@@ -321,7 +332,6 @@ def main(args):
             psi_std_array = jnp.array([])
             mc_mean_array = jnp.array([])
 
-
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
                 samples_i = samples_all[i, :n_theta, :]
@@ -359,7 +369,7 @@ def main(args):
 
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
-            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-2)
+            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
             time_KMS = time.time() - t0
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
@@ -390,15 +400,14 @@ def main(args):
             sensitivity_utils.save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
-
             # ============= Debug code =============
-            print(f"=============")
-            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            print(f"=============")
-            pause = True
+            # print(f"=============")
+            # print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            # print(f"=============")
+            # pause = True
             # ============= Debug code =============
 
         # ============= Debug code =============
@@ -450,7 +459,7 @@ def main(args):
     mc_mean_array = g_samples_all.mean(axis=1)
     rng_key, _ = jax.random.split(rng_key)
     t0 = time.time()
-    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-3)
+    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-2)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()

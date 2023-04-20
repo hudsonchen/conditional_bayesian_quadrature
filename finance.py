@@ -368,7 +368,7 @@ class CBQ:
             # pause = True
         return Mu, Sigma
 
-    @partial(jax.jit, static_argnums=(0,))
+    # @partial(jax.jit, static_argnums=(0,))
     def GP(self, psi_y_x_mean, psi_y_x_std, X, X_prime):
         """
         :param psi_y_x_mean: Nx * 1
@@ -393,7 +393,6 @@ class CBQ:
         std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
         mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-        # TODO: Adding jnp.mean(Sigma_standardized) is a bit suspicious here.
         std_y_x_prime_original = std_y_x_prime * Mu_std + jnp.mean(psi_y_x_std)
         return mu_y_x_prime_original, std_y_x_prime_original
 

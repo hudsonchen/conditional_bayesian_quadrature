@@ -66,7 +66,7 @@ def calibrate(ground_truth, BMC_mean, BMC_std):
     :param BMC_std: (N, )
     :return:
     """
-    confidence_level = jnp.arange(0.0, 1.01, 0.1)
+    confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):
         z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
