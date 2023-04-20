@@ -94,7 +94,7 @@ def normal_logpdf(x, mu, Sigma):
 
     diff = x_expanded - mean_expanded
     precision_matrix = jnp.linalg.inv(Sigma)
-    exponent = -0.5 * jnp.einsum('nijk,jkl,nijl->nij', diff, precision_matrix, diff)
+    exponent = -0.5 * jnp.einsum('nijk, jkl, nijl->nij', diff, precision_matrix, diff)
     normalization = -0.5 * (D * jnp.log(2 * jnp.pi) - 0.5 * jnp.log(jnp.linalg.det(Sigma)))
     return normalization + exponent
 
@@ -112,7 +112,7 @@ def posterior_log_llk(theta, prior_cov_base, X, Y, alpha, noise):
     """
     D = theta.shape[2]
     # prior_cov is (N3, D)
-    prior_cov = jnp.array([[prior_cov_base] * D]) + alpha
+    prior_cov = jnp.ones([1, D]) * prior_cov_base + alpha
     # post_mean is (N3, D), post_cov is (N3, D, D), theta is (N1, N2, D)
     post_mean, post_cov = posterior_full(X, Y, prior_cov, noise)
     return normal_logpdf(theta, post_mean, post_cov)
@@ -280,8 +280,8 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([10, 20])
-    N_alpha_array = jnp.concatenate((jnp.array([2, 5]), jnp.arange(5, 110, 10)))
+    # N_alpha_array = jnp.array([25, 35])
+    N_alpha_array = jnp.concatenate((jnp.array([2, 5]), jnp.arange(10, 110, 10)))
     # N_theta_array = jnp.array([10, 20, 30])
     N_theta_array = jnp.arange(5, 105, 5)
 
@@ -313,7 +313,8 @@ def main(args):
 
         for i in range(n_alpha):
             rng_key, _ = jax.random.split(rng_key)
-            samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :], shape=(1000, ))
+            samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :],
+                                                     shape=(1000,))
             samples_all = samples_all.at[i, :, :].set(samples)
             g_samples_all = g_samples_all.at[i, :].set(g(samples))
 
@@ -376,14 +377,15 @@ def main(args):
 
             t0 = time.time()
             LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all[:, :n_theta, :],
-                                             g_samples_all[:, :n_theta], alpha_test_line)
+                                                                   g_samples_all[:, :n_theta], alpha_test_line)
             time_LSMC = time.time() - t0
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 
             t0 = time.time()
             log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
-            IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
-                                                  g_samples_all[:, :n_theta], alpha_test_line)
+            IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
+                                                                        samples_all[:, :n_theta, :],
+                                                                        g_samples_all[:, :n_theta], alpha_test_line)
             time_IS = time.time() - t0
             time_IS_array = time_IS_array.at[j].set(time_IS)
 
@@ -407,6 +409,10 @@ def main(args):
             # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
             # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
             # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            # print(f"Time of BMC with {n_alpha} number of X and {n_theta} number of Y", time_BMC)
+            # print(f"Time of KMS with {n_alpha} number of X and {n_theta} number of Y", time_KMS)
+            # print(f"Time of LSMC with {n_alpha} number of X and {n_theta} number of Y", time_LSMC)
+            # print(f"Time of IS with {n_alpha} number of X and {n_theta} number of Y", time_IS)
             # print(f"=============")
             # pause = True
             # ============= Debug code =============
@@ -453,7 +459,8 @@ def main(args):
 
     for i in range(n_alpha):
         rng_key, _ = jax.random.split(rng_key)
-        samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :], shape=(n_theta, ))
+        samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :],
+                                                 shape=(n_theta,))
         samples_all = samples_all.at[i, :, :].set(samples)
         g_samples_all = g_samples_all.at[i, :].set(g(samples))
 

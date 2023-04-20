@@ -12,16 +12,16 @@ def polynomial(X, Y, gY, X_prime, poly=3):
     :param gY: Nx*Ny
     :return:
     """
-    X_poly = jnp.ones_like(X)
-    for i in range(1, poly + 1):
-        X_poly = jnp.concatenate((X_poly, X ** i), axis=1)
+    powers = jnp.arange(0, poly + 1)
+    X_poly = X[:, :, None] ** powers
+    X_poly = X_poly.reshape([X.shape[0], -1])
+
     eps = 1.0
     D = (1 + poly) * X.shape[1]
     theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(D)) @ X_poly.T @ gY.mean(1)
 
-    X_prime_poly = jnp.ones_like(X_prime)
-    for i in range(1, poly + 1):
-        X_prime_poly = jnp.concatenate((X_prime_poly, X_prime ** i), axis=1)
+    X_prime_poly = X_prime[:, :, None] ** powers
+    X_prime_poly = X_prime_poly.reshape([X_prime.shape[0], -1])
     phi = X_prime_poly @ theta
     std = 0
     pause = True
