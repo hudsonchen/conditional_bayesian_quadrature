@@ -463,7 +463,7 @@ def main(args):
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
-    LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
+    LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
     time_LSMC_large = time.time() - t0
 
     log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
