@@ -8,7 +8,7 @@ import jax.scipy.stats
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import argparse
-from sensitivity_baselines import *
+import sensitivity_baselines
 from tqdm import tqdm
 from kernels import *
 from utils import sensitivity_utils
@@ -281,7 +281,7 @@ def main(args):
         raise ValueError('g_fn must be g1 or g2 or g3')
 
     # N_alpha_array = jnp.array([5, 10, 20])
-    N_alpha_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 110, 10)))
+    N_alpha_array = jnp.concatenate((jnp.array([2, 5]), jnp.arange(5, 110, 10)))
     # N_theta_array = jnp.array([10, 20, 30])
     N_theta_array = jnp.arange(5, 105, 5)
 
@@ -374,14 +374,14 @@ def main(args):
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
             t0 = time.time()
-            LSMC_mean, LSMC_std = polynomial(alpha_all, samples_all[:, :n_theta, :],
+            LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all[:, :n_theta, :],
                                              g_samples_all[:, :n_theta], alpha_test_line)
             time_LSMC = time.time() - t0
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 
             t0 = time.time()
             log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
-            IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
+            IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all, samples_all[:, :n_theta, :],
                                                   g_samples_all[:, :n_theta], alpha_test_line)
             time_IS = time.time() - t0
             time_IS_array = time_IS_array.at[j].set(time_IS)
@@ -401,13 +401,13 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            # print(f"=============")
-            # print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            # print(f"=============")
-            # pause = True
+            print(f"=============")
+            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            print(f"=============")
+            pause = True
             # ============= Debug code =============
 
         # ============= Debug code =============
