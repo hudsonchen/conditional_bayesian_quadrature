@@ -204,8 +204,12 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
         nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
         nll_array = nll_array.at[i].set(nll)
 
-    l = l_array[nll_array.argmin()]
-    A = A_list[nll_array.argmin()]
+    if D > 2:
+        l = l_array[nll_array.argmin()]
+        A = A_list[nll_array.argmin()]
+    else:
+        A = 1.
+        l = 1.
 
     K = A * my_RBF(y, y, l)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
@@ -228,7 +232,7 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     :return:
     """
     n_alpha, D = X.shape[0], X.shape[1]
-    l_array = jnp.array([0.3, 0.6, 1.0, 1.5, 2.0, 3.0]) * D
+    l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
     nll_array = 0 * l_array
     A_list = []
 
@@ -236,18 +240,18 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         K_no_scale = my_RBF(X, X, l)
         A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
         A_list.append(A)
-        K = A * K_no_scale
-        K_inv = jnp.linalg.inv(K + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2))
+        K = A * K_no_scale + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
+        K_inv = jnp.linalg.inv(K)
         nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n_alpha
         nll_array = nll_array.at[i].set(nll)
 
     l = l_array[nll_array.argmin()]
     A = A_list[nll_array.argmin()]
 
-    K_train_train = A * my_RBF(X, X, l) + jnp.diag(psi_y_x_std ** 2) + eps * jnp.eye(n_alpha)
+    K_train_train = A * my_RBF(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
     K_test_train = A * my_RBF(X_prime, X, l)
-    K_test_test = A * my_RBF(X_prime, X_prime, l) + eps
+    K_test_test = A * my_RBF(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
     mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
     var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_y_x = jnp.abs(var_y_x)
@@ -360,9 +364,10 @@ def main(args):
                 # print(f'BMC with {n_theta} number of Y', BMC_value)
                 # print(f'BMC uncertainty {psi_std}')
                 # print(f"=============")
-                pause = True
+                # pause = True
                 # ============= Debug code =============
 
+            _, _ = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
             KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
@@ -371,7 +376,8 @@ def main(args):
 
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
-            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line, eps=1e-6)
+            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line,
+                                   eps=psi_std_array.mean())
             time_BMC = time.time() - t0 + (tt1 - tt0) * n_alpha
             time_BMC_array = time_BMC_array.at[j].set(time_BMC)
 
@@ -388,8 +394,8 @@ def main(args):
             # let importance sampling function to be compiled
             log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
             _, _ = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
-                                                                        samples_all[:, :n_theta, :],
-                                                                        g_samples_all[:, :n_theta], alpha_test_line)
+                                                             samples_all[:, :n_theta, :],
+                                                             g_samples_all[:, :n_theta], alpha_test_line)
 
             t0 = time.time()
             IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
@@ -424,7 +430,7 @@ def main(args):
             # print(f"Time of LSMC with {n_alpha} number of X and {n_theta} number of Y", time_LSMC)
             # print(f"Time of IS with {n_alpha} number of X and {n_theta} number of Y", time_IS)
             # print(f"=============")
-            # pause = True
+            pause = True
             # ============= Debug code =============
 
         # # ============= Debug code =============
