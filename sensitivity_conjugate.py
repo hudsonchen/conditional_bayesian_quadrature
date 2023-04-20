@@ -281,7 +281,7 @@ def main(args):
         raise ValueError('g_fn must be g1 or g2 or g3')
 
     # N_alpha_array = jnp.array([25, 35])
-    N_alpha_array = jnp.concatenate((jnp.array([2, 5]), jnp.arange(10, 110, 10)))
+    N_alpha_array = jnp.concatenate((jnp.array([5]), jnp.arange(10, 120, 10)))
     # N_theta_array = jnp.array([10, 20, 30])
     N_theta_array = jnp.arange(5, 105, 5)
 
@@ -365,15 +365,19 @@ def main(args):
 
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
+            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
+            time_KMS = time.time() - t0
+            time_KMS_array = time_KMS_array.at[j].set(time_KMS)
+
+            rng_key, _ = jax.random.split(rng_key)
+            t0 = time.time()
             BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line, eps=1e-6)
             time_BMC = time.time() - t0 + (tt1 - tt0) * n_alpha
             time_BMC_array = time_BMC_array.at[j].set(time_BMC)
 
-            rng_key, _ = jax.random.split(rng_key)
-            t0 = time.time()
-            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
-            time_KMS = time.time() - t0
-            time_KMS_array = time_KMS_array.at[j].set(time_KMS)
+            # let polynomial function to be compiled
+            _, _ = sensitivity_baselines.polynomial(alpha_all, samples_all[:, :n_theta, :],
+                                                    g_samples_all[:, :n_theta], alpha_test_line)
 
             t0 = time.time()
             LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all[:, :n_theta, :],
@@ -381,11 +385,17 @@ def main(args):
             time_LSMC = time.time() - t0
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 
-            t0 = time.time()
+            # let importance sampling function to be compiled
             log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
+            _, _ = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
+                                                                        samples_all[:, :n_theta, :],
+                                                                        g_samples_all[:, :n_theta], alpha_test_line)
+
+            t0 = time.time()
             IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
                                                                         samples_all[:, :n_theta, :],
                                                                         g_samples_all[:, :n_theta], alpha_test_line)
+
             time_IS = time.time() - t0
             time_IS_array = time_IS_array.at[j].set(time_IS)
 
