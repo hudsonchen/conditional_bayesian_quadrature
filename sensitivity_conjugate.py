@@ -183,6 +183,7 @@ def step(log_l, A, opt_state, optimizer, y, gy, Ky, psi_y_x_std, eps):
 # @jax.jit
 def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     """
+    :param mu_y_x:
     :param rng_key:
     :param y: (N, D)
     :param gy: (N, )
@@ -191,7 +192,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
     N, D = y.shape[0], y.shape[1]
     eps = 1e-6
 
-    l_array = jnp.array([0.1, 0.3, 1.0, 3.0]) * D
+    l_array = jnp.array([0.1, 0.6, 1.0, 3.0]) * D
     nll_array = 0 * l_array
     A_list = []
 
@@ -233,11 +234,12 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
     n_alpha, D = X.shape[0], X.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
+    # l_array = jnp.array([1.0]) * D
     nll_array = 0 * l_array
     A_list = []
 
     for i, l in enumerate(l_array):
-        K_no_scale = my_RBF(X, X, l)
+        K_no_scale = my_Matern(X, X, l)
         A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
         A_list.append(A)
         K = A * K_no_scale + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
@@ -248,10 +250,10 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     l = l_array[nll_array.argmin()]
     A = A_list[nll_array.argmin()]
 
-    K_train_train = A * my_RBF(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
+    K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = A * my_RBF(X_prime, X, l)
-    K_test_test = A * my_RBF(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
+    K_test_train = A * my_Matern(X_prime, X, l)
+    K_test_test = A * my_Matern(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
     mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
     var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_y_x = jnp.abs(var_y_x)
@@ -266,8 +268,8 @@ def main(args):
     D = args.dim
     prior_cov_base = 2.0
     noise = 1.0
-    sample_size = 1000
-    test_num = 100
+    sample_size = 5000
+    test_num = 200
     data_number = 5
     # X is (N, D-1), Y is (N, 1)
     X, Y = generate_data(rng_key, D, data_number, noise)
@@ -284,10 +286,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([25, 35])
+    # N_alpha_array = jnp.array([50, 60])
     N_alpha_array = jnp.concatenate((jnp.array([5]), jnp.arange(10, 120, 10)))
     # N_theta_array = jnp.array([10, 20, 30])
-    N_theta_array = jnp.arange(5, 105, 5)
+    N_theta_array = jnp.concatenate((jnp.array([5]), jnp.arange(10, 120, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -307,21 +309,6 @@ def main(args):
         # This is X, size n_alpha * D
         alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
 
-        # This is Y, size n_alpha * sample_size * D
-        samples_all = jnp.zeros([n_alpha, sample_size, D])
-        # This is g(Y), size n_alpha * sample_size
-        g_samples_all = jnp.zeros([n_alpha, sample_size])
-
-        prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
-        mu_y_x_all, var_y_x_all = posterior_full(X, Y, prior_cov, noise)
-
-        for i in range(n_alpha):
-            rng_key, _ = jax.random.split(rng_key)
-            samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :],
-                                                     shape=(1000,))
-            samples_all = samples_all.at[i, :, :].set(samples)
-            g_samples_all = g_samples_all.at[i, :].set(g(samples))
-
         mse_BMC_array = jnp.zeros(len(N_theta_array))
         mse_KMS_array = jnp.zeros(len(N_theta_array))
         mse_LSMC_array = jnp.zeros(len(N_theta_array))
@@ -333,15 +320,28 @@ def main(args):
         time_IS_array = jnp.zeros(len(N_theta_array))
 
         for j, n_theta in enumerate(tqdm(N_theta_array)):
-            psi_mean_array = jnp.array([])
-            psi_std_array = jnp.array([])
-            mc_mean_array = jnp.array([])
+            psi_mean_array = jnp.zeros(n_alpha)
+            psi_std_array = jnp.zeros(n_alpha)
+            mc_mean_array = jnp.zeros(n_alpha)
+
+            # This is Y, size n_alpha * n_theta * D
+            samples_all = jnp.zeros([n_alpha, n_theta, D])
+            # This is g(Y), size n_alpha * n_theta
+            g_samples_all = jnp.zeros([n_alpha, n_theta])
+
+            prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
+            mu_y_x_all, var_y_x_all = posterior_full(X, Y, prior_cov, noise)
 
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
-                index = jax.random.permutation(rng_key, jnp.arange(sample_size))[:n_theta]
-                samples_i = samples_all[i, index, :]
-                g_samples_i = g_samples_all[i, index]
+                samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :],
+                                                         shape=(n_theta,))
+                samples_all = samples_all.at[i, :, :].set(samples)
+                g_samples_all = g_samples_all.at[i, :].set(g(samples))
+
+            for i in range(n_alpha):
+                samples_i = samples_all[i, :, :]
+                g_samples_i = g_samples_all[i, :]
                 mu_y_x_i = mu_y_x_all[i, :]
                 var_y_x_i = var_y_x_all[i, :, :]
 
@@ -349,11 +349,11 @@ def main(args):
                 psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
                 tt1 = time.time()
 
-                psi_mean_array = jnp.append(psi_mean_array, psi_mean)
-                psi_std_array = jnp.append(psi_std_array, psi_std if not jnp.isnan(psi_std) else 0.01)
+                psi_mean_array = psi_mean_array.at[i].set(psi_mean)
+                psi_std_array = psi_std_array.at[i].set(psi_std if not jnp.isnan(psi_std) else 0.01)
 
                 MC_value = g_samples_i.mean()
-                mc_mean_array = jnp.append(mc_mean_array, MC_value)
+                mc_mean_array = mc_mean_array.at[i].set(MC_value)
 
                 # ============= Debug code =============
                 # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
@@ -370,7 +370,8 @@ def main(args):
             _, _ = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
-            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
+            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line,
+                                   eps=1e-3)
             time_KMS = time.time() - t0
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
@@ -382,25 +383,21 @@ def main(args):
             time_BMC_array = time_BMC_array.at[j].set(time_BMC)
 
             # let polynomial function to be compiled
-            _, _ = sensitivity_baselines.polynomial(alpha_all, samples_all[:, :n_theta, :],
-                                                    g_samples_all[:, :n_theta], alpha_test_line)
+            _, _ = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
 
             t0 = time.time()
-            LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all[:, :n_theta, :],
-                                                                   g_samples_all[:, :n_theta], alpha_test_line)
+            LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
             time_LSMC = time.time() - t0
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 
             # let importance sampling function to be compiled
             log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
             _, _ = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
-                                                             samples_all[:, :n_theta, :],
-                                                             g_samples_all[:, :n_theta], alpha_test_line)
+                                                             samples_all, g_samples_all, alpha_test_line)
 
             t0 = time.time()
             IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
-                                                                        samples_all[:, :n_theta, :],
-                                                                        g_samples_all[:, :n_theta], alpha_test_line)
+                                                                        samples_all, g_samples_all, alpha_test_line)
 
             time_IS = time.time() - t0
             time_IS_array = time_IS_array.at[j].set(time_IS)
@@ -425,6 +422,10 @@ def main(args):
             # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
             # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
             # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            # print(f"=============")
+
+            # ============= Debug code =============
+            # print(f"=============")
             # print(f"Time of BMC with {n_alpha} number of X and {n_theta} number of Y", time_BMC)
             # print(f"Time of KMS with {n_alpha} number of X and {n_theta} number of Y", time_KMS)
             # print(f"Time of LSMC with {n_alpha} number of X and {n_theta} number of Y", time_LSMC)
@@ -483,7 +484,7 @@ def main(args):
     mc_mean_array = g_samples_all.mean(axis=1)
     rng_key, _ = jax.random.split(rng_key)
     t0 = time.time()
-    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-2)
+    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-3)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
