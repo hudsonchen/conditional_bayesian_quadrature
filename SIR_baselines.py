@@ -4,13 +4,13 @@ import jax.numpy as jnp
 import jax
 
 
-def polynomial(X, Y, gY, X_prime, poly=2):
+def polynomial(X, Y, gY, X_prime, poly=3):
     X_standardized, X_mean, X_std = SIR_utils.standardize(X)
     X_prime_standardized = (X_prime - X_mean) / X_std
     X_poly = jnp.ones_like(X_standardized)
     for i in range(1, poly + 1):
         X_poly = jnp.concatenate((X_poly, X_standardized ** i), axis=1)
-    eps = 1e-3
+    eps = 1.0
     theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
 
     X_prime_poly = jnp.ones_like(X_prime_standardized)
