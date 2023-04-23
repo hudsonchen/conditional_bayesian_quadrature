@@ -34,6 +34,8 @@ elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     # os.environ["OPENBLAS_NUM_THREADS"] = "1"
     # os.environ["MKL_NUM_THREADS"] = "1"
     # os.environ["OMP_NUM_THREAD"] = "1"
+elif pwd.getpwuid(os.getuid())[0] == 'ucabzc9':
+    os.chdir("/home/ucabzc9/Scratch/CBQ")
 else:
     pass
 
@@ -401,19 +403,21 @@ class CBQ:
              time_cbq, time_IS, time_KMS, time_LSMC):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
-        plt.figure()
-        plt.ylim(-2, 15)
-        plt.plot(St_prime.squeeze(), true_EgY_X, color='red', label='true')
-        plt.scatter(St.squeeze(), psi_x_mean.squeeze())
-        plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
-        plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
-        plt.plot(St_prime.squeeze(), mu_y_x_prime_LSMC.squeeze(), color='orange', label='LSMC')
-        plt.plot(St_prime.squeeze(), KMS_mean, color='purple', label='KMS')
-        plt.legend()
-        plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
-        plt.savefig(f"{args.save_path}/figures/finance_X_{Nx}_y_{Ny}.pdf")
+        # ========== Debug code ==========
+        # plt.figure()
+        # plt.ylim(-2, 15)
+        # plt.plot(St_prime.squeeze(), true_EgY_X, color='red', label='true')
+        # plt.scatter(St.squeeze(), psi_x_mean.squeeze())
+        # plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
+        # plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
+        # plt.plot(St_prime.squeeze(), mu_y_x_prime_LSMC.squeeze(), color='orange', label='LSMC')
+        # plt.plot(St_prime.squeeze(), KMS_mean, color='purple', label='KMS')
+        # plt.legend()
+        # plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
+        # plt.savefig(f"{args.save_path}/figures/finance_X_{Nx}_y_{Ny}.pdf")
         # plt.show()
-        plt.close()
+        # plt.close()
+        # ========== Debug code ==========
 
         L_BMC = jnp.maximum(mu_y_x_prime_cbq, 0).mean()
         L_IS = jnp.maximum(mu_y_x_prime_IS, 0).mean()
@@ -573,7 +577,6 @@ def cbq_option_pricing(args):
             mc_mean = loss.mean(1)[:, None]
             mc_std = 0 * mc_mean
             _, _ = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
-
             t0 = time.time()
             KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
             KMS_mean = KMS_mean.squeeze()

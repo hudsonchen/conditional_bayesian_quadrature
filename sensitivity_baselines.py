@@ -3,7 +3,7 @@ from functools import partial
 import jax
 
 
-def polynomial(X, Y, gY, X_prime, poly=3):
+def polynomial(X, Y, gY, X_prime, poly=1):
     """
     Polynomial Regression
     :param poly: int

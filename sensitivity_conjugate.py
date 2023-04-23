@@ -236,30 +236,52 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
     n_alpha, D = X.shape[0], X.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
-    # l_array = jnp.array([1.0]) * D
-    nll_array = 0 * l_array
-    A_list = []
+    if psi_y_x_std is None:
+        sigma_array = jnp.array([1.0, 0.1, 0.01, 0.001])
+        nll_array = jnp.zeros([len(l_array), len(sigma_array)])
+        A_array = jnp.zeros([len(l_array)])
+    else:
+        sigma_array = jnp.array([])
+        nll_array = jnp.zeros([len(l_array), 1])
+        A_array = jnp.zeros([len(l_array)])
 
     for i, l in enumerate(l_array):
         K_no_scale = my_Matern(X, X, l)
         A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
-        A_list.append(A)
-        K = A * K_no_scale + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
-        K_inv = jnp.linalg.inv(K)
-        nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n_alpha
-        nll_array = nll_array.at[i].set(nll)
+        A_array = A_array.at[i].set(A)
 
-    l = l_array[nll_array.argmin()]
-    A = A_list[nll_array.argmin()]
+        if psi_y_x_std is None:
+            for j, sigma in enumerate(sigma_array):
+                K = A * K_no_scale + jnp.eye(n_alpha) * sigma
+                K_inv = jnp.linalg.inv(K)
+                nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n_alpha
+                nll_array = nll_array.at[i, j].set(nll)
+        else:
+            K = A * K_no_scale + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
+            K_inv = jnp.linalg.inv(K)
+            nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n_alpha
+            nll_array = nll_array.at[i].set(nll)
 
-    K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
-    K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = A * my_Matern(X_prime, X, l)
-    K_test_test = A * my_Matern(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
+    min_index_flat = jnp.argmin(nll_array)
+    row, col = jnp.unravel_index(min_index_flat, nll_array.shape)
+
+    l = l_array[row]
+    A = A_array[row]
+    if psi_y_x_std is None:
+        sigma = sigma_array[col]
+        K_train_train = A * my_Matern(X, X, l) + jnp.eye(n_alpha) * sigma
+        K_train_train_inv = jnp.linalg.inv(K_train_train)
+        K_test_train = A * my_Matern(X_prime, X, l)
+        K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
+    else:
+        K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
+        K_train_train_inv = jnp.linalg.inv(K_train_train)
+        K_test_train = A * my_Matern(X_prime, X, l)
+        K_test_test = A * my_Matern(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
     mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
     var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_y_x = jnp.abs(var_y_x)
-    std_y_x = jnp.sqrt(var_y_x) + jnp.mean(psi_y_x_std)
+    std_y_x = jnp.sqrt(var_y_x)
     pause = True
     return mu_y_x, std_y_x
 
@@ -288,10 +310,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([50, 60])
-    N_alpha_array = jnp.concatenate((jnp.array([5]), jnp.arange(10, 120, 10)))
-    # N_theta_array = jnp.array([10, 20, 30])
-    N_theta_array = jnp.concatenate((jnp.array([5]), jnp.arange(10, 120, 10)))
+    # N_alpha_array = jnp.array([10, 20, 30, 40, 50, 60, 70])
+    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 120, 10)))
+    # N_theta_array = jnp.array([30, 100])
+    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 120, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -369,11 +391,11 @@ def main(args):
                 # pause = True
                 # ============= Debug code =============
 
-            _, _ = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-1)
+            _, _ = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-1)
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
-            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line,
-                                   eps=1. / n_alpha)
+            KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line,
+                                   eps=1. / n_theta)
             time_KMS = time.time() - t0
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
@@ -486,7 +508,7 @@ def main(args):
     mc_mean_array = g_samples_all.mean(axis=1)
     rng_key, _ = jax.random.split(rng_key)
     t0 = time.time()
-    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line, eps=1e-3)
+    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-3)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
