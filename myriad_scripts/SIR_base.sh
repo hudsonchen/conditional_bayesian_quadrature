@@ -31,4 +31,4 @@ which pip
 which python3
 
 pwd
-mpirun -np 1 python3 /home/ucabzc9/Scratch/CBQ/SIR.py $JOB_PARAMS
+python3 /home/ucabzc9/Scratch/CBQ/SIR.py $JOB_PARAMS
