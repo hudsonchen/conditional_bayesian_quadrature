@@ -1,31 +1,14 @@
-## Request memory. I think it will request this much memory per core (as set by smp below), so in
-## this case 20GB.
 #$ -l mem=20G
-## Max allowed run time. Set it as low as possible to get scheduled sooner.
 #$ -l h_rt=1:00:00
 #$ -pe smp 4
-## I don't completely understand this, but I think it tries to start reserving cores as they become
-## available, rather than waiting for 4 to be available at once, to avoid single core jobs jumping
-## ahead of this job.
 #$ -R y
-## Say we want bash to sh.
 #$ -S /bin/bash
-## Write both stderr and stdout to a log file.
 #$ -wd /home/ucabzc9/Scratch/
-## Can't remember what this does.
 #$ -j y
-## This is an array job, and we want to run elements 1,2,3,4 of the array.
-#$ -t 1
-## The name of the job.
 #$ -N cbq_SIR
 
-## This fetches which element of the array this job is.
-#number=$SGE_TASK_ID
-## These two lines read the configuration I want from a text file, reading the appropriate
-## configuration for the array element.
-#paramfile=/home/ucabotk/Scratch/ilbp_output/fine_tuning_to_load_cifar100.txt
-#load_run="`sed -n ${number}p $paramfile`"
-#
+JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")
+echo "Job params: $JOB_PARAMS"
 
 # Running date and nvidia-smi is useful to get some info in case the job crashes.
 
@@ -49,4 +32,4 @@ which pip
 which python3
 
 pwd
-mpirun -np 1 python3 /home/ucabzc9/Scratch/CBQ/SIR.py --mode peak_number
+mpirun -np 1 python3 /home/ucabzc9/Scratch/CBQ/SIR.py $JOB_PARAMS
