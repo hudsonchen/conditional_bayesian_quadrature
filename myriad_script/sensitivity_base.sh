@@ -17,7 +17,7 @@
 ## This is an array job, and we want to run elements 1,2,3,4 of the array.
 #$ -t 1
 ## The name of the job.
-#$ -N test
+#$ -N cbq_SIR
 
 ## This fetches which element of the array this job is.
 #number=$SGE_TASK_ID
@@ -49,4 +49,4 @@ which pip
 which python3
 
 pwd
-gerun python3 /home/ucabzc9/Scratch/CBQ/SIR.py --mode peak_number
+mpirun -np 1 python3 /home/ucabzc9/Scratch/CBQ/SIR.py --mode peak_number
