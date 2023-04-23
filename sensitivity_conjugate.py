@@ -29,6 +29,8 @@ elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     # os.environ["OPENBLAS_NUM_THREADS"] = "1"
     # os.environ["MKL_NUM_THREADS"] = "1"
     # os.environ["OMP_NUM_THREAD"] = "1"
+elif pwd.getpwuid(os.getuid())[0] == 'ucabzc9':
+    os.chdir("/home/ucabzc9/Scratch/CBQ")
 else:
     pass
 
