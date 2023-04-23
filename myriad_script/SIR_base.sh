@@ -1,6 +1,5 @@
 #$ -l mem=20G
 #$ -l h_rt=1:00:00
-#$ -pe smp 4
 #$ -R y
 #$ -S /bin/bash
 #$ -wd /home/ucabzc9/Scratch/
