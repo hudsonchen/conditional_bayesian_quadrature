@@ -29,4 +29,4 @@ date
 which pip
 which python
 
-mpirun -np 1 python /home/ucabzc9/Scratch/CBQ/sensitivity_conjugate.py $JOB_PARAMS
+python /home/ucabzc9/Scratch/CBQ/sensitivity_conjugate.py $JOB_PARAMS
