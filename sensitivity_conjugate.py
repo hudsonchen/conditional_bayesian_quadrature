@@ -373,7 +373,7 @@ def main(args):
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
             KMS_mean, KMS_std = GP(rng_key, mc_mean_array, mc_mean_array * 0, alpha_all, alpha_test_line,
-                                   eps=1e-3)
+                                   eps=1. / n_alpha)
             time_KMS = time.time() - t0
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
