@@ -434,16 +434,16 @@ class CBQ:
             pickle.dump(time_dict, f)
 
         # ============= Debug code =============
-        print(f"=============")
-        print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
-        print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
-        print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
-        print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
-        print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_cbq)
-        print(f"Time of IS with {Nx} number of X and {Ny} number of Y", time_IS)
-        print(f"Time of LSMC with {Nx} number of X and {Ny} number of Y", time_LSMC)
-        print(f"Time of KMS with {Nx} number of X and {Ny} number of Y", time_KMS)
-        print(f"=============")
+        # print(f"=============")
+        # print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
+        # print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
+        # print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
+        # print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
+        # print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_cbq)
+        # print(f"Time of IS with {Nx} number of X and {Ny} number of Y", time_IS)
+        # print(f"Time of LSMC with {Nx} number of X and {Ny} number of Y", time_LSMC)
+        # print(f"Time of KMS with {Nx} number of X and {Ny} number of Y", time_KMS)
+        # print(f"=============")
         # ============= Debug code =============
         pause = True
         return
@@ -541,18 +541,9 @@ def cbq_option_pricing(args):
     sigma = 0.3
     S0 = 50
     # Nx_array = [30]
-    Nx_array = [5, 10, 20, 30]
+    Nx_array = [2, 5, 10, 20, 30]
     # Ny_array = [30, 50]
     Ny_array = jnp.arange(3, 105, 5).tolist()
-    cbq_mean_dict = {}
-    cbq_std_dict = {}
-    LSMC_mean_dict = {}
-    LSMC_std_dict = {}
-    IS_mean_dict = {}
-    IS_std_dict = {}
-    KMS_mean_dict = {}
-    KMS_std_dict = {}
-    MC_list = []
 
     test_num = 200
     # S0 = jnp.array([[50]])
@@ -572,15 +563,6 @@ def cbq_option_pricing(args):
     CBQ_class = CBQ(kernel_x=kernel_x, kernel_y=kernel_y)
 
     for Nx in Nx_array:
-        cbq_mean_array = jnp.array([])
-        cbq_std_array = jnp.array([])
-        LSMC_mean_array = jnp.array([])
-        LSMC_std_array = jnp.array([])
-        IS_mean_array = jnp.array([])
-        IS_std_array = jnp.array([])
-        KMS_mean_array = jnp.array([])
-        KMS_std_array = jnp.array([])
-
         for Ny in tqdm(Ny_array):
             rng_key, _ = jax.random.split(rng_key)
             # epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
@@ -618,28 +600,6 @@ def cbq_option_pricing(args):
             CBQ_class.save(Nx, Ny, psi_x_mean, St, St_prime,
                            mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_LSMC,
                            time_cbq, time_IS, time_KMS, time_LSMC)
-            pause = True
-            cbq_mean_array = jnp.append(cbq_mean_array, mu_y_x_prime_cbq[test_ind])
-            cbq_std_array = jnp.append(cbq_std_array, jnp.diag(std_y_x_prime_cbq)[test_ind])
-            LSMC_mean_array = jnp.append(LSMC_mean_array, mu_y_x_prime_LSMC[test_ind])
-            LSMC_std_array = jnp.append(LSMC_std_array, std_y_x_prime_LSMC[test_ind])
-            IS_mean_array = jnp.append(IS_mean_array, mu_y_x_prime_IS[test_ind])
-            IS_std_array = jnp.append(IS_std_array, std_y_x_prime_IS[test_ind])
-            KMS_mean_array = jnp.append(KMS_mean_array, KMS_mean[test_ind])
-            KMS_std_array = jnp.append(KMS_std_array, KMS_std[test_ind])
-
-        cbq_mean_dict[f"{Nx}"] = cbq_mean_array
-        cbq_std_dict[f"{Nx}"] = cbq_std_array
-        LSMC_mean_dict[f"{Nx}"] = LSMC_mean_array
-        LSMC_std_dict[f"{Nx}"] = LSMC_std_array
-        IS_mean_dict[f"{Nx}"] = IS_mean_array
-        IS_std_dict[f"{Nx}"] = IS_std_array
-        KMS_mean_dict[f"{Nx}"] = KMS_mean_array
-        KMS_std_dict[f"{Nx}"] = KMS_std_array
-
-    for Ny in Ny_array:
-        rng_key, _ = jax.random.split(rng_key)
-        MC_list.append(price(St_prime_single, Ny, rng_key)[1].mean())
 
     # For very very large Nx and Ny.
     Nx = 1000
