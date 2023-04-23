@@ -32,6 +32,8 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
+elif pwd.getpwuid(os.getuid())[0] == 'ucabzc9':
+    os.chdir("/home/ucabzc9/Scratch/CBQ")
 else:
     pass
 
