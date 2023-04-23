@@ -4,7 +4,7 @@
 #$ -S /bin/bash
 #$ -wd /home/ucabzc9/Scratch/
 #$ -j y
-#$ -N cbq_sensitivity
+#$ -N cbq_finance
 
 #source /share/apps/source_files/python/python-3.8.5.source
 JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")

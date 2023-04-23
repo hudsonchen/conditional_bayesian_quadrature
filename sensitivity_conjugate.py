@@ -546,6 +546,7 @@ if __name__ == '__main__':
     save_path = args.save_path
     print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
     if os.path.exists(f"{save_path}__complete"):
+        print(f"Removing old results at {save_path}__complete")
         shutil.rmtree(f"{save_path}__complete")
     os.rename(save_path, f"{save_path}__complete")
     print("\n------------------- DONE -------------------\n")
