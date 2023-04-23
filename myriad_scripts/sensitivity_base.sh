@@ -1,10 +1,10 @@
 #$ -l mem=20G
-#$ -l h_rt=6:00:00
+#$ -l h_rt=6:0:0
 #$ -R y
 #$ -S /bin/bash
 #$ -wd /home/ucabzc9/Scratch/
 #$ -j y
-#$ -N cbq_SIR
+#$ -N cbq_sensitivity
 
 JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")
 echo "Job params: $JOB_PARAMS"
@@ -23,12 +23,10 @@ module load python/miniconda3/4.10.3
 source $UCL_CONDA_PATH/etc/profile.d/conda.sh
 conda activate /lustre/home/ucabzc9/.conda/envs/cbq
 
-## Print out the date and nivida-smi for debugging
 date
 
 ## Check if the environment is correct.
 which pip
-which python3
+which python
 
-pwd
-mpirun -np 1 python3 /home/ucabzc9/Scratch/CBQ/SIR.py $JOB_PARAMS
+mpirun -np 1 python /home/zongchen/CBQ/sensitivity_conjugate.py $JOB_PARAMS
