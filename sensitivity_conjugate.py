@@ -310,9 +310,9 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([10, 20, 30, 40, 50, 60, 70])
+    # N_alpha_array = jnp.array([10])
     N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 120, 10)))
-    # N_theta_array = jnp.array([30, 100])
+    # N_theta_array = jnp.array([30])
     N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 120, 10)))
 
     # This is the test point
@@ -517,8 +517,11 @@ def main(args):
 
     log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
     t0 = time.time()
-    # IS_mean, IS_std = importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
-    IS_mean = LSMC_mean
+    from datetime import datetime
+    current_datetime = datetime.now()
+    print(f"Start IS at {current_datetime}")
+    IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
+    # IS_mean = LSMC_mean
     time_IS_large = time.time() - t0
 
     mse_KMS_large = jnp.mean((KMS_mean - ground_truth) ** 2)
