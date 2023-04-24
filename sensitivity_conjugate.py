@@ -228,6 +228,7 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
 # @jax.jit
 def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
+    :param eps:
     :param psi_y_x_mean: (n_alpha, )
     :param psi_y_x_std: (n_alpha, )
     :param X: (n_alpha, D)
@@ -254,12 +255,12 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
             for j, sigma in enumerate(sigma_array):
                 K = A * K_no_scale + jnp.eye(n_alpha) * sigma
                 K_inv = jnp.linalg.inv(K)
-                nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n_alpha
+                nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
                 nll_array = nll_array.at[i, j].set(nll)
         else:
             K = A * K_no_scale + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
             K_inv = jnp.linalg.inv(K)
-            nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n_alpha
+            nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
             nll_array = nll_array.at[i].set(nll)
 
     min_index_flat = jnp.argmin(nll_array)
@@ -395,7 +396,7 @@ def main(args):
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
             KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line,
-                                   eps=1. / n_theta)
+                                   eps=0.)
             time_KMS = time.time() - t0
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
@@ -508,7 +509,7 @@ def main(args):
     mc_mean_array = g_samples_all.mean(axis=1)
     rng_key, _ = jax.random.split(rng_key)
     t0 = time.time()
-    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-3)
+    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=0.)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()

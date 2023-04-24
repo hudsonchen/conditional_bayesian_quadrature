@@ -1,0 +1,5 @@
+--dim 10 --g_fn g3 --seed 0
+--dim 10 --g_fn g3 --seed 1
+--dim 10 --g_fn g3 --seed 2
+--dim 10 --g_fn g3 --seed 3
+--dim 10 --g_fn g3 --seed 4
