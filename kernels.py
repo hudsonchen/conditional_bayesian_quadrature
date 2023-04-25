@@ -86,6 +86,7 @@ def stein_Gaussian(x, y, l, d_log_px, d_log_py):
     return part1 + part2 + part3 + part4
 
 
+@jax.jit
 def my_Matern(x, y, l):
     """
     :param x: N*D

@@ -63,6 +63,7 @@ def g3_ground_truth(mu, Sigma):
     return jnp.diag(Sigma).sum() + mu.T @ mu
 
 
+@jax.jit
 def Bayesian_Monte_Carlo(y, gy, mu_y_x, sigma_y_x):
     """
     :param sigma_y_x: covariance
@@ -73,29 +74,6 @@ def Bayesian_Monte_Carlo(y, gy, mu_y_x, sigma_y_x):
     """
     N, D = y.shape[0], y.shape[1]
     eps = 1e-6
-
-    # l_array = jnp.array([0.1, 0.6, 1.0, 3.0]) * D
-    # nll_array = 0 * l_array
-    # A_list = []
-
-    # for i, l in enumerate(l_array):
-    #     K_no_scale = my_RBF(y, y, l)
-    #     A = gy.T @ K_no_scale @ gy / N
-    #     A_list.append(A)
-    #     K = A * K_no_scale
-    #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
-    #     nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
-    #     nll_array = nll_array.at[i].set(nll)
-
-    # if D > 2:
-    #     l = l_array[nll_array.argmin()]
-    #     A = A_list[nll_array.argmin()]
-    # else:
-    #     A = 1.
-    #     l = 1.
-    #
-    # l = l_array[nll_array.argmin()]
-    # A = A_list[nll_array.argmin()]
 
     A = 1.
     l = 1.
@@ -110,6 +88,7 @@ def Bayesian_Monte_Carlo(y, gy, mu_y_x, sigma_y_x):
     return BMC_mean, BMC_std
 
 
+@jax.jit
 def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
     :param eps:
@@ -120,22 +99,9 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     :return:
     """
     n_alpha, D = X.shape[0], X.shape[1]
-    l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
-
-    A_array = 0 * l_array
-    nll_array = jnp.zeros([len(l_array), 1])
-
-    for i, l in enumerate(l_array):
-        K_no_scale = my_Matern(X, X, l)
-        A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
-        A_array = A_array.at[i].set(A)
-        K = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
-        K_inv = jnp.linalg.inv(K)
-        nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
-        nll_array = nll_array.at[i].set(nll)
-
-    l = l_array[jnp.argmin(nll_array)]
-    A = A_array[jnp.argmin(nll_array)]
+    l = 3.0
+    K_no_scale = my_Matern(X, X, l)
+    A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
 
     K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
@@ -157,9 +123,14 @@ def standardize(X):
     return X, mean, std
 
 
+def Bayesian_Monte_Carlo_fn(tree):
+    y, gy, mu_y_x, sigma_y_x = tree
+    return Bayesian_Monte_Carlo(y, gy, mu_y_x, sigma_y_x)
+
+
 def main():
     # Compare the performance of BQ and CBQ
-    seed = 0
+    seed = int(time.time())
     rng_key = jax.random.PRNGKey(seed)
     D = 2
 
@@ -172,12 +143,12 @@ def main():
     g = g3
     g_ground_truth_fn = g3_ground_truth
 
-    n_theta_array = jnp.arange(5, 100, 5)
+    n_theta_array = jnp.arange(10, 100, 10)
 
-    time_BQ_array = jnp.zeros_like(n_theta_array)
-    time_CBQ_array = jnp.zeros_like(n_theta_array)
-    mse_BQ_array = jnp.zeros_like(n_theta_array)
-    mse_CBQ_array = jnp.zeros_like(n_theta_array)
+    time_BQ_array = 0. * n_theta_array
+    time_CBQ_array = 0. * n_theta_array
+    mse_BQ_array = 0. * n_theta_array
+    mse_CBQ_array = 0. * n_theta_array
 
     for j, n_theta in enumerate(tqdm(n_theta_array)):
         n_alpha = n_theta
@@ -251,20 +222,27 @@ def main():
         t3 = time.time()
         CBQ_time = (t1 - t0) * n_alpha + (t3 - t2)
 
-        CBQ_mse = (CBQ_mean[0] - ground_truth) ** 2
+        CBQ_mean = CBQ_mean[0]
+        CBQ_mse = (CBQ_mean - ground_truth) ** 2
         mse_CBQ_array = mse_CBQ_array.at[j].set(CBQ_mse)
         time_CBQ_array = time_CBQ_array.at[j].set(CBQ_time)
-        # ============= Debug code =============
-        print("BQ mean: ", BQ_mean)
-        print("CBQ mean: ", CBQ_mean)
-        print("Ground truth: ", ground_truth)
 
-        print("BQ time: ", BQ_time)
-        print("CBQ time: ", CBQ_time)
-        pause = True
+        # ============= Debug code =============
+        # print("BQ mean: ", BQ_mean)
+        # print("CBQ mean: ", CBQ_mean)
+        # print("Ground truth: ", ground_truth)
+        #
+        # print("BQ time: ", BQ_time)
+        # print("CBQ time: ", CBQ_time)
+        # pause = True
         # ============= Debug code =============
 
     # ==================== Plot ====================
+
+    jnp.save("./ablations/mse_BQ_array.npy", mse_BQ_array)
+    jnp.save("./ablations/mse_CBQ_array.npy", mse_CBQ_array)
+    jnp.save("./ablations/time_BQ_array.npy", time_BQ_array)
+    jnp.save("./ablations/time_CBQ_array.npy", time_CBQ_array)
 
     fig, axs = plt.subplots(1, 2, figsize=(10, 5))
     axs[0].plot(n_theta_array, mse_BQ_array, label="BQ")
@@ -272,13 +250,16 @@ def main():
     axs[0].set_xlabel("Sample Numbers")
     axs[0].set_ylabel("MSE")
     axs[0].legend()
+    axs[0].set_yscale("log")
 
     axs[1].plot(n_theta_array, time_BQ_array, label="BQ")
     axs[1].plot(n_theta_array, time_CBQ_array, label="CBQ")
     axs[1].set_xlabel("Sample Numbers")
     axs[1].set_ylabel("Time")
     axs[1].legend()
+    axs[1].set_yscale("log")
     plt.show()
+    pause = True
 
 
 if __name__ == "__main__":
