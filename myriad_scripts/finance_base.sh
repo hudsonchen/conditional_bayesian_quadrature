@@ -5,6 +5,7 @@
 #$ -wd /home/ucabzc9/Scratch/
 #$ -j y
 #$ -N cbq_finance
+#$ -pe mpi 8
 
 #source /share/apps/source_files/python/python-3.8.5.source
 JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")
@@ -28,5 +29,5 @@ conda activate /lustre/home/ucabzc9/.conda/envs/cbq
 which pip
 which python
 
--pe mpi 8
+
 gerun python /home/ucabzc9/Scratch/CBQ/finance.py $JOB_PARAMS

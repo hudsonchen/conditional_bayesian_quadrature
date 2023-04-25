@@ -539,8 +539,8 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = [20]
-    # Nx_array = [2, 5, 10, 20, 30]
+    # Nx_array = [20]
+    Nx_array = [2, 5, 10, 20, 30]
     # Ny_array = [30, 50]
     Ny_array = jnp.arange(5, 105, 5).tolist()
 

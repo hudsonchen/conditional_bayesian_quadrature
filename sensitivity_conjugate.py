@@ -484,7 +484,10 @@ def main(args):
         # plt.close()
         # ============= Debug code =============
 
-    # For very very large Nx and Ny. Test the performance of other methods
+    # =================================
+    # For very very large Nx and Ny
+    # Test the performance of other methods
+    # =================================
     n_alpha = 500
     n_theta = 1000
     rng_key, _ = jax.random.split(rng_key)
@@ -531,6 +534,8 @@ def main(args):
 
     sensitivity_utils.save_large(args, n_alpha, n_theta, mse_KMS_large, mse_LSMC_large, mse_IS_large,
                                  time_KMS_large, time_LSMC_large, time_IS_large)
+
+
     # ============= Debug code =============
     # print(f"=============")
     # print(f"KMS mse with {n_alpha} number of X and {n_theta} number of Y", mse_KMS_large)
