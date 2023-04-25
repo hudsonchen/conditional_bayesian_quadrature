@@ -1,5 +1,5 @@
-#$ -l tmem=80G
-#$ -l h_vmem=80G
+#$ -l tmem=60G
+#$ -l h_vmem=60G
 #$ -l h_rt=15:0:0
 #$ -pe smp 1
 

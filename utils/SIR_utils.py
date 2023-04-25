@@ -115,6 +115,13 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     jnp.save(f"{args.save_path}/calibration_X_{Nx}_y_{Ny}", calibration)
 
     # ========== Debug code ==========
+    print(f"=============")
+    print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
+    print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
+    print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
+    print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
+    print(f"=============")
+
     plt.figure()
     plt.plot(beta_0_test, BMC_mean, color='blue', label='BMC')
     plt.plot(beta_0_test, KMS_mean, color='red', label='KMS')

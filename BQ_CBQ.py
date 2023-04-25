@@ -143,7 +143,7 @@ def main():
     g = g3
     g_ground_truth_fn = g3_ground_truth
 
-    n_theta_array = jnp.arange(10, 100, 10)
+    n_theta_array = jnp.arange(10, 110, 10)
 
     time_BQ_array = 0. * n_theta_array
     time_CBQ_array = 0. * n_theta_array
