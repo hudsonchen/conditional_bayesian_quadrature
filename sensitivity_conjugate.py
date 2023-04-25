@@ -237,39 +237,43 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
     n_alpha, D = X.shape[0], X.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
+
     if psi_y_x_std is None:
         sigma_array = jnp.array([1.0, 0.1, 0.01, 0.001])
-        nll_array = jnp.zeros([len(l_array), len(sigma_array)])
-        A_array = jnp.zeros([len(l_array)])
+        A_array = jnp.array([10.0, 100.0, 300, 1000.0])
+        nll_array = jnp.zeros([len(l_array), len(A_array), len(sigma_array)])
     else:
-        sigma_array = jnp.array([])
+        sigma_array = jnp.array([0.0])
+        A_array = 0 * l_array
         nll_array = jnp.zeros([len(l_array), 1])
-        A_array = jnp.zeros([len(l_array)])
 
-    for i, l in enumerate(l_array):
-        K_no_scale = my_Matern(X, X, l)
-        A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
-        A_array = A_array.at[i].set(A)
-
-        if psi_y_x_std is None:
-            for j, sigma in enumerate(sigma_array):
-                K = A * K_no_scale + jnp.eye(n_alpha) * sigma
-                K_inv = jnp.linalg.inv(K)
-                nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
-                nll_array = nll_array.at[i, j].set(nll)
-        else:
-            K = A * K_no_scale + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
+    if psi_y_x_std is None:
+        for i, l in enumerate(l_array):
+            for j, A in enumerate(A_array):
+                for k, sigma in enumerate(sigma_array):
+                    K = A * my_Matern(X, X, l) + jnp.eye(n_alpha) * sigma
+                    K_inv = jnp.linalg.inv(K)
+                    nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
+                    nll_array = nll_array.at[i, j].set(nll)
+        min_index_flat = jnp.argmin(nll_array)
+        i1, i2, i3 = jnp.unravel_index(min_index_flat, nll_array.shape)
+        l = l_array[i1]
+        A = A_array[i2]
+        sigma = sigma_array[i3]
+    else:
+        for i, l in enumerate(l_array):
+            K_no_scale = my_Matern(X, X, l)
+            A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
+            A_array = A_array.at[i].set(A)
+            K = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
             K_inv = jnp.linalg.inv(K)
             nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
             nll_array = nll_array.at[i].set(nll)
 
-    min_index_flat = jnp.argmin(nll_array)
-    row, col = jnp.unravel_index(min_index_flat, nll_array.shape)
+        l = l_array[jnp.argmin(nll_array)]
+        A = A_array[jnp.argmin(nll_array)]
 
-    l = l_array[row]
-    A = A_array[row]
     if psi_y_x_std is None:
-        sigma = sigma_array[col]
         K_train_train = A * my_Matern(X, X, l) + jnp.eye(n_alpha) * sigma
         K_train_train_inv = jnp.linalg.inv(K_train_train)
         K_test_train = A * my_Matern(X_prime, X, l)
@@ -312,9 +316,9 @@ def main(args):
         raise ValueError('g_fn must be g1 or g2 or g3')
 
     # N_alpha_array = jnp.array([10])
-    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 120, 10)))
+    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     # N_theta_array = jnp.array([30])
-    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 120, 10)))
+    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -534,7 +538,6 @@ def main(args):
 
     sensitivity_utils.save_large(args, n_alpha, n_theta, mse_KMS_large, mse_LSMC_large, mse_IS_large,
                                  time_KMS_large, time_LSMC_large, time_IS_large)
-
 
     # ============= Debug code =============
     # print(f"=============")
