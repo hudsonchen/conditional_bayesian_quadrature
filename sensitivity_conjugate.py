@@ -6,7 +6,6 @@ import pwd
 import jax.scipy
 import jax.scipy.stats
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 import argparse
 import sensitivity_baselines
 from tqdm import tqdm
