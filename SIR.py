@@ -41,7 +41,7 @@ else:
 def Monte_Carlo(gy):
     return gy.mean(0)
 
-
+@jax.jit
 def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     """
     :param rng_key:
@@ -58,7 +58,6 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     c_init = c = 1.0
     l_init = l = 1.5
     A_init = A = 1.0 / jnp.sqrt(n)
-    opt_state = optimizer.init((l_init, c_init, A_init))
 
     # @jax.jit
     # def nllk_func(l, c, A):
@@ -182,9 +181,9 @@ def peak_infected_time(infections):
 
 def SIR(args, rng_key):
     # Ny_array = jnp.array([20])
-    Ny_array = jnp.arange(5, 60, 10)
+    Ny_array = jnp.arange(5, 55, 5)
     # Nx_array = jnp.array([25])
-    Nx_array = jnp.arange(5, 60, 10)
+    Nx_array = jnp.arange(5, 55, 5)
     # N_test = 10
     N_test = 100
 
