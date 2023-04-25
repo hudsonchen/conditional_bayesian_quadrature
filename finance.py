@@ -28,12 +28,6 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
     os.chdir("/home/zongchen/CBQ")
     print(os.getcwd())
-    # os.environ[
-    #     "XLA_FLAGS"
-    # ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
-    # os.environ["OPENBLAS_NUM_THREADS"] = "1"
-    # os.environ["MKL_NUM_THREADS"] = "1"
-    # os.environ["OMP_NUM_THREAD"] = "1"
 elif pwd.getpwuid(os.getuid())[0] == 'ucabzc9':
     os.chdir("/home/ucabzc9/Scratch/CBQ")
 else:
@@ -218,7 +212,7 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     # c_debug_list = []
     # A_debug_list = []
     # nll_debug_list = []
-    for _ in range(100):
+    for _ in range(10):
         rng_key, _ = jax.random.split(rng_key)
         l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, y, gy, d_log_py, Ky, eps)
         # # Debug code
@@ -342,6 +336,7 @@ class CBQ:
         eps = 1e-6
         Sigma = jnp.zeros(Nx)
         Mu = jnp.zeros(Nx)
+
         for i in range(Nx):
             x = X[i]
             Yi = Y[i, :][:, None]
@@ -350,8 +345,9 @@ class CBQ:
 
             grad_y_log_py_x_fn = partial(grad_y_log_py_x, sigma=0.3, T=2, t=1, y_mean=Yi_mean, y_scale=Yi_scale)
             dy_log_py_x = grad_y_log_py_x_fn(Yi_standardized, x)
-            ly, c, A = train(x, Yi_standardized, Yi_scale, gYi,
-                             dy_log_py_x, grad_y_log_py_x_fn, rng_key, self.Ky)
+            if i == 0:
+                ly, c, A = train(x, Yi_standardized, Yi_scale, gYi,
+                                 dy_log_py_x, grad_y_log_py_x_fn, rng_key, self.Ky)
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
 
             K = A * self.Ky(Yi_standardized, Yi_standardized, ly, dy_log_py_x, dy_log_py_x) + c + A * jnp.eye(Ny)
@@ -367,7 +363,7 @@ class CBQ:
             # print(f'MC with {Ny} number of Y', gYi.mean())
             # print(f'BMC with {Ny} number of Y', mu)
             # print(f"=================")
-            # pause = True
+            pause = True
         return Mu, Sigma
 
     # @partial(jax.jit, static_argnums=(0,))
@@ -405,7 +401,6 @@ class CBQ:
 
         # ========== Debug code ==========
         # plt.figure()
-        # plt.ylim(-2, 15)
         # plt.plot(St_prime.squeeze(), true_EgY_X, color='red', label='true')
         # plt.scatter(St.squeeze(), psi_x_mean.squeeze())
         # plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
@@ -544,23 +539,14 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [30]
-    Nx_array = [2, 5, 10, 20, 30]
+    Nx_array = [20]
+    # Nx_array = [2, 5, 10, 20, 30]
     # Ny_array = [30, 50]
-    Ny_array = jnp.arange(3, 105, 5).tolist()
+    Ny_array = jnp.arange(5, 105, 5).tolist()
 
     test_num = 200
-    # S0 = jnp.array([[50]])
-    # St_prime, _ = price(S0, test_num, rng_key)
-    # St_prime = St_prime.reshape([test_num, 1])
-    # St_prime = np.sort(St_prime, axis=0)
     St_prime = jnp.linspace(20., 120., test_num)[:, None]
     save_true_value(St_prime, args)
-    test_ind = 50
-    St_prime_single = St_prime[test_ind][:, None]
-    # rng_key, _ = jax.random.split(rng_key)
-    # true_value = price(St_prime_single, 100000, rng_key)[1].mean()
-    # print('True Value is:', true_value)
 
     kernel_x = args.kernel_x
     kernel_y = args.kernel_y

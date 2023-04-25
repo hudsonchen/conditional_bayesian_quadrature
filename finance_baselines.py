@@ -7,17 +7,23 @@ import matplotlib.pyplot as plt
 
 
 def polynomial(args, X, Y, gY, X_prime, poly=4):
+    """
+    :param args:
+    :param X: Nx*D
+    :param Y: Nx*Ny
+    :param gY: Nx*Ny
+    :param X_prime: N_test*D
+    :param poly: int
+    :return:
+    """
+    eps = 1e-6
     X_standardized, X_mean, X_std = finance_utils.standardize(X)
     X_prime_standardized = (X_prime - X_mean) / X_std
-    X_poly = jnp.ones_like(X_standardized)
-    for i in range(1, poly + 1):
-        X_poly = jnp.concatenate((X_poly, X_standardized ** i), axis=1)
-    eps = 1e-6
-    theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
 
-    X_prime_poly = jnp.ones_like(X_prime_standardized)
-    for i in range(1, poly + 1):
-        X_prime_poly = jnp.concatenate((X_prime_poly, X_prime_standardized ** i), axis=1)
+    powers = jnp.arange(0, poly + 1)
+    X_poly = X_standardized ** powers
+    theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
+    X_prime_poly = X_prime_standardized ** powers
     phi = X_prime_poly @ theta
     std = jnp.zeros_like(phi)
 

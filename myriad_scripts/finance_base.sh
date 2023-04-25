@@ -28,4 +28,5 @@ conda activate /lustre/home/ucabzc9/.conda/envs/cbq
 which pip
 which python
 
-python /home/ucabzc9/Scratch/CBQ/finance.py $JOB_PARAMS
+-pe mpi 8
+gerun python /home/ucabzc9/Scratch/CBQ/finance.py $JOB_PARAMS
