@@ -528,8 +528,8 @@ def main(args):
     from datetime import datetime
     current_datetime = datetime.now()
     print(f"Start IS at {current_datetime}")
-    IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
-    # IS_mean = LSMC_mean
+    # IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
+    IS_mean = LSMC_mean
     time_IS_large = time.time() - t0
 
     mse_KMS_large = jnp.mean((KMS_mean - ground_truth) ** 2)
