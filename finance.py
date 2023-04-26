@@ -54,7 +54,7 @@ def get_config():
     return args
 
 
-# @jax.jit
+@jax.jit
 def grad_y_log_py_x(y, x, y_mean, y_scale, sigma, T, t):
     # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
     y = y * y_scale + y_mean
