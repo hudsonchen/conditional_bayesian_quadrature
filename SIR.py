@@ -41,6 +41,7 @@ else:
 def Monte_Carlo(gy):
     return gy.mean(0)
 
+
 @jax.jit
 def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     """

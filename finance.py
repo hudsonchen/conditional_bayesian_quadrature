@@ -448,11 +448,11 @@ class CBQ:
             pickle.dump(time_dict, f)
 
         # ============= Debug code =============
-        print(f"=============")
-        print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
-        print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
-        print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
-        print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
+        # print(f"=============")
+        # print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
+        # print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
+        # print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
+        # print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
         # print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_cbq)
         # print(f"Time of IS with {Nx} number of X and {Ny} number of Y", time_IS)
         # print(f"Time of LSMC with {Nx} number of X and {Ny} number of Y", time_LSMC)
@@ -554,10 +554,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = jnp.array([20])
-    # Nx_array = jnp.array([2, 5, 10, 20, 30])
-    Ny_array = jnp.array([30, 50, 70])
-    # Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    # Nx_array = jnp.array([20])
+    Nx_array = jnp.array([2, 5, 10, 20, 30])
+    # Ny_array = jnp.array([30, 50, 70])
+    Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_prime = jnp.linspace(20., 120., test_num)[:, None]
