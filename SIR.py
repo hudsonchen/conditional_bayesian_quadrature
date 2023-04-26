@@ -213,6 +213,7 @@ def SIR(args, rng_key):
     for i in tqdm(range(N_test)):
         beta_0 = beta_0_test[i]
         a = 1 + rate * beta_0
+        rng_key, _ = jax.random.split(rng_key)
         beta_samples = jax.random.gamma(rng_key, a, shape=(SamplesNum,))
         beta_samples = beta_samples * scale
         temp = generate_data_vmap(beta_samples)
