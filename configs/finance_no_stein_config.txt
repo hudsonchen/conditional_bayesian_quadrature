@@ -1,3 +1,13 @@
+--kernel_x rbf --kernel_y log_normal_RBF --seed 101
+--kernel_x rbf --kernel_y log_normal_RBF --seed 102
+--kernel_x rbf --kernel_y log_normal_RBF --seed 103
+--kernel_x rbf --kernel_y log_normal_RBF --seed 104
+--kernel_x rbf --kernel_y log_normal_RBF --seed 105
+--kernel_x rbf --kernel_y log_normal_RBF --seed 106
+--kernel_x rbf --kernel_y log_normal_RBF --seed 107
+--kernel_x rbf --kernel_y log_normal_RBF --seed 108
+--kernel_x rbf --kernel_y log_normal_RBF --seed 109
+--kernel_x rbf --kernel_y log_normal_RBF --seed 1010
 --kernel_x rbf --kernel_y log_normal_RBF --seed 1
 --kernel_x rbf --kernel_y log_normal_RBF --seed 2
 --kernel_x rbf --kernel_y log_normal_RBF --seed 3
