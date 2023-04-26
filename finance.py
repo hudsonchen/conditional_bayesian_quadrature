@@ -303,32 +303,12 @@ class CBQ:
             gYi = gY[i, :][:, None]
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y'|x)p(y|x)dydy'
 
-            # l_array = jnp.array([0.1, 0.6, 1.0, 3.0])
-            # nll_array = 0 * l_array
-            # A_list = []
-            #
-            # for i, l in enumerate(l_array):
-            #     K_no_scale = self.Ky(Yi_standardized, Yi_standardized, l, None, None)
-            #     A = gYi.T @ K_no_scale @ gYi / Ny
-            #     A_list.append(A.item())
-            #     K = A * K_no_scale
-            #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(Ny))
-            #     nll = -(-0.5 * gYi.T @ K_inv @ gYi - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / Ny
-            #     nll_array = nll_array.at[i].set(nll.item())
-            #
-            # l = l_array[nll_array.argmin()]
-            # A = A_list[nll_array.argmin()]
-
-            l = 0.1
-            K_no_scale = self.Ky(Yi_standardized, Yi_standardized, l, None, None)
-            A = gYi.T @ K_no_scale @ gYi / Ny
-
-            K = A * self.Ky(Yi_standardized, Yi_standardized, l, None, None) + eps * jnp.eye(Ny)
+            K = self.Ky(Yi_standardized, Yi_standardized, self.ly, None, None) + eps * jnp.eye(Ny)
             K_inv = jnp.linalg.inv(K)
             a = -sigma ** 2 * (T - t) / 2 + jnp.log(x)
             b = jnp.sqrt(sigma ** 2 * (T - t))
-            phi = A * phi_log_normal_RBF(Yi_standardized, l, a, b)
-            varphi = A * varphi_log_normal_RBF(l, a, b)
+            phi = phi_log_normal_RBF(Yi_standardized, self.ly, a, b)
+            varphi = varphi_log_normal_RBF(self.ly, a, b)
             mu_standardized = phi.T @ K_inv @ gYi
             std_standardized = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
 
@@ -340,7 +320,7 @@ class CBQ:
             # print(f'MC with {Ny} number of Y', gYi.mean())
             # print(f'BMC with {Ny} number of Y', mu_standardized.squeeze())
             # print(f"=================")
-            pause = True
+            # pause = True
             # ============= Debug code =============
         return Mu, Sigma
 
@@ -561,10 +541,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = [20]
-    Nx_array = [2, 5, 10, 20, 30]
-    # Ny_array = [30, 50]
-    Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    Nx_array = jnp.array([20])
+    # Nx_array = [2, 5, 10, 20, 30]
+    Ny_array = jnp.array([30, 50])
+    # Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_prime = jnp.linspace(20., 120., test_num)[:, None]
