@@ -1,3 +1,14 @@
+--kernel_x rbf --kernel_y stein_matern --seed 101
+--kernel_x rbf --kernel_y stein_matern --seed 102
+--kernel_x rbf --kernel_y stein_matern --seed 103
+--kernel_x rbf --kernel_y stein_matern --seed 104
+--kernel_x rbf --kernel_y stein_matern --seed 105
+--kernel_x rbf --kernel_y stein_matern --seed 106
+--kernel_x rbf --kernel_y stein_matern --seed 107
+--kernel_x rbf --kernel_y stein_matern --seed 108
+--kernel_x rbf --kernel_y stein_matern --seed 109
+--kernel_x rbf --kernel_y stein_matern --seed 1010
+--kernel_x rbf --kernel_y stein_matern --seed 1011
 --kernel_x rbf --kernel_y stein_matern --seed 1
 --kernel_x rbf --kernel_y stein_matern --seed 2
 --kernel_x rbf --kernel_y stein_matern --seed 3
@@ -8,3 +19,4 @@
 --kernel_x rbf --kernel_y stein_matern --seed 8
 --kernel_x rbf --kernel_y stein_matern --seed 9
 --kernel_x rbf --kernel_y stein_matern --seed 10
+--kernel_x rbf --kernel_y stein_matern --seed 11
