@@ -115,6 +115,7 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
     return part1 + part2 + part3 + part4
 
 
+@jax.jit
 def log_normal_RBF(x, y, l, d_log_px, d_log_py):
     return my_RBF(jnp.log(x), jnp.log(y), l)
 
@@ -302,24 +303,45 @@ class CBQ:
             gYi = gY[i, :][:, None]
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y'|x)p(y|x)dydy'
 
-            K = self.Ky(Yi_standardized, Yi_standardized, self.ly, None, None) + eps * jnp.eye(Ny)
+            # l_array = jnp.array([0.1, 0.6, 1.0, 3.0])
+            # nll_array = 0 * l_array
+            # A_list = []
+            #
+            # for i, l in enumerate(l_array):
+            #     K_no_scale = self.Ky(Yi_standardized, Yi_standardized, l, None, None)
+            #     A = gYi.T @ K_no_scale @ gYi / Ny
+            #     A_list.append(A.item())
+            #     K = A * K_no_scale
+            #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(Ny))
+            #     nll = -(-0.5 * gYi.T @ K_inv @ gYi - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / Ny
+            #     nll_array = nll_array.at[i].set(nll.item())
+            #
+            # l = l_array[nll_array.argmin()]
+            # A = A_list[nll_array.argmin()]
+
+            l = 0.1
+            K_no_scale = self.Ky(Yi_standardized, Yi_standardized, l, None, None)
+            A = gYi.T @ K_no_scale @ gYi / Ny
+
+            K = A * self.Ky(Yi_standardized, Yi_standardized, l, None, None) + eps * jnp.eye(Ny)
             K_inv = jnp.linalg.inv(K)
             a = -sigma ** 2 * (T - t) / 2 + jnp.log(x)
             b = jnp.sqrt(sigma ** 2 * (T - t))
-            phi = phi_log_normal_RBF(Yi_standardized, self.ly, a, b)
-            varphi = varphi_log_normal_RBF(self.ly, a, b)
+            phi = A * phi_log_normal_RBF(Yi_standardized, l, a, b)
+            varphi = A * varphi_log_normal_RBF(l, a, b)
             mu_standardized = phi.T @ K_inv @ gYi
             std_standardized = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
 
             Sigma = Sigma.at[i].set(std_standardized.squeeze())
             Mu = Mu.at[i].set(mu_standardized.squeeze())
 
-            # # Large sample mu
+            # ============= Debug code =============
             # print('True value', price(X[i], 10000, rng_key)[1].mean())
             # print(f'MC with {Ny} number of Y', gYi.mean())
             # print(f'BMC with {Ny} number of Y', mu_standardized.squeeze())
             # print(f"=================")
             pause = True
+            # ============= Debug code =============
         return Mu, Sigma
 
     # @partial(jax.jit, static_argnums=(0,))
@@ -542,7 +564,7 @@ def cbq_option_pricing(args):
     # Nx_array = [20]
     Nx_array = [2, 5, 10, 20, 30]
     # Ny_array = [30, 50]
-    Ny_array = jnp.arange(5, 105, 5).tolist()
+    Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_prime = jnp.linspace(20., 120., test_num)[:, None]
@@ -558,7 +580,7 @@ def cbq_option_pricing(args):
             # epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
             # St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
             St = jnp.linspace(20, 120, Nx)[:, None]
-            ST, loss = price(St, Ny, rng_key)
+            ST, loss = price(St, Ny.item(), rng_key)
 
             mc_mean = loss.mean(1)[:, None]
             mc_std = 0 * mc_mean
