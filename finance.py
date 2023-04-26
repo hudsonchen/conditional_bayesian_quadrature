@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import optax
 from functools import partial
 from tqdm import tqdm
-from finance_baselines import *
+import finance_baselines
 from kernels import *
 from utils import finance_utils
 import os
@@ -378,26 +378,39 @@ class CBQ:
         :return:
         """
         Nx = psi_y_x_mean.shape[0]
-        Mu_standardized, Mu_mean, Mu_std = finance_utils.standardize(psi_y_x_mean)
-        Sigma_standardized = psi_y_x_std / Mu_std
         X_standardized, X_mean, X_std = finance_utils.standardize(X)
         X_prime_standardized = (X_prime - X_mean) / X_std
-        noise = 0.001
 
-        K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = self.Kx(X_prime_standardized, X_standardized, self.lx)
-        K_test_test = self.Kx(X_prime_standardized, X_prime_standardized, self.lx) + noise
-        mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
-        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-        std_y_x_prime = jnp.sqrt(var_y_x_prime)
-
-        mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-        std_y_x_prime_original = std_y_x_prime * Mu_std + jnp.mean(psi_y_x_std)
-        return mu_y_x_prime_original, std_y_x_prime_original
+        if psi_y_x_std is None:
+            noise_array = jnp.array([0.01, 0.001, 0.0001])
+            nll_array = 0. * noise_array
+            for i, noise in enumerate(noise_array):
+                K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
+                nll = -(-0.5 * psi_y_x_mean.T @ K_train_train @ psi_y_x_mean -
+                        0.5 * jnp.log(jnp.linalg.det(K_train_train) + 1e-6)) / Nx
+                nll_array = nll_array.at[i].set(nll.squeeze())
+            noise = noise_array[jnp.argmin(nll_array)]
+            K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
+            K_train_train_inv = jnp.linalg.inv(K_train_train)
+            K_test_train = self.Kx(X_prime_standardized, X_standardized, self.lx)
+            K_test_test = self.Kx(X_prime_standardized, X_prime_standardized, self.lx) + noise
+            mu_y_x_prime = K_test_train @ K_train_train_inv @ psi_y_x_mean
+            var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+            std_y_x_prime = jnp.sqrt(var_y_x_prime)
+        else:
+            noise = psi_y_x_mean.mean()
+            K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(psi_y_x_std ** 2)
+            K_train_train_inv = jnp.linalg.inv(K_train_train)
+            K_test_train = self.Kx(X_prime_standardized, X_standardized, self.lx)
+            K_test_test = self.Kx(X_prime_standardized, X_prime_standardized, self.lx) + noise
+            mu_y_x_prime = K_test_train @ K_train_train_inv @ psi_y_x_mean
+            var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+            std_y_x_prime = jnp.sqrt(var_y_x_prime)
+        pause = True
+        return mu_y_x_prime, std_y_x_prime
 
     def save(self, Nx, Ny, psi_x_mean, St, St_prime,
-             mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_LSMC,
+             BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
              time_cbq, time_IS, time_KMS, time_LSMC):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
@@ -416,9 +429,9 @@ class CBQ:
         # plt.close()
         # ========== Debug code ==========
 
-        L_BMC = jnp.maximum(mu_y_x_prime_cbq, 0).mean()
-        L_IS = jnp.maximum(mu_y_x_prime_IS, 0).mean()
-        L_LSMC = jnp.maximum(mu_y_x_prime_LSMC, 0).mean()
+        L_BMC = jnp.maximum(BMC_mean, 0).mean()
+        L_IS = jnp.maximum(IS_mean, 0).mean()
+        L_LSMC = jnp.maximum(LSMC_mean, 0).mean()
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
         L_true = jnp.maximum(true_EgY_X, 0).mean()
 
@@ -435,11 +448,11 @@ class CBQ:
             pickle.dump(time_dict, f)
 
         # ============= Debug code =============
-        # print(f"=============")
-        # print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
-        # print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
-        # print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
-        # print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
+        print(f"=============")
+        print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
+        print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
+        print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
+        print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
         # print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_cbq)
         # print(f"Time of IS with {Nx} number of X and {Ny} number of Y", time_IS)
         # print(f"Time of LSMC with {Nx} number of X and {Ny} number of Y", time_LSMC)
@@ -541,10 +554,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = jnp.array([20])
-    Nx_array = jnp.array([2, 5, 10, 20, 30])
-    # Ny_array = jnp.array([30, 50])
-    Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    Nx_array = jnp.array([20])
+    # Nx_array = jnp.array([2, 5, 10, 20, 30])
+    Ny_array = jnp.array([30, 50, 70])
+    # Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_prime = jnp.linspace(20., 120., test_num)[:, None]
@@ -563,33 +576,36 @@ def cbq_option_pricing(args):
             ST, loss = price(St, Ny.item(), rng_key)
 
             mc_mean = loss.mean(1)[:, None]
-            mc_std = 0 * mc_mean
-            _, _ = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+            _, _ = CBQ_class.GP(mc_mean, None, St, St_prime)
             t0 = time.time()
-            KMS_mean, KMS_std = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+            KMS_mean, KMS_std = CBQ_class.GP(mc_mean, None, St, St_prime)
             KMS_mean = KMS_mean.squeeze()
             time_KMS = time.time() - t0
 
-            _, _ = importance_sampling(py_x_fn, St_prime, St, ST, loss)
+            _, _ = finance_baselines.importance_sampling(py_x_fn, St_prime, St, ST, loss)
             t0 = time.time()
-            mu_y_x_prime_IS, std_y_x_prime_IS = importance_sampling(py_x_fn, St_prime, St, ST, loss)
+            IS_mean, IS_std = finance_baselines.importance_sampling(py_x_fn, St_prime, St, ST, loss)
             time_IS = time.time() - t0
 
-            _, _ = polynomial(args, St, ST, loss, St_prime)
+            _, _ = finance_baselines.polynomial(args, St, ST, loss, St_prime)
             t0 = time.time()
-            mu_y_x_prime_LSMC, std_y_x_prime_LSMC = polynomial(args, St, ST, loss, St_prime)
+            LSMC_mean, LSMC_std = finance_baselines.polynomial(args, St, ST, loss, St_prime)
             time_LSMC = time.time() - t0
 
             _, _ = CBQ_class.cbq(St, ST, loss, rng_key)
             t0 = time.time()
             # St is X, ST is Y, loss is g(Y)
             psi_x_mean, psi_x_std = CBQ_class.cbq(St, ST, loss, rng_key)
+            t1 = time.time()
             psi_x_std = np.nan_to_num(psi_x_std, nan=0.3)
-            mu_y_x_prime_cbq, std_y_x_prime_cbq = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
-            time_cbq = time.time() - t0
+            _, _ = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
+            t2 = time.time()
+            BMC_mean, BMC_std = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
+            t3 = time.time()
+            time_cbq = t3 - t2 + t1 - t0
 
             CBQ_class.save(Nx, Ny, psi_x_mean, St, St_prime,
-                           mu_y_x_prime_cbq, std_y_x_prime_cbq, KMS_mean, mu_y_x_prime_IS, mu_y_x_prime_LSMC,
+                           BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
                            time_cbq, time_IS, time_KMS, time_LSMC)
 
     # For very very large Nx and Ny.
@@ -602,16 +618,15 @@ def cbq_option_pricing(args):
 
     t0 = time.time()
     mc_mean = loss.mean(1)[:, None]
-    mc_std = 0 * mc_mean
-    KMS_mean_large, _ = CBQ_class.GP(mc_mean, mc_std, St, St_prime)
+    KMS_mean_large, _ = CBQ_class.GP(mc_mean, None, St, St_prime)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
-    LSMC_mean_large, _ = polynomial(args, St, ST, loss, St_prime)
+    LSMC_mean_large, _ = finance_baselines.polynomial(args, St, ST, loss, St_prime)
     time_LSMC_large = time.time() - t0
 
     t0 = time.time()
-    IS_mean_large, IS_std = importance_sampling(py_x_fn, St_prime, St, ST, loss)
+    IS_mean_large, IS_std = finance_baselines.importance_sampling(py_x_fn, St_prime, St, ST, loss)
     time_IS_large = time.time() - t0
 
     CBQ_class.save_large(Nx, Ny, KMS_mean_large, LSMC_mean_large, IS_mean_large,

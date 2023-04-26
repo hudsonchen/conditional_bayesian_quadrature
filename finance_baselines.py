@@ -6,7 +6,7 @@ import jax
 import matplotlib.pyplot as plt
 
 
-def polynomial(args, X, Y, gY, X_prime, poly=4):
+def polynomial(args, X, Y, gY, X_prime, poly=3):
     """
     :param args:
     :param X: Nx*D
@@ -16,7 +16,7 @@ def polynomial(args, X, Y, gY, X_prime, poly=4):
     :param poly: int
     :return:
     """
-    eps = 1e-6
+    eps = 0.1
     X_standardized, X_mean, X_std = finance_utils.standardize(X)
     X_prime_standardized = (X_prime - X_mean) / X_std
 
