@@ -11,7 +11,7 @@ def polynomial(X, Y, gY, X_prime, poly=3):
     powers = jnp.arange(0, poly + 1)
     X_poly = X_standardized ** powers
     X_poly = X_poly.reshape([X.shape[0], -1])
-    eps = 0.1
+    eps = 1.0
 
     theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
 

@@ -148,7 +148,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 
         for i, l in enumerate(l_array):
             for j, sigma in enumerate(sigma_array):
-                K_no_scale = my_RBF(X_standardized, X_standardized, l)
+                K_no_scale = my_Matern(X_standardized, X_standardized, l)
                 A = Mu_standardized.T @ K_no_scale @ Mu_standardized / Nx
                 A_array = A_array.at[i, j].set(A[0][0])
                 K = A * K_no_scale
@@ -161,34 +161,38 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
         sigma = sigma_array[i2]
         A = A_array[i1, i2]
 
-        K_train_train = A * my_RBF(X_standardized, X_standardized, l) + sigma * jnp.eye(Nx)
+        K_train_train = A * my_Matern(X_standardized, X_standardized, l) + sigma * jnp.eye(Nx)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_RBF(x_prime_standardized, X_standardized, l)
-        K_test_test = A * my_RBF(x_prime_standardized, x_prime_standardized, l) + sigma
+        K_test_train = A * my_Matern(x_prime_standardized, X_standardized, l)
+        K_test_test = A * my_Matern(x_prime_standardized, x_prime_standardized, l) + sigma
         mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
         var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
         std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
     else:
-        l_array = jnp.array([0.3, 1.0, 3.0])
+        l_array = jnp.array([3.0])
         nll_array = 0.0 * l_array
         A_array = 0.0 * l_array
         sigma = psi_y_x_std / Mu_std
         for i, l in enumerate(l_array):
-            K_no_scale = my_RBF(X_standardized, X_standardized, l)
+            K_no_scale = my_Matern(X_standardized, X_standardized, l)
             A = Mu_standardized.T @ K_no_scale @ Mu_standardized / Nx
             A_array = A_array.at[i].set(A[0][0])
             K = A * K_no_scale
-            K_inv = jnp.linalg.inv(K + jnp.diag(sigma))
+            K_inv = jnp.linalg.inv(K + jnp.diag(sigma ** 2))
             nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / Nx
             nll_array = nll_array.at[i].set(nll[0][0])
         l = l_array[nll_array.argmin()]
         A = A_array[nll_array.argmin()]
 
-        K_train_train = A * my_RBF(X_standardized, X_standardized, l) + jnp.diag(sigma)
+        if Nx > 10:
+            sigma = jnp.ones_like(Mu_standardized) * 0.1
+        else:
+            pass
+        K_train_train = A * my_Matern(X_standardized, X_standardized, l) + jnp.diag(sigma ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_RBF(x_prime_standardized, X_standardized, l)
-        K_test_test = A * my_RBF(x_prime_standardized, x_prime_standardized, l) + sigma.mean()
+        K_test_train = A * my_Matern(x_prime_standardized, X_standardized, l)
+        K_test_test = A * my_Matern(x_prime_standardized, x_prime_standardized, l) + (sigma ** 2).mean()
         mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
         var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
         std_y_x_prime = jnp.sqrt(var_y_x_prime)
@@ -208,12 +212,12 @@ def peak_infected_time(infections):
 
 
 def SIR(args, rng_key):
-    # Ny_array = jnp.array([20])
-    Ny_array = jnp.arange(5, 55, 5)
-    # Nx_array = jnp.array([25])
-    Nx_array = jnp.arange(5, 55, 5)
-    N_test = 10
-    # N_test = 100
+    # Ny_array = jnp.array([10, 20, 30])
+    Ny_array = jnp.arange(5, 45, 5)
+    # Nx_array = jnp.array([10, 20])
+    Nx_array = jnp.arange(5, 45, 5)
+    # N_test = 10
+    N_test = 100
 
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
@@ -322,8 +326,11 @@ def SIR(args, rng_key):
                 # pause = True
                 # ========== Debug code ===========
 
-            print(BMC_std_array)
-            BMC_std_array = jnp.nan_to_num(BMC_std_array, nan=1000.)
+            # non_nan = BMC_std_array[~jnp.isnan(BMC_std_array)]
+            BMC_std_array_ = BMC_std_array
+            BMC_std_array = jnp.nan_to_num(BMC_std_array, nan=0.)
+            BMC_std_array = jnp.ones_like(BMC_std_array) * jnp.mean(BMC_std_array)
+
             _, _ = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
                       beta_0_array[:, None], beta_0_test[:, None])
             t0 = time.time()
