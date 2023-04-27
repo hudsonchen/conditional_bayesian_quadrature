@@ -8,5 +8,3 @@ rsync -ruP myriad:/home/ucabzc9/Scratch/CBQ/results/sensitivity_conjugate/ /User
 rsync -ruP myriad:/home/ucabzc9/Scratch/CBQ/results/finance/ /Users/hudsonchen/research/fx_bayesian_quaduature/CBQ/results_server/finance
 rsync -ruP myriad:/home/ucabzc9/Scratch/CBQ/results/finance_stein/ /Users/hudsonchen/research/fx_bayesian_quaduature/CBQ/results_server/finance_stein/
 rsync -ruP myriad:/home/ucabzc9/Scratch/CBQ/results/SIR/ /Users/hudsonchen/research/fx_bayesian_quaduature/CBQ/results_server/SIR
-
-scp -r myriad:/home/ucabzc9/Scratch/CBQ/results/finance_stein /Users/hudsonchen/Desktop/

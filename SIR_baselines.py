@@ -7,15 +7,16 @@ import jax
 def polynomial(X, Y, gY, X_prime, poly=3):
     X_standardized, X_mean, X_std = SIR_utils.standardize(X)
     X_prime_standardized = (X_prime - X_mean) / X_std
-    X_poly = jnp.ones_like(X_standardized)
-    for i in range(1, poly + 1):
-        X_poly = jnp.concatenate((X_poly, X_standardized ** i), axis=1)
-    eps = 1.0
+
+    powers = jnp.arange(0, poly + 1)
+    X_poly = X_standardized ** powers
+    X_poly = X_poly.reshape([X.shape[0], -1])
+    eps = 0.1
+
     theta = jnp.linalg.inv(X_poly.T @ X_poly + eps * jnp.eye(poly + 1)) @ X_poly.T @ gY.mean(1)
 
-    X_prime_poly = jnp.ones_like(X_prime_standardized)
-    for i in range(1, poly + 1):
-        X_prime_poly = jnp.concatenate((X_prime_poly, X_prime_standardized ** i), axis=1)
+    X_prime_poly = X_prime_standardized ** powers
+    X_prime_poly = X_prime_poly.reshape([X_prime.shape[0], -1])
     phi = X_prime_poly @ theta
     std = jnp.zeros_like(phi)
 

@@ -42,7 +42,7 @@ def Monte_Carlo(gy):
     return gy.mean(0)
 
 
-@jax.jit
+# @partial(jax.jit, static_argnums=(4,))
 def Bayesian_Monte_Carlo(rng_key, y, gy, d_log_py, kernel_y):
     """
     :param rng_key:
@@ -126,48 +126,75 @@ def log_prior(beta, beta_0, rate, rng_key):
 
 
 # @jax.jit
-def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, eps):
+def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
     """
-    :param eps:
     :param psi_y_x_mean: n_alpha*1
     :param psi_y_x_std: n_alpha*1
     :param X: n_train*1
     :param x_prime: n_test*1
     :return:
     """
+    eps = 1e-6
     Nx = psi_y_x_mean.shape[0]
     Mu_standardized, Mu_mean, Mu_std = SIR_utils.standardize(psi_y_x_mean)
-    psi_y_x_std = jnp.nan_to_num(psi_y_x_std)
-    Sigma_standardized = psi_y_x_std / Mu_std
     X_standardized, X_mean, X_std = SIR_utils.standardize(X)
     x_prime_standardized = (x_prime - X_mean) / X_std
 
-    l_array = jnp.array([0.3, 1.0, 3.0])
-    nll_array = 0 * l_array
-    A_list = []
+    if psi_y_x_std is None:
+        l_array = jnp.array([0.3, 1.0, 3.0])
+        sigma_array = jnp.array([0.1, 0.01, 0.001])
+        nll_array = jnp.zeros([l_array.shape[0], sigma_array.shape[0]]) + 0.0
+        A_array = jnp.zeros([l_array.shape[0], sigma_array.shape[0]]) + 0.0
 
-    for i, l in enumerate(l_array):
-        K_no_scale = my_RBF(X_standardized, X_standardized, l)
-        A = Mu_standardized.T @ K_no_scale @ Mu_standardized / Nx
-        A_list.append(A)
-        K = A * K_no_scale
-        K_inv = jnp.linalg.inv(K + eps * jnp.eye(Nx))
-        nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / Nx
-        nll_array = nll_array.at[i].set(nll[0][0])
+        for i, l in enumerate(l_array):
+            for j, sigma in enumerate(sigma_array):
+                K_no_scale = my_RBF(X_standardized, X_standardized, l)
+                A = Mu_standardized.T @ K_no_scale @ Mu_standardized / Nx
+                A_array = A_array.at[i, j].set(A[0][0])
+                K = A * K_no_scale
+                K_inv = jnp.linalg.inv(K + sigma * jnp.eye(Nx))
+                nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / Nx
+                nll_array = nll_array.at[i].set(nll[0][0])
+        min_index_flat = jnp.argmin(nll_array)
+        i1, i2 = jnp.unravel_index(min_index_flat, nll_array.shape)
+        l = l_array[i1]
+        sigma = sigma_array[i2]
+        A = A_array[i1, i2]
 
-    l = l_array[nll_array.argmin()]
-    A = A_list[nll_array.argmin()]
+        K_train_train = A * my_RBF(X_standardized, X_standardized, l) + sigma * jnp.eye(Nx)
+        K_train_train_inv = jnp.linalg.inv(K_train_train)
+        K_test_train = A * my_RBF(x_prime_standardized, X_standardized, l)
+        K_test_test = A * my_RBF(x_prime_standardized, x_prime_standardized, l) + sigma
+        mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
+        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+        std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
-    K_train_train = A * my_RBF(X_standardized, X_standardized, l) + eps * jnp.eye(Nx)  # + jnp.diag(Sigma_standardized)
-    K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = A * my_RBF(x_prime_standardized, X_standardized, l)
-    K_test_test = A * my_RBF(x_prime_standardized, x_prime_standardized, l) + eps
-    mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
-    var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    std_y_x_prime = jnp.sqrt(var_y_x_prime)
+    else:
+        l_array = jnp.array([0.3, 1.0, 3.0])
+        nll_array = 0.0 * l_array
+        A_array = 0.0 * l_array
+        sigma = psi_y_x_std / Mu_std
+        for i, l in enumerate(l_array):
+            K_no_scale = my_RBF(X_standardized, X_standardized, l)
+            A = Mu_standardized.T @ K_no_scale @ Mu_standardized / Nx
+            A_array = A_array.at[i].set(A[0][0])
+            K = A * K_no_scale
+            K_inv = jnp.linalg.inv(K + jnp.diag(sigma))
+            nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / Nx
+            nll_array = nll_array.at[i].set(nll[0][0])
+        l = l_array[nll_array.argmin()]
+        A = A_array[nll_array.argmin()]
+
+        K_train_train = A * my_RBF(X_standardized, X_standardized, l) + jnp.diag(sigma)
+        K_train_train_inv = jnp.linalg.inv(K_train_train)
+        K_test_train = A * my_RBF(x_prime_standardized, X_standardized, l)
+        K_test_test = A * my_RBF(x_prime_standardized, x_prime_standardized, l) + sigma.mean()
+        mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
+        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+        std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
     mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-    std_y_x_prime_original = std_y_x_prime * Mu_std  # + jnp.mean(psi_y_x_std)
+    std_y_x_prime_original = std_y_x_prime * Mu_std
     pause = True
     return mu_y_x_prime_original, std_y_x_prime_original
 
@@ -185,8 +212,8 @@ def SIR(args, rng_key):
     Ny_array = jnp.arange(5, 55, 5)
     # Nx_array = jnp.array([25])
     Nx_array = jnp.arange(5, 55, 5)
-    # N_test = 10
-    N_test = 100
+    N_test = 10
+    # N_test = 100
 
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
@@ -295,11 +322,13 @@ def SIR(args, rng_key):
                 # pause = True
                 # ========== Debug code ===========
 
+            print(BMC_std_array)
+            BMC_std_array = jnp.nan_to_num(BMC_std_array, nan=1000.)
             _, _ = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
-                      beta_0_array[:, None], beta_0_test[:, None], eps=0.01)
+                      beta_0_array[:, None], beta_0_test[:, None])
             t0 = time.time()
             BMC_mean, BMC_std = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
-                                   beta_0_array[:, None], beta_0_test[:, None], eps=0.01)
+                                   beta_0_array[:, None], beta_0_test[:, None])
             BMC_time = time.time() - t0 + (tt1 - tt0) * Nx
 
             BMC_mean = BMC_mean.squeeze()
@@ -315,9 +344,11 @@ def SIR(args, rng_key):
             IS_time = time.time() - t0
 
             # Kernel mean shrinkage estimator
+            _, _ = GP(MC_mean_array[:, None], None,
+                      beta_0_array[:, None], beta_0_test[:, None])
             t0 = time.time()
-            KMS_mean, KMS_std = GP(MC_mean_array[:, None], MC_std_array[:, None],
-                                   beta_0_array[:, None], beta_0_test[:, None], eps=0.01)
+            KMS_mean, KMS_std = GP(MC_mean_array[:, None], None,
+                                   beta_0_array[:, None], beta_0_test[:, None])
             KMS_time = time.time() - t0
 
             # Least squared Monte Carlo
