@@ -219,12 +219,12 @@ def peak_infected_time(infections):
 
 
 def SIR(args, rng_key):
-    Ny_array = jnp.array([10, 20, 30])
-    # Ny_array = jnp.arange(5, 45, 5)
-    Nx_array = jnp.array([30])
-    # Nx_array = jnp.arange(5, 45, 5)
-    N_test = 10
-    # N_test = 100
+    # Ny_array = jnp.array([10, 20, 30])
+    Ny_array = jnp.arange(5, 45, 5)
+    # Nx_array = jnp.array([30])
+    Nx_array = jnp.arange(5, 45, 5)
+    # N_test = 10
+    N_test = 100
 
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
