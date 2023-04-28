@@ -126,7 +126,7 @@ def log_prior(beta, beta_0, rate, rng_key):
 
 
 # @jax.jit
-def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
+def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, ground_truth):
     """
     :param psi_y_x_mean: n_alpha*1
     :param psi_y_x_std: n_alpha*1
@@ -170,7 +170,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
         std_y_x_prime = jnp.sqrt(var_y_x_prime)
 
     else:
-        l_array = jnp.array([3.0])
+        l_array = jnp.array([5.0])
         nll_array = 0.0 * l_array
         A_array = 0.0 * l_array
         sigma = psi_y_x_std / Mu_std
@@ -199,7 +199,14 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime):
 
     mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
     std_y_x_prime_original = std_y_x_prime * Mu_std
-    pause = True
+    # ========== Debug code ==========
+    # plt.figure()
+    # plt.plot(x_prime.squeeze(), ground_truth, color='black')
+    # plt.plot(x_prime.squeeze(), mu_y_x_prime_original.squeeze(), color='red')
+    # plt.scatter(X.squeeze(), psi_y_x_mean.squeeze(), color='blue')
+    # plt.show()
+    # pause = True
+    # ========== Debug code ==========
     return mu_y_x_prime_original, std_y_x_prime_original
 
 
@@ -212,12 +219,12 @@ def peak_infected_time(infections):
 
 
 def SIR(args, rng_key):
-    # Ny_array = jnp.array([10, 20, 30])
-    Ny_array = jnp.arange(5, 45, 5)
-    # Nx_array = jnp.array([10, 20])
-    Nx_array = jnp.arange(5, 45, 5)
-    # N_test = 10
-    N_test = 100
+    Ny_array = jnp.array([10, 20, 30])
+    # Ny_array = jnp.arange(5, 45, 5)
+    Nx_array = jnp.array([30])
+    # Nx_array = jnp.arange(5, 45, 5)
+    N_test = 10
+    # N_test = 100
 
     population = float(1e5)
     beta_real, gamma_real = 0.25, 0.05
@@ -332,10 +339,10 @@ def SIR(args, rng_key):
             BMC_std_array = jnp.ones_like(BMC_std_array) * jnp.mean(BMC_std_array)
 
             _, _ = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
-                      beta_0_array[:, None], beta_0_test[:, None])
+                      beta_0_array[:, None], beta_0_test[:, None], ground_truth_array)
             t0 = time.time()
             BMC_mean, BMC_std = GP(BMC_mean_array[:, None], BMC_std_array[:, None],
-                                   beta_0_array[:, None], beta_0_test[:, None])
+                                   beta_0_array[:, None], beta_0_test[:, None], ground_truth_array)
             BMC_time = time.time() - t0 + (tt1 - tt0) * Nx
 
             BMC_mean = BMC_mean.squeeze()
@@ -352,10 +359,10 @@ def SIR(args, rng_key):
 
             # Kernel mean shrinkage estimator
             _, _ = GP(MC_mean_array[:, None], None,
-                      beta_0_array[:, None], beta_0_test[:, None])
+                      beta_0_array[:, None], beta_0_test[:, None], ground_truth_array)
             t0 = time.time()
             KMS_mean, KMS_std = GP(MC_mean_array[:, None], None,
-                                   beta_0_array[:, None], beta_0_test[:, None])
+                                   beta_0_array[:, None], beta_0_test[:, None], ground_truth_array)
             KMS_time = time.time() - t0
 
             # Least squared Monte Carlo

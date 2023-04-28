@@ -99,7 +99,7 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     # jnp.save(f"{args.save_path}/BMC_std.npy", BMC_std.squeeze())
     # jnp.save(f"{args.save_path}/KMS_mean.npy", KMS_mean.squeeze())
     # jnp.save(f"{args.save_path}/LSMC_mean.npy", LSMC_mean.squeeze())
-
+    KMS_mean = KMS_mean.squeeze()
     time_dict = {'BMC': BMC_time, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
     with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
         pickle.dump(time_dict, f)
