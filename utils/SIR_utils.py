@@ -105,10 +105,10 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
         pickle.dump(time_dict, f)
 
     mse_dict = {}
-    mse_dict['BMC'] = ((ground_truth_array - BMC_mean) ** 2).mean()
-    mse_dict['IS'] = ((ground_truth_array - IS_mean) ** 2).mean()
-    mse_dict['LSMC'] = ((ground_truth_array - LSMC_mean) ** 2).mean()
-    mse_dict['KMS'] = ((ground_truth_array - KMS_mean) ** 2).mean()
+    mse_dict['BMC'] = jnp.sqrt(((ground_truth_array - BMC_mean) ** 2).mean())
+    mse_dict['IS'] = jnp.sqrt(((ground_truth_array - IS_mean) ** 2).mean())
+    mse_dict['LSMC'] = jnp.sqrt(((ground_truth_array - LSMC_mean) ** 2).mean())
+    mse_dict['KMS'] = jnp.sqrt(((ground_truth_array - KMS_mean) ** 2).mean())
     with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
         pickle.dump(mse_dict, f)
 

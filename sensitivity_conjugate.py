@@ -278,7 +278,8 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         K_test_train = A * my_Matern(X_prime, X, l)
         K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
     else:
-        A = 10.0
+        print(l)
+        # A = 10.0
         K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
         K_test_train = A * my_Matern(X_prime, X, l)
@@ -446,12 +447,12 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            # print(f"=============")
-            # print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            # print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            # print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            # print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            # print(f"=============")
+            print(f"=============")
+            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            print(f"=============")
 
             # ============= Debug code =============
             # print(f"=============")

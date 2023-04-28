@@ -5,6 +5,8 @@ import time
 from jax.config import config
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import os
+import pwd
 
 config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
@@ -15,6 +17,15 @@ plt.rcParams['font.serif'] = ['Times New Roman']
 plt.rc('text', usetex=False)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
+
+if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
+    os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
+elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
+    os.chdir("/home/zongchen/CBQ")
+elif pwd.getpwuid(os.getuid())[0] == 'ucabzc9':
+    os.chdir("/home/ucabzc9/Scratch/CBQ")
+else:
+    pass
 
 
 def posterior_full(X, Y, prior_cov, noise):
@@ -99,7 +110,7 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     :return:
     """
     n_alpha, D = X.shape[0], X.shape[1]
-    l = 3.0
+    l = 1.0
     K_no_scale = my_Matern(X, X, l)
     A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
 
@@ -143,12 +154,12 @@ def main():
     g = g3
     g_ground_truth_fn = g3_ground_truth
 
-    n_theta_array = jnp.arange(10, 110, 10)
+    n_theta_array = jnp.arange(10, 200, 10)
 
     time_BQ_array = 0. * n_theta_array
     time_CBQ_array = 0. * n_theta_array
-    mse_BQ_array = 0. * n_theta_array
-    mse_CBQ_array = 0. * n_theta_array
+    rmse_BQ_array = 0. * n_theta_array
+    rmse_CBQ_array = 0. * n_theta_array
 
     for j, n_theta in enumerate(tqdm(n_theta_array)):
         n_alpha = n_theta
@@ -163,7 +174,14 @@ def main():
         prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
         mu_y_x_all, var_y_x_all = posterior_full(X, Y, prior_cov, noise)
 
-        alpha_test = alpha_all[0, :][None, :]
+        # alpha_test = alpha_all[0, :][None, :]
+        # mu_y_x_test, var_y_x_test = mu_y_x_all[0, :], var_y_x_all[0, :, :]
+
+        n_test = 50
+        rng_key, _ = jax.random.split(rng_key)
+        alpha_test = jax.random.uniform(rng_key, shape=(n_test, D), minval=-1.0, maxval=1.0)
+        prior_cov_test = jnp.array([[prior_cov_base] * D]) + alpha_test
+        mu_y_x_test, var_y_x_test = posterior_full(X, Y, prior_cov_test, noise)
 
         for i in range(n_alpha):
             rng_key, _ = jax.random.split(rng_key)
@@ -179,20 +197,30 @@ def main():
         g_samples_all_BQ = g_samples_all.reshape([n_alpha * n_theta])
         g_samples_all_BQ = g_samples_all_BQ[permutation]
 
-        mu_y_x_test, var_y_x_test = mu_y_x_all[0, :], var_y_x_all[0, :, :]
-
         # ==================== Ground Truth ====================
-        ground_truth = g_ground_truth_fn(mu_y_x_test, var_y_x_test)
+        ground_truth = jnp.zeros(n_test) * 0.0
+        for i in range(n_test):
+            ground_truth = ground_truth.at[i].set(g_ground_truth_fn(mu_y_x_test[i, :], var_y_x_test[i, :, :]))
 
         # ==================== BQ ====================
-        _, _ = Bayesian_Monte_Carlo(samples_all_BQ, g_samples_all_BQ,
-                                    mu_y_x_test, var_y_x_test)
-        t0 = time.time()
-        BQ_mean, BQ_std = Bayesian_Monte_Carlo(samples_all_BQ, g_samples_all_BQ,
-                                               mu_y_x_test, var_y_x_test)
-        BQ_time = time.time() - t0
-        BQ_mse = (BQ_mean - ground_truth) ** 2
-        mse_BQ_array = mse_BQ_array.at[j].set(BQ_mse)
+        if n_theta <= 50:
+            _, _ = Bayesian_Monte_Carlo(samples_all_BQ, g_samples_all_BQ,
+                                        mu_y_x_test[0, :], var_y_x_test[0, :, :])
+            t0 = time.time()
+            BQ_mean_array = jnp.zeros(n_test) * 0.0
+            BQ_std_array = jnp.zeros(n_test) * 0.0
+
+            for t in range(n_test):
+                BQ_mean, BQ_std = Bayesian_Monte_Carlo(samples_all_BQ, g_samples_all_BQ,
+                                                       mu_y_x_test[t, :], var_y_x_test[t, :, :])
+                BQ_mean_array = BQ_mean_array.at[t].set(BQ_mean)
+                BQ_std_array = BQ_std_array.at[t].set(BQ_std)
+            BQ_time = time.time() - t0
+            BQ_rmse = jnp.sqrt(((BQ_mean_array - ground_truth) ** 2).mean())
+        else:
+            BQ_rmse = None
+            BQ_time = None
+        rmse_BQ_array = rmse_BQ_array.at[j].set(BQ_rmse)
         time_BQ_array = time_BQ_array.at[j].set(BQ_time)
 
         # ==================== CBQ ====================
@@ -222,33 +250,33 @@ def main():
         t3 = time.time()
         CBQ_time = (t1 - t0) * n_alpha + (t3 - t2)
 
-        CBQ_mean = CBQ_mean[0]
-        CBQ_mse = (CBQ_mean - ground_truth) ** 2
-        mse_CBQ_array = mse_CBQ_array.at[j].set(CBQ_mse)
+        CBQ_rmse = jnp.sqrt(((CBQ_mean - ground_truth) ** 2).mean())
+        rmse_CBQ_array = rmse_CBQ_array.at[j].set(CBQ_rmse)
         time_CBQ_array = time_CBQ_array.at[j].set(CBQ_time)
 
         # ============= Debug code =============
-        # print("BQ mean: ", BQ_mean)
-        # print("CBQ mean: ", CBQ_mean)
-        # print("Ground truth: ", ground_truth)
-        #
-        # print("BQ time: ", BQ_time)
-        # print("CBQ time: ", CBQ_time)
-        # pause = True
+        print("=====================================")
+        print("BQ RMSE: ", BQ_rmse)
+        print("CBQ RMSE: ", CBQ_rmse)
+
+        print("BQ time: ", BQ_time)
+        print("CBQ time: ", CBQ_time)
+        print("=====================================")
+        pause = True
         # ============= Debug code =============
 
     # ==================== Plot ====================
 
-    jnp.save("./ablations/mse_BQ_array.npy", mse_BQ_array)
-    jnp.save("./ablations/mse_CBQ_array.npy", mse_CBQ_array)
+    jnp.save("./ablations/rmse_BQ_array.npy", rmse_BQ_array)
+    jnp.save("./ablations/rmse_CBQ_array.npy", rmse_CBQ_array)
     jnp.save("./ablations/time_BQ_array.npy", time_BQ_array)
     jnp.save("./ablations/time_CBQ_array.npy", time_CBQ_array)
 
     fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-    axs[0].plot(n_theta_array, mse_BQ_array, label="BQ")
-    axs[0].plot(n_theta_array, mse_CBQ_array, label="CBQ")
+    axs[0].plot(n_theta_array, rmse_BQ_array, label="BQ")
+    axs[0].plot(n_theta_array, rmse_CBQ_array, label="CBQ")
     axs[0].set_xlabel("Sample Numbers")
-    axs[0].set_ylabel("MSE")
+    axs[0].set_ylabel("RMSE")
     axs[0].legend()
     axs[0].set_yscale("log")
 
