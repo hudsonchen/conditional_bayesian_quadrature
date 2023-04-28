@@ -15,4 +15,4 @@ which pip
 which python
 
 pwd
-python /home/zongchen/CBQ/BQ_CBQ.py
+python /home/ucabzc9/Scratch/CBQ/BQ_CBQ.py
