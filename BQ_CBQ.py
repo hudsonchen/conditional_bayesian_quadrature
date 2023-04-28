@@ -154,7 +154,7 @@ def main():
     g = g3
     g_ground_truth_fn = g3_ground_truth
 
-    n_theta_array = jnp.arange(10, 200, 10)
+    n_theta_array = jnp.concatenate((jnp.array([3]), jnp.arange(10, 200, 10)))
 
     time_BQ_array = 0. * n_theta_array
     time_CBQ_array = 0. * n_theta_array
@@ -203,7 +203,7 @@ def main():
             ground_truth = ground_truth.at[i].set(g_ground_truth_fn(mu_y_x_test[i, :], var_y_x_test[i, :, :]))
 
         # ==================== BQ ====================
-        if n_theta <= 50:
+        if n_theta <= 70:
             _, _ = Bayesian_Monte_Carlo(samples_all_BQ, g_samples_all_BQ,
                                         mu_y_x_test[0, :], var_y_x_test[0, :, :])
             t0 = time.time()
@@ -255,22 +255,22 @@ def main():
         time_CBQ_array = time_CBQ_array.at[j].set(CBQ_time)
 
         # ============= Debug code =============
-        print("=====================================")
-        print("BQ RMSE: ", BQ_rmse)
-        print("CBQ RMSE: ", CBQ_rmse)
-
-        print("BQ time: ", BQ_time)
-        print("CBQ time: ", CBQ_time)
-        print("=====================================")
+        # print("=====================================")
+        # print("BQ RMSE: ", BQ_rmse)
+        # print("CBQ RMSE: ", CBQ_rmse)
+        #
+        # print("BQ time: ", BQ_time)
+        # print("CBQ time: ", CBQ_time)
+        # print("=====================================")
         pause = True
         # ============= Debug code =============
 
     # ==================== Plot ====================
 
-    jnp.save("./ablations/rmse_BQ_array.npy", rmse_BQ_array)
-    jnp.save("./ablations/rmse_CBQ_array.npy", rmse_CBQ_array)
-    jnp.save("./ablations/time_BQ_array.npy", time_BQ_array)
-    jnp.save("./ablations/time_CBQ_array.npy", time_CBQ_array)
+    jnp.save(f"./ablations/BQ_CBQ/rmse_BQ_array_{seed}.npy", rmse_BQ_array)
+    jnp.save(f"./ablations/BQ_CBQ/rmse_CBQ_array_{seed}.npy", rmse_CBQ_array)
+    jnp.save(f"./ablations/BQ_CBQ/time_BQ_array_{seed}.npy", time_BQ_array)
+    jnp.save(f"./ablations/BQ_CBQ/time_CBQ_array_{seed}.npy", time_CBQ_array)
 
     fig, axs = plt.subplots(1, 2, figsize=(10, 5))
     axs[0].plot(n_theta_array, rmse_BQ_array, label="BQ")
@@ -286,9 +286,11 @@ def main():
     axs[1].set_ylabel("Time")
     axs[1].legend()
     axs[1].set_yscale("log")
+    plt.savefig(f"./ablations/BQ_CBQ/ablation_{seed}.png")
     plt.show()
     pause = True
 
 
 if __name__ == "__main__":
+    os.makedirs(f"./ablations/BQ_CBQ/", exist_ok=True)
     main()
