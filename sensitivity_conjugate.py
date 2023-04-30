@@ -448,10 +448,10 @@ def main(args):
 
             # ============= Debug code =============
             print(f"=============")
-            print(f"MSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            print(f"MSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            print(f"MSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            print(f"MSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
+            print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
+            print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
+            print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
+            print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
             print(f"=============")
 
             # ============= Debug code =============
@@ -474,7 +474,7 @@ def main(args):
         # ax_1.legend()
         # ax_1.set_xlabel('Number of Y')
         # ax_1.set_yscale('log')
-        # ax_1.set_ylabel('MSE')
+        # ax_1.set_ylabel('RMSE')
         # ax_2.plot(N_theta_array, time_BMC_array, label='BMC')
         # ax_2.plot(N_theta_array, time_KMS_array, label='KMS')
         # ax_2.plot(N_theta_array, time_LSMC_array, label='LSMC')
@@ -533,18 +533,18 @@ def main(args):
     IS_mean = LSMC_mean
     time_IS_large = time.time() - t0
 
-    mse_KMS_large = jnp.mean((KMS_mean - ground_truth) ** 2)
-    mse_LSMC_large = jnp.mean((LSMC_mean - ground_truth) ** 2)
-    mse_IS_large = jnp.mean((IS_mean - ground_truth) ** 2)
+    rmse_KMS_large = jnp.sqrt(jnp.mean((KMS_mean - ground_truth) ** 2))
+    rmse_LSMC_large = jnp.sqrt(jnp.mean((LSMC_mean - ground_truth) ** 2))
+    rmse_IS_large = jnp.sqrt(jnp.mean((IS_mean - ground_truth) ** 2))
 
-    sensitivity_utils.save_large(args, n_alpha, n_theta, mse_KMS_large, mse_LSMC_large, mse_IS_large,
+    sensitivity_utils.save_large(args, n_alpha, n_theta, rmse_KMS_large, rmse_LSMC_large, rmse_IS_large,
                                  time_KMS_large, time_LSMC_large, time_IS_large)
 
     # ============= Debug code =============
     # print(f"=============")
-    # print(f"KMS mse with {n_alpha} number of X and {n_theta} number of Y", mse_KMS_large)
+    # print(f"KMS rmse with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS_large)
     # print(f"KMS time with {n_alpha} number of X and {n_theta} number of Y", time_KMS_large)
-    # print(f"LSMC mse with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC_large)
+    # print(f"LSMC rmse with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC_large)
     # print(f"LSMC time with {n_alpha} number of X and {n_theta} number of Y", time_LSMC_large)
     # print(f"=============")
     # ============= Debug code =============

@@ -435,13 +435,13 @@ class CBQ:
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
         L_true = jnp.maximum(true_EgY_X, 0).mean()
 
-        mse_dict = {}
-        mse_dict['BMC'] = (L_true - L_BMC) ** 2
-        mse_dict['IS'] = (L_true - L_IS) ** 2
-        mse_dict['LSMC'] = (L_true - L_LSMC) ** 2
-        mse_dict['KMS'] = (L_true - L_KMS) ** 2
-        with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
-            pickle.dump(mse_dict, f)
+        rmse_dict = {}
+        rmse_dict['BMC'] = (L_true - L_BMC) ** 2
+        rmse_dict['IS'] = (L_true - L_IS) ** 2
+        rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
+        rmse_dict['KMS'] = (L_true - L_KMS) ** 2
+        with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+            pickle.dump(rmse_dict, f)
 
         time_dict = {'BMC': time_cbq, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
         with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
@@ -449,10 +449,10 @@ class CBQ:
 
         # ============= Debug code =============
         # print(f"=============")
-        # print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
-        # print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
-        # print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
-        # print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
+        # print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_dict['BMC'])
+        # print(f"RMSE of IS with {Nx} number of X and {Ny} number of Y", rmse_dict['IS'])
+        # print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_dict['LSMC'])
+        # print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_dict['KMS'])
         # print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_cbq)
         # print(f"Time of IS with {Nx} number of X and {Ny} number of Y", time_IS)
         # print(f"Time of LSMC with {Nx} number of X and {Ny} number of Y", time_LSMC)
@@ -474,13 +474,13 @@ class CBQ:
         L_IS = jnp.maximum(IS_mean, 0).mean()
         L_true = jnp.maximum(true_EgY_X, 0).mean()
 
-        mse_dict = {}
-        mse_dict['BMC'] = None
-        mse_dict['IS'] = (L_true - L_IS) ** 2
-        mse_dict['LSMC'] = (L_true - L_LSMC) ** 2
-        mse_dict['KMS'] = (L_true - L_KMS) ** 2
-        with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
-            pickle.dump(mse_dict, f)
+        rmse_dict = {}
+        rmse_dict['BMC'] = None
+        rmse_dict['IS'] = (L_true - L_IS) ** 2
+        rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
+        rmse_dict['KMS'] = (L_true - L_KMS) ** 2
+        with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+            pickle.dump(rmse_dict, f)
 
         time_dict = {'BMC': None, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
         with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:

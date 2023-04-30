@@ -104,22 +104,22 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
         pickle.dump(time_dict, f)
 
-    mse_dict = {}
-    mse_dict['BMC'] = jnp.sqrt(((ground_truth_array - BMC_mean) ** 2).mean())
-    mse_dict['IS'] = jnp.sqrt(((ground_truth_array - IS_mean) ** 2).mean())
-    mse_dict['LSMC'] = jnp.sqrt(((ground_truth_array - LSMC_mean) ** 2).mean())
-    mse_dict['KMS'] = jnp.sqrt(((ground_truth_array - KMS_mean) ** 2).mean())
-    with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
-        pickle.dump(mse_dict, f)
+    rmse_dict = {}
+    rmse_dict['BMC'] = jnp.sqrt(((ground_truth_array - BMC_mean) ** 2).mean())
+    rmse_dict['IS'] = jnp.sqrt(((ground_truth_array - IS_mean) ** 2).mean())
+    rmse_dict['LSMC'] = jnp.sqrt(((ground_truth_array - LSMC_mean) ** 2).mean())
+    rmse_dict['KMS'] = jnp.sqrt(((ground_truth_array - KMS_mean) ** 2).mean())
+    with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        pickle.dump(rmse_dict, f)
 
     jnp.save(f"{args.save_path}/calibration_X_{Nx}_y_{Ny}", calibration)
 
     # ========== Debug code ==========
     # print(f"=============")
-    # print(f"MSE of BMC with {Nx} number of X and {Ny} number of Y", mse_dict['BMC'])
-    # print(f"MSE of KMS with {Nx} number of X and {Ny} number of Y", mse_dict['KMS'])
-    # print(f"MSE of LSMC with {Nx} number of X and {Ny} number of Y", mse_dict['LSMC'])
-    # print(f"MSE of IS with {Nx} number of X and {Ny} number of Y", mse_dict['IS'])
+    # print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_dict['BMC'])
+    # print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_dict['KMS'])
+    # print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_dict['LSMC'])
+    # print(f"RMSE of IS with {Nx} number of X and {Ny} number of Y", rmse_dict['IS'])
     #
     # print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_dict['BMC'])
     # print(f"Time of KMS with {Nx} number of X and {Ny} number of Y", time_dict['KMS'])
@@ -150,13 +150,13 @@ def save_large(args, Nx, Ny, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, K
     with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
         pickle.dump(time_dict, f)
 
-    mse_dict = {}
-    mse_dict['IS'] = ((ground_truth_array - IS_mean) ** 2).mean()
-    mse_dict['LSMC'] = ((ground_truth_array - LSMC_mean) ** 2).mean()
-    mse_dict['KMS'] = ((ground_truth_array - KMS_mean) ** 2).mean()
-    mse_dict['BMS'] = None
-    with open(f"{args.save_path}/mse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
-        pickle.dump(mse_dict, f)
+    rmse_dict = {}
+    rmse_dict['IS'] = ((ground_truth_array - IS_mean) ** 2).mean()
+    rmse_dict['LSMC'] = ((ground_truth_array - LSMC_mean) ** 2).mean()
+    rmse_dict['KMS'] = ((ground_truth_array - KMS_mean) ** 2).mean()
+    rmse_dict['BMS'] = None
+    with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        pickle.dump(rmse_dict, f)
     return
 
 

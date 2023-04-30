@@ -4,15 +4,15 @@ import pickle
 from scipy.stats import norm
 
 
-def save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
+def save(args, n_alpha, n_theta, rmse_BMC, rmse_KMS, rmse_LSMC, rmse_IS,
          time_BMC, time_KMS, time_LSMC, time_IS, calibration):
-    mse_dict = {}
-    mse_dict["BMC"] = mse_BMC
-    mse_dict["KMS"] = mse_KMS
-    mse_dict["LSMC"] = mse_LSMC
-    mse_dict["IS"] = mse_IS
-    with open(f"{args.save_path}/mse_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
-        pickle.dump(mse_dict, f)
+    rmse_dict = {}
+    rmse_dict["BMC"] = rmse_BMC
+    rmse_dict["KMS"] = rmse_KMS
+    rmse_dict["LSMC"] = rmse_LSMC
+    rmse_dict["IS"] = rmse_IS
+    with open(f"{args.save_path}/rmse_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
+        pickle.dump(rmse_dict, f)
 
     time_dict = {}
     time_dict["BMC"] = time_BMC
@@ -26,14 +26,14 @@ def save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
     return
 
 
-def save_large(args, n_alpha, n_theta, mse_KMS, mse_LSMC, mse_IS, time_KMS, time_LSMC, time_IS):
-    mse_dict = {}
-    mse_dict["BMC"] = None
-    mse_dict["KMS"] = mse_KMS
-    mse_dict["LSMC"] = mse_LSMC
-    mse_dict["IS"] = mse_IS
-    with open(f"{args.save_path}/mse_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
-        pickle.dump(mse_dict, f)
+def save_large(args, n_alpha, n_theta, rmse_KMS, rmse_LSMC, rmse_IS, time_KMS, time_LSMC, time_IS):
+    rmse_dict = {}
+    rmse_dict["BMC"] = None
+    rmse_dict["KMS"] = rmse_KMS
+    rmse_dict["LSMC"] = rmse_LSMC
+    rmse_dict["IS"] = rmse_IS
+    with open(f"{args.save_path}/rmse_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
+        pickle.dump(rmse_dict, f)
 
     time_dict = {}
     time_dict["BMC"] = None
