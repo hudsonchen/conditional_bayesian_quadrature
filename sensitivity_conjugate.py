@@ -316,10 +316,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    N_alpha_array = jnp.array([10, 50, 100])
-    # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
-    N_theta_array = jnp.array([10, 50, 100])
-    # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # N_alpha_array = jnp.array([10, 50, 100])
+    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # N_theta_array = jnp.array([10, 50, 100])
+    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -567,7 +567,7 @@ def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
     args.save_path += f'results/sensitivity_conjugate/'
-    args.save_path += f"seed_{args.seed}__dim_{args.dim}"
+    args.save_path += f"seed_{args.seed}__dim_{args.dim}_function_{args.g_fn}"
     os.makedirs(args.save_path, exist_ok=True)
     return args
 
