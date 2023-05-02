@@ -113,6 +113,7 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     l = 1.0
     K_no_scale = my_Matern(X, X, l)
     A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
+    A = 1.0
 
     K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
@@ -141,7 +142,8 @@ def Bayesian_Monte_Carlo_fn(tree):
 
 def main():
     # Compare the performance of BQ and CBQ
-    seed = int(time.time())
+    # seed = int(time.time())
+    seed = 10
     rng_key = jax.random.PRNGKey(seed)
     D = 2
 
@@ -154,7 +156,9 @@ def main():
     g = g3
     g_ground_truth_fn = g3_ground_truth
 
-    n_theta_array = jnp.concatenate((jnp.array([3]), jnp.arange(10, 200, 10)))
+    # n_theta_array = jnp.concatenate((jnp.array([3]), jnp.arange(10, 200, 10)))
+    # n_theta_array = jnp.concatenate((jnp.array([3]), jnp.arange(10, 20, 10)))
+    n_theta_array = jnp.concatenate((jnp.array([3]), jnp.arange(10, 20, 10), jnp.arange(190, 210, 10)))
 
     time_BQ_array = 0. * n_theta_array
     time_CBQ_array = 0. * n_theta_array
@@ -179,7 +183,8 @@ def main():
 
         n_test = 50
         rng_key, _ = jax.random.split(rng_key)
-        alpha_test = jax.random.uniform(rng_key, shape=(n_test, D), minval=-1.0, maxval=1.0)
+        # alpha_test = jax.random.uniform(rng_key, shape=(n_test, D), minval=-1.0, maxval=1.0)
+        alpha_test = jnp.linspace(-1.0, 1.0, n_test)[:, None] * jnp.ones([n_test, D])
         prior_cov_test = jnp.array([[prior_cov_base] * D]) + alpha_test
         mu_y_x_test, var_y_x_test = posterior_full(X, Y, prior_cov_test, noise)
 
@@ -203,13 +208,12 @@ def main():
             ground_truth = ground_truth.at[i].set(g_ground_truth_fn(mu_y_x_test[i, :], var_y_x_test[i, :, :]))
 
         # ==================== BQ ====================
+        BQ_mean_array = jnp.zeros(n_test) * 0.0
+        BQ_std_array = jnp.zeros(n_test) * 0.0
         if n_theta <= 70:
             _, _ = Bayesian_Monte_Carlo(samples_all_BQ, g_samples_all_BQ,
                                         mu_y_x_test[0, :], var_y_x_test[0, :, :])
             t0 = time.time()
-            BQ_mean_array = jnp.zeros(n_test) * 0.0
-            BQ_std_array = jnp.zeros(n_test) * 0.0
-
             for t in range(n_test):
                 BQ_mean, BQ_std = Bayesian_Monte_Carlo(samples_all_BQ, g_samples_all_BQ,
                                                        mu_y_x_test[t, :], var_y_x_test[t, :, :])
@@ -253,6 +257,11 @@ def main():
         CBQ_rmse = jnp.sqrt(((CBQ_mean - ground_truth) ** 2).mean())
         rmse_CBQ_array = rmse_CBQ_array.at[j].set(CBQ_rmse)
         time_CBQ_array = time_CBQ_array.at[j].set(CBQ_time)
+
+        jnp.save(f"./ablations/BQ_CBQ/CBQ_mean_N_{n_alpha}_{seed}.npy", CBQ_mean)
+        jnp.save(f"./ablations/BQ_CBQ/CBQ_std_N_{n_alpha}_{seed}.npy", CBQ_std)
+        jnp.save(f"./ablations/BQ_CBQ/BQ_mean_N_{n_alpha}_{seed}.npy", BQ_mean_array)
+        jnp.save(f"./ablations/BQ_CBQ/BQ_std_N_{n_alpha}_{seed}.npy", BQ_std_array)
 
         # ============= Debug code =============
         # print("=====================================")

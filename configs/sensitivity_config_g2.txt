@@ -5,7 +5,7 @@
 --dim 2 --g_fn g2 --seed 104
 --dim 2 --g_fn g2 --seed 105
 --dim 2 --g_fn g2 --seed 106
---dim 2 --g_fn g2 --seed 107
+--dim 2 --g_fn g2 --seed 10
 --dim 2 --g_fn g2 --seed 108
 --dim 2 --g_fn g2 --seed 109
 --dim 2 --g_fn g2 --seed 1010

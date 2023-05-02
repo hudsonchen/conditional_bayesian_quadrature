@@ -278,7 +278,7 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         K_test_train = A * my_Matern(X_prime, X, l)
         K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
     else:
-        # print(l)
+        print(A)
         # A = 10.0
         K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
@@ -316,10 +316,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([10, 50, 100])
-    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
-    # N_theta_array = jnp.array([10, 50, 100])
-    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_alpha_array = jnp.array([10, 50, 100])
+    # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_theta_array = jnp.array([10, 50, 100])
+    # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -339,10 +339,10 @@ def main(args):
         # This is X, size n_alpha * D
         alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
 
-        mse_BMC_array = jnp.zeros(len(N_theta_array))
-        mse_KMS_array = jnp.zeros(len(N_theta_array))
-        mse_LSMC_array = jnp.zeros(len(N_theta_array))
-        mse_IS_array = jnp.zeros(len(N_theta_array))
+        rmse_BMC_array = jnp.zeros(len(N_theta_array))
+        rmse_KMS_array = jnp.zeros(len(N_theta_array))
+        rmse_LSMC_array = jnp.zeros(len(N_theta_array))
+        rmse_IS_array = jnp.zeros(len(N_theta_array))
 
         time_BMC_array = jnp.zeros(len(N_theta_array))
         time_KMS_array = jnp.zeros(len(N_theta_array))
@@ -412,47 +412,42 @@ def main(args):
             time_BMC = time.time() - t0 + (tt1 - tt0) * n_alpha
             time_BMC_array = time_BMC_array.at[j].set(time_BMC)
 
-            # let polynomial function to be compiled
             _, _ = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
-
             t0 = time.time()
             LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
             time_LSMC = time.time() - t0
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 
-            # let importance sampling function to be compiled
             log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
             _, _ = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
                                                              samples_all, g_samples_all, alpha_test_line)
-
             t0 = time.time()
             IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all,
                                                                         samples_all, g_samples_all, alpha_test_line)
-
             time_IS = time.time() - t0
             time_IS_array = time_IS_array.at[j].set(time_IS)
 
-            mse_BMC = jnp.mean((BMC_mean - ground_truth) ** 2)
-            mse_KMS = jnp.mean((KMS_mean - ground_truth) ** 2)
-            mse_LSMC = jnp.mean((LSMC_mean - ground_truth) ** 2)
-            mse_IS = jnp.mean((IS_mean - ground_truth) ** 2)
+            rmse_BMC = jnp.sqrt(jnp.mean((BMC_mean - ground_truth) ** 2))
+            rmse_KMS = jnp.sqrt(jnp.mean((KMS_mean - ground_truth) ** 2))
+            rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_mean - ground_truth) ** 2))
+            rmse_IS = jnp.sqrt(jnp.mean((IS_mean - ground_truth) ** 2))
 
-            mse_BMC_array = mse_BMC_array.at[j].set(mse_BMC)
-            mse_KMS_array = mse_KMS_array.at[j].set(mse_KMS)
-            mse_LSMC_array = mse_LSMC_array.at[j].set(mse_LSMC)
-            mse_IS_array = mse_IS_array.at[j].set(mse_IS)
+            rmse_BMC_array = rmse_BMC_array.at[j].set(rmse_BMC)
+            rmse_KMS_array = rmse_KMS_array.at[j].set(rmse_KMS)
+            rmse_LSMC_array = rmse_LSMC_array.at[j].set(rmse_LSMC)
+            rmse_IS_array = rmse_IS_array.at[j].set(rmse_IS)
 
             calibration = sensitivity_utils.calibrate(ground_truth, BMC_mean, jnp.diag(BMC_std))
-            sensitivity_utils.save(args, n_alpha, n_theta, mse_BMC, mse_KMS, mse_LSMC, mse_IS,
+            sensitivity_utils.save(args, n_alpha, n_theta, rmse_BMC, rmse_KMS, rmse_LSMC, rmse_IS,
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            # print(f"=============")
-            # print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", mse_BMC)
-            # print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", mse_KMS)
-            # print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", mse_LSMC)
-            # print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", mse_IS)
-            # print(f"=============")
+            print(f"=============")
+            print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
+            print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
+            print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
+            print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
+            print(f"=============")
 
             # ============= Debug code =============
             # print(f"=============")
@@ -461,7 +456,7 @@ def main(args):
             # print(f"Time of LSMC with {n_alpha} number of X and {n_theta} number of Y", time_LSMC)
             # print(f"Time of IS with {n_alpha} number of X and {n_theta} number of Y", time_IS)
             # print(f"=============")
-            pause = True
+            # pause = True
             # ============= Debug code =============
 
         # # ============= Debug code =============
