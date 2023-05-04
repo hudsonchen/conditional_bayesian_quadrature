@@ -21,4 +21,5 @@ which pip
 which python
 
 pwd
-python /home/zongchen/CBQ/sensitivity_conjugate.py $JOB_PARAMS
+module load openmpi
+mpirun -np 1 python /home/zongchen/CBQ/sensitivity_conjugate.py $JOB_PARAMS
