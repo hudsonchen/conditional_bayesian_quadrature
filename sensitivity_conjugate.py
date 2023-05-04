@@ -254,20 +254,21 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
 
 
 @partial(jax.jit)
-def nllk_func(l, c, A, y, gy, score, eps):
+def nllk_func(log_l, c, A, y, gy, score, eps):
     N = y.shape[0]
+    l = jnp.exp(log_l)
     K = A * stein_Matern(y, y, l, score, score) + c + A * jnp.eye(N)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
-    nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
+    nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps))
     return nll
 
 
 @partial(jax.jit, static_argnames=['optimizer'])
-def step(l, c, A, opt_state, optimizer, y, gy, score, eps):
-    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A, y, gy, score, eps)
-    updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
-    l, c, A = optax.apply_updates((l, c, A), updates)
-    return l, c, A, opt_state, nllk_value
+def step(log_l, c, A, opt_state, optimizer, y, gy, score, eps):
+    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, c, A, y, gy, score, eps)
+    updates, opt_state = optimizer.update(grads, opt_state, (log_l, c, A))
+    log_l, c, A = optax.apply_updates((log_l, c, A), updates)
+    return log_l, c, A, opt_state, nllk_value
 
 
 def Bayesian_Monte_Carlo_Stein(rng_key, y, gy, mu_y_x, sigma_y_x, score):
@@ -284,15 +285,16 @@ def Bayesian_Monte_Carlo_Stein(rng_key, y, gy, mu_y_x, sigma_y_x, score):
     N, D = y.shape[0], y.shape[1]
     eps = 1e-6
 
-    gy_standardized = gy / gy.mean()
+    gy_standardized = (gy - gy.mean()) / gy.std()
     gy_mean = gy.mean()
+    gy_std = gy.std()
 
     learning_rate = 1e-3
     optimizer = optax.adam(learning_rate)
-    c_init = c = 1.5
-    l_init = l = 0.5
-    A_init = A = 0.05
-    opt_state = optimizer.init((l_init, c_init, A_init))
+    c_init = c = 0.2
+    log_l_init = log_l = 0.7
+    A_init = A = 0.2
+    opt_state = optimizer.init((log_l_init, c_init, A_init))
 
     # ============= Debug code =============
     l_debug_list = []
@@ -300,11 +302,11 @@ def Bayesian_Monte_Carlo_Stein(rng_key, y, gy, mu_y_x, sigma_y_x, score):
     A_debug_list = []
     nll_debug_list = []
     # ============= Debug code =============
-    for _ in range(100):
+    for _ in range(10):
         rng_key, _ = jax.random.split(rng_key)
-        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, y, gy_standardized, score, eps)
+        log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, optimizer, y, gy_standardized, score, eps)
         # ============= Debug code =============
-        l_debug_list.append(l)
+        l_debug_list.append(jnp.exp(log_l))
         c_debug_list.append(c)
         A_debug_list.append(A)
         nll_debug_list.append(nllk_value)
@@ -317,12 +319,14 @@ def Bayesian_Monte_Carlo_Stein(rng_key, y, gy, mu_y_x, sigma_y_x, score):
     ax_4.plot(nll_debug_list)
     plt.show()
     # ============= Debug code =============
+
+    l = jnp.exp(log_l)
     K = A * stein_Matern(y, y, l, score, score) + c + A * jnp.eye(N)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
     BMC_mean = c * (K_inv @ gy_standardized).sum()
     BMC_std = jnp.sqrt(jnp.abs(c - K_inv.sum() * c ** 2))
 
-    BMC_mean = BMC_mean * gy_mean
+    BMC_mean = BMC_mean * gy_std + gy_mean
     pause = True
     return BMC_mean, BMC_std
 
