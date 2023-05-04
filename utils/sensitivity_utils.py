@@ -2,6 +2,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import pickle
 from scipy.stats import norm
+from sobol_seq import i4_sobol_generate
 
 
 def save(args, n_alpha, n_theta, rmse_BMC, rmse_KMS, rmse_LSMC, rmse_IS,
@@ -56,6 +57,32 @@ def standardize(Z):
     std = Z.std(0)
     standardized = (Z - mean) / std
     return standardized, mean, std
+
+
+def qmc_gaussian(mu, sigma, nsamples):
+    """
+    :param mu: (D, )
+    :param sigma: (D, D)
+    :param nsamples:
+    :return: samples: (D, nsamples)
+    """
+    D = mu.shape[0]
+    u = i4_sobol_generate(D, nsamples)
+    L = jnp.linalg.cholesky(sigma)
+    samples = mu[:, None] + (norm.ppf(u) @ L).T
+    return samples
+
+
+def qmc_uniform(min_val, max_val, D, nsamples):
+    """
+    :param min_val:
+    :param max_val:
+    :param nsamples:
+    :return:
+    """
+    u = i4_sobol_generate(D, nsamples)
+    samples = min_val + u * (max_val - min_val)
+    return samples
 
 
 def calibrate(ground_truth, BMC_mean, BMC_std):

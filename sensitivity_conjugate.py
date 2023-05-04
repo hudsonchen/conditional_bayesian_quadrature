@@ -278,7 +278,7 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         K_test_train = A * my_Matern(X_prime, X, l)
         K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
     else:
-        print(A)
+        # print(A)
         # A = 10.0
         K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
@@ -337,7 +337,10 @@ def main(args):
     for n_alpha in N_alpha_array:
         rng_key, _ = jax.random.split(rng_key)
         # This is X, size n_alpha * D
-        alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
+        if args.qmc:
+            alpha_all = sensitivity_utils.qmc_uniform(-1.0, 1.0, D, n_alpha)
+        else:
+            alpha_all = jax.random.uniform(rng_key, shape=(n_alpha, D), minval=-1.0, maxval=1.0)
 
         rmse_BMC_array = jnp.zeros(len(N_theta_array))
         rmse_KMS_array = jnp.zeros(len(N_theta_array))
@@ -364,8 +367,12 @@ def main(args):
 
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
-                samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :],
-                                                         shape=(n_theta,))
+                if args.qmc:
+                    samples = sensitivity_utils.qmc_gaussian(mu_y_x_all[i, :], var_y_x_all[i, :, :], n_theta)
+                    samples = jnp.transpose(samples)
+                else:
+                    samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :],
+                                                             shape=(n_theta,))
                 samples_all = samples_all.at[i, :, :].set(samples)
                 g_samples_all = g_samples_all.at[i, :].set(g(samples))
 
@@ -554,6 +561,7 @@ def get_config():
     parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
     parser.add_argument('--g_fn', type=str, default=None)
+    parser.add_argument('--qmc', action='store_true', default=False)
     args = parser.parse_args()
     return args
 
@@ -562,7 +570,10 @@ def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
     args.save_path += f'results/sensitivity_conjugate/'
-    args.save_path += f"seed_{args.seed}__dim_{args.dim}_function_{args.g_fn}"
+    if args.qmc:
+        args.save_path += f"seed_{args.seed}__dim_{args.dim}_function_{args.g_fn}_qmc"
+    else:
+        args.save_path += f"seed_{args.seed}__dim_{args.dim}_function_{args.g_fn}"
     os.makedirs(args.save_path, exist_ok=True)
     return args
 

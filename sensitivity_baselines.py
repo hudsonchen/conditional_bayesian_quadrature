@@ -98,6 +98,6 @@ def importance_sampling(log_py_x_fn, X, Y, gY, X_prime):
     if X.shape[1] == 2:
         mu = (weight * gY).mean(2)
     else:
-        mu = (weight * gY).mean(2) / (weight.mean(2) + 0.03)
+        mu = (weight * gY).mean(2) / (weight.mean(2) + 0.00)
     IS_mean = mu.mean(1)
     return IS_mean, 0
