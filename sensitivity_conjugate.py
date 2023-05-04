@@ -120,6 +120,17 @@ def posterior_log_llk(theta, prior_cov_base, X, Y, alpha, noise):
     return normal_logpdf(theta, post_mean, post_cov)
 
 
+def score_fn(y, mu, sigma):
+    """
+    return \nabla_y log p(y|mu, sigma)
+    :param y: (N, D)
+    :param mu: (D, )
+    :param sigma: (D, D)
+    :return: (N, D)
+    """
+    return (y - mu[None, :]) @ jnp.linalg.inv(sigma)
+
+
 def g1(y):
     """
     :param y: y is a N * D array
@@ -162,24 +173,6 @@ def g3_ground_truth(mu, Sigma):
 
 def Monte_Carlo(gy):
     return gy.mean(0)
-
-
-@partial(jax.jit, static_argnames=['Ky'])
-def nllk_func(log_l, A, y, gy, Ky, psi_y_x_std, eps):
-    N = y.shape[0]
-    l = jnp.exp(log_l)
-    K = A * Ky(y, y, l) + eps * jnp.eye(N) + jnp.diag(psi_y_x_std ** 2)
-    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
-    nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
-    return nll
-
-
-@partial(jax.jit, static_argnames=['optimizer', 'Ky'])
-def step(log_l, A, opt_state, optimizer, y, gy, Ky, psi_y_x_std, eps):
-    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1))(log_l, A, y, gy, Ky, psi_y_x_std, eps)
-    updates, opt_state = optimizer.update(grads, opt_state, (log_l, A))
-    log_l, A = optax.apply_updates((log_l, A), updates)
-    return log_l, A, opt_state, nllk_value
 
 
 # @jax.jit
@@ -256,6 +249,80 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
 
     BMC_mean = BMC_mean.squeeze()
     BMC_std = BMC_std.squeeze()
+    pause = True
+    return BMC_mean, BMC_std
+
+
+@partial(jax.jit)
+def nllk_func(l, c, A, y, gy, score, eps):
+    N = y.shape[0]
+    K = A * stein_Matern(y, y, l, score, score) + c + A * jnp.eye(N)
+    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
+    nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
+    return nll
+
+
+@partial(jax.jit, static_argnames=['optimizer'])
+def step(l, c, A, opt_state, optimizer, y, gy, score, eps):
+    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A, y, gy, score, eps)
+    updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
+    l, c, A = optax.apply_updates((l, c, A), updates)
+    return l, c, A, opt_state, nllk_value
+
+
+def Bayesian_Monte_Carlo_Stein(rng_key, y, gy, mu_y_x, sigma_y_x, score):
+    """
+    We only implement this for D = 2.
+    :param score: (N, D)
+    :param sigma_y_x: (D, D)
+    :param mu_y_x: (D, )
+    :param rng_key:
+    :param y: (N, D)
+    :param gy: (N, )
+    :return:
+    """
+    N, D = y.shape[0], y.shape[1]
+    eps = 1e-6
+
+    gy_standardized = gy / gy.mean()
+    gy_mean = gy.mean()
+
+    learning_rate = 1e-3
+    optimizer = optax.adam(learning_rate)
+    c_init = c = 1.5
+    l_init = l = 0.5
+    A_init = A = 0.05
+    opt_state = optimizer.init((l_init, c_init, A_init))
+
+    # ============= Debug code =============
+    l_debug_list = []
+    c_debug_list = []
+    A_debug_list = []
+    nll_debug_list = []
+    # ============= Debug code =============
+    for _ in range(100):
+        rng_key, _ = jax.random.split(rng_key)
+        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, y, gy_standardized, score, eps)
+        # ============= Debug code =============
+        l_debug_list.append(l)
+        c_debug_list.append(c)
+        A_debug_list.append(A)
+        nll_debug_list.append(nllk_value)
+
+    fig = plt.figure(figsize=(15, 6))
+    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    ax_1.plot(l_debug_list)
+    ax_2.plot(c_debug_list)
+    ax_3.plot(A_debug_list)
+    ax_4.plot(nll_debug_list)
+    plt.show()
+    # ============= Debug code =============
+    K = A * stein_Matern(y, y, l, score, score) + c + A * jnp.eye(N)
+    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
+    BMC_mean = c * (K_inv @ gy_standardized).sum()
+    BMC_std = jnp.sqrt(jnp.abs(c - K_inv.sum() * c ** 2))
+
+    BMC_mean = BMC_mean * gy_mean
     pause = True
     return BMC_mean, BMC_std
 
@@ -353,10 +420,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([10, 50, 100])
-    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
-    # N_theta_array = jnp.array([10, 50, 100])
-    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_alpha_array = jnp.array([10, 50, 100])
+    # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_theta_array = jnp.array([10, 50, 100])
+    # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -395,10 +462,11 @@ def main(args):
             mc_mean_array = jnp.zeros(n_alpha)
 
             # This is Y, size n_alpha * n_theta * D
-            samples_all = jnp.zeros([n_alpha, n_theta, D])
+            samples_all = jnp.zeros([n_alpha, n_theta, D]) + 0.0
             # This is g(Y), size n_alpha * n_theta
-            g_samples_all = jnp.zeros([n_alpha, n_theta])
-            u_all = jnp.zeros([n_alpha, n_theta, D])
+            g_samples_all = jnp.zeros([n_alpha, n_theta]) + 0.0
+            u_all = jnp.zeros([n_alpha, n_theta, D]) + 0.0
+            score_all = jnp.zeros([n_alpha, n_theta, D]) + 0.0
 
             prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
             mu_y_x_all, var_y_x_all = posterior_full(X, Y, prior_cov, noise)
@@ -407,12 +475,15 @@ def main(args):
                 rng_key, _ = jax.random.split(rng_key)
                 if args.qmc:
                     samples, u = sensitivity_utils.qmc_gaussian(mu_y_x_all[i, :], var_y_x_all[i, :, :], n_theta)
+                    score = score_fn(samples, mu_y_x_all[i, :], var_y_x_all[i, :, :])
                 else:
                     u = jax.random.multivariate_normal(rng_key, mean=jnp.zeros_like(mu_y_x_all[i, :]),
                                                        cov=jnp.diag(jnp.ones_like(mu_y_x_all[i, :])),
                                                        shape=(n_theta,))
                     L = jnp.linalg.cholesky(var_y_x_all[i, :, :])
                     samples = mu_y_x_all[i, :] + jnp.matmul(L, u.T).T
+                    score = score_fn(samples, mu_y_x_all[i, :], var_y_x_all[i, :, :])
+                score_all = score_all.at[i, :, :].set(score)
                 u_all = u_all.at[i, :, :].set(u)
                 samples_all = samples_all.at[i, :, :].set(samples)
                 g_samples_all = g_samples_all.at[i, :].set(g(samples))
@@ -421,6 +492,7 @@ def main(args):
                 samples_i = samples_all[i, :, :]
                 g_samples_i = g_samples_all[i, :]
                 u_i = u_all[i, :, :]
+                score_i = score_all[i, :, :]
                 mu_y_x_i = mu_y_x_all[i, :]
                 var_y_x_i = var_y_x_all[i, :, :]
 
@@ -431,6 +503,12 @@ def main(args):
                     if D > 2:
                         raise NotImplementedError("Matern kernel is only implemented for D=2")
                     psi_mean, psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
+                elif args.kernel_y == "Stein":
+                    if D > 2:
+                        raise NotImplementedError("Stein kernel is only implemented for D=2")
+                    psi_mean, psi_std = Bayesian_Monte_Carlo_Stein(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i, score_i)
+                else:
+                    raise NotImplementedError("Kernel not implemented")
                 tt1 = time.time()
 
                 psi_mean_array = psi_mean_array.at[i].set(psi_mean)
@@ -440,15 +518,15 @@ def main(args):
                 mc_mean_array = mc_mean_array.at[i].set(MC_value)
 
                 # ============= Debug code =============
-                # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
-                # BMC_value = psi_mean
-                # print("=============")
-                # print('True value', true_value)
-                # print(f'MC with {n_theta} number of Y', MC_value)
-                # print(f'BMC with {n_theta} number of Y', BMC_value)
-                # print(f'BMC uncertainty {psi_std}')
-                # print(f"=============")
-                # pause = True
+                true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
+                BMC_value = psi_mean
+                print("=============")
+                print('True value', true_value)
+                print(f'MC with {n_theta} number of Y', MC_value)
+                print(f'BMC with {n_theta} number of Y', BMC_value)
+                print(f'BMC uncertainty {psi_std}')
+                print(f"=============")
+                pause = True
                 # ============= Debug code =============
 
             _, _ = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-1, kernel_fn=my_RBF)
