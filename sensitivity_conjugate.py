@@ -291,42 +291,47 @@ def Bayesian_Monte_Carlo_Stein(rng_key, y, gy, mu_y_x, sigma_y_x, score):
 
     learning_rate = 1e-3
     optimizer = optax.adam(learning_rate)
-    c_init = c = 0.2
-    log_l_init = log_l = 0.7
-    A_init = A = 0.2
+    c_init = c = 0.3
+    log_l_init = log_l = jnp.log(0.5)
+    A_init = A = 1.0
     opt_state = optimizer.init((log_l_init, c_init, A_init))
 
-    # ============= Debug code =============
-    l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
-    # ============= Debug code =============
-    for _ in range(10):
-        rng_key, _ = jax.random.split(rng_key)
-        log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, optimizer, y, gy_standardized, score, eps)
-        # ============= Debug code =============
-        l_debug_list.append(jnp.exp(log_l))
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
-
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
+    # # ============= Debug code =============
+    # l_debug_list = []
+    # c_debug_list = []
+    # A_debug_list = []
+    # nll_debug_list = []
+    # # ============= Debug code =============
+    # for _ in range(10):
+    #     rng_key, _ = jax.random.split(rng_key)
+    #     log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, optimizer, y, gy_standardized, score, eps)
+    #     # ============= Debug code =============
+    #     if jnp.isnan(nllk_value):
+    #         pause = True
+    #     l_debug_list.append(jnp.exp(log_l))
+    #     c_debug_list.append(c)
+    #     A_debug_list.append(A)
+    #     nll_debug_list.append(nllk_value)
+    #
+    # fig = plt.figure(figsize=(15, 6))
+    # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
+    # ax_1.plot(l_debug_list)
+    # ax_2.plot(c_debug_list)
+    # ax_3.plot(A_debug_list)
+    # ax_4.plot(nll_debug_list)
+    # plt.show()
     # ============= Debug code =============
 
     l = jnp.exp(log_l)
     K = A * stein_Matern(y, y, l, score, score) + c + A * jnp.eye(N)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
-    BMC_mean = c * (K_inv @ gy_standardized).sum()
-    BMC_std = jnp.sqrt(jnp.abs(c - K_inv.sum() * c ** 2))
-
+    # BMC_mean = c * (K_inv @ gy_standardized).sum()
+    # BMC_std = jnp.sqrt(jnp.abs(c - K_inv.sum() * c ** 2))
+    phi = stein_Matern(y, y, l, score, score).mean(0)
+    BMC_mean = phi @ K_inv @ gy_standardized
     BMC_mean = BMC_mean * gy_std + gy_mean
+
+    BMC_std = stein_Matern(y, y, l, score, score).mean() - phi @ K_inv @ phi.T
     pause = True
     return BMC_mean, BMC_std
 
@@ -424,8 +429,11 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
+    # N_alpha_array = jnp.array([5, 10])
     N_alpha_array = jnp.array([10, 50, 100])
     # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+
+    # N_theta_array = jnp.array([10, 30])
     N_theta_array = jnp.array([10, 50, 100])
     # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
@@ -522,15 +530,15 @@ def main(args):
                 mc_mean_array = mc_mean_array.at[i].set(MC_value)
 
                 # ============= Debug code =============
-                true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
-                BMC_value = psi_mean
-                print("=============")
-                print('True value', true_value)
-                print(f'MC with {n_theta} number of Y', MC_value)
-                print(f'BMC with {n_theta} number of Y', BMC_value)
-                print(f'BMC uncertainty {psi_std}')
-                print(f"=============")
-                pause = True
+                # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
+                # BMC_value = psi_mean
+                # print("=============")
+                # print('True value', true_value)
+                # print(f'MC with {n_theta} number of Y', MC_value)
+                # print(f'BMC with {n_theta} number of Y', BMC_value)
+                # print(f'BMC uncertainty {psi_std}')
+                # print(f"=============")
+                # pause = True
                 # ============= Debug code =============
 
             _, _ = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-1, kernel_fn=my_RBF)
