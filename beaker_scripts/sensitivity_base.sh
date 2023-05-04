@@ -1,5 +1,5 @@
-#$ -l tmem=20G
-#$ -l h_vmem=20G
+#$ -l tmem=10G
+#$ -l h_vmem=10G
 #$ -l h_rt=6:0:0
 #$ -R y
 
@@ -22,5 +22,4 @@ which python
 
 pwd
 
-module load openmpi
-mpirun -np 1 python /home/zongchen/CBQ/sensitivity_conjugate.py $JOB_PARAMS
+python /home/zongchen/CBQ/sensitivity_conjugate.py $JOB_PARAMS

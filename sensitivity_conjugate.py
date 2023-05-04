@@ -353,10 +353,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    N_alpha_array = jnp.array([10, 50, 100])
-    # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
-    N_theta_array = jnp.array([10, 50, 100])
-    # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # N_alpha_array = jnp.array([10, 50, 100])
+    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # N_theta_array = jnp.array([10, 50, 100])
+    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -502,12 +502,12 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            print(f"=============")
-            print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
-            print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
-            print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
-            print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
-            print(f"=============")
+            # print(f"=============")
+            # print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
+            # print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
+            # print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
+            # print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
+            # print(f"=============")
 
             # ============= Debug code =============
             # print(f"=============")
