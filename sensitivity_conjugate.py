@@ -249,10 +249,10 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
     K = A * my_Matern(u1, u1, l) + A * my_Matern(u2, u2, l)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
     phi = A * kme_Matern_Gaussian(l, u1) + A * kme_Matern_Gaussian(l, u2)
-    varphi = K.mean()
+    varphi = phi.mean()
 
     BMC_mean = phi.T @ K_inv @ gy
-    BMC_std = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
+    BMC_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
 
     BMC_mean = BMC_mean.squeeze()
     BMC_std = BMC_std.squeeze()
@@ -261,8 +261,9 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
 
 
 # @jax.jit
-def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
+def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps, kernel_fn):
     """
+    :param kernel_fn: Matern or RBF
     :param eps:
     :param psi_y_x_mean: (n_alpha, )
     :param psi_y_x_std: (n_alpha, )
@@ -286,7 +287,7 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         for i, l in enumerate(l_array):
             for j, A in enumerate(A_array):
                 for k, sigma in enumerate(sigma_array):
-                    K = A * my_Matern(X, X, l) + jnp.eye(n_alpha) * sigma
+                    K = A * kernel_fn(X, X, l) + jnp.eye(n_alpha) * sigma
                     K_inv = jnp.linalg.inv(K)
                     nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
                     nll_array = nll_array.at[i, j].set(nll)
@@ -297,10 +298,10 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         sigma = sigma_array[i3]
     else:
         for i, l in enumerate(l_array):
-            K_no_scale = my_Matern(X, X, l)
+            K_no_scale = kernel_fn(X, X, l)
             A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / n_alpha
             A_array = A_array.at[i].set(A)
-            K = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
+            K = A * kernel_fn(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
             K_inv = jnp.linalg.inv(K)
             nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
             nll_array = nll_array.at[i].set(nll)
@@ -309,17 +310,17 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         A = A_array[jnp.argmin(nll_array)]
 
     if psi_y_x_std is None:
-        K_train_train = A * my_Matern(X, X, l) + jnp.eye(n_alpha) * sigma
+        K_train_train = A * kernel_fn(X, X, l) + jnp.eye(n_alpha) * sigma
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(X_prime, X, l)
-        K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
+        K_test_train = A * kernel_fn(X_prime, X, l)
+        K_test_test = A * kernel_fn(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
     else:
         # print(A)
         # A = 10.0
-        K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
+        K_train_train = A * kernel_fn(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(X_prime, X, l)
-        K_test_test = A * my_Matern(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
+        K_test_train = A * kernel_fn(X_prime, X, l)
+        K_test_test = A * kernel_fn(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
     mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
     var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_y_x = jnp.abs(var_y_x)
@@ -352,10 +353,10 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3')
 
-    # N_alpha_array = jnp.array([10, 50, 100])
-    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
-    # N_theta_array = jnp.array([10, 50, 100])
-    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_alpha_array = jnp.array([10, 50, 100])
+    # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_theta_array = jnp.array([10, 50, 100])
+    # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -427,6 +428,8 @@ def main(args):
                 if args.kernel_y == "RBF":
                     psi_mean, psi_std = Bayesian_Monte_Carlo_RBF(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
                 elif args.kernel_y == "Matern":
+                    if D > 2:
+                        raise NotImplementedError("Matern kernel is only implemented for D=2")
                     psi_mean, psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
                 tt1 = time.time()
 
@@ -437,29 +440,35 @@ def main(args):
                 mc_mean_array = mc_mean_array.at[i].set(MC_value)
 
                 # ============= Debug code =============
-                true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
-                BMC_value = psi_mean
-                print("=============")
-                print('True value', true_value)
-                print(f'MC with {n_theta} number of Y', MC_value)
-                print(f'BMC with {n_theta} number of Y', BMC_value)
-                print(f'BMC uncertainty {psi_std}')
-                print(f"=============")
-                pause = True
+                # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
+                # BMC_value = psi_mean
+                # print("=============")
+                # print('True value', true_value)
+                # print(f'MC with {n_theta} number of Y', MC_value)
+                # print(f'BMC with {n_theta} number of Y', BMC_value)
+                # print(f'BMC uncertainty {psi_std}')
+                # print(f"=============")
+                # pause = True
                 # ============= Debug code =============
 
-            _, _ = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-1)
+            _, _ = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-1, kernel_fn=my_RBF)
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
             KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line,
-                                   eps=0.)
+                                   eps=0., kernel_fn=my_RBF)
             time_KMS = time.time() - t0
             time_KMS_array = time_KMS_array.at[j].set(time_KMS)
 
             rng_key, _ = jax.random.split(rng_key)
             t0 = time.time()
-            BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line,
-                                   eps=psi_std_array.mean())
+            if args.kernel_x == "RBF":
+                BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line,
+                                       eps=psi_std_array.mean(), kernel_fn=my_RBF)
+            elif args.kernel_x == "Matern":
+                BMC_mean, BMC_std = GP(rng_key, psi_mean_array, psi_std_array, alpha_all, alpha_test_line,
+                                       eps=psi_std_array.mean(), kernel_fn=my_Matern)
+            else:
+                raise NotImplementedError(f"Unknown kernel {args.kernel_x}")
             time_BMC = time.time() - t0 + (tt1 - tt0) * n_alpha
             time_BMC_array = time_BMC_array.at[j].set(time_BMC)
 
@@ -493,12 +502,12 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            # print(f"=============")
-            # print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
-            # print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
-            # print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
-            # print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
-            # print(f"=============")
+            print(f"=============")
+            print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
+            print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
+            print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
+            print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
+            print(f"=============")
 
             # ============= Debug code =============
             # print(f"=============")
@@ -563,7 +572,7 @@ def main(args):
     mc_mean_array = g_samples_all.mean(axis=1)
     rng_key, _ = jax.random.split(rng_key)
     t0 = time.time()
-    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=0.)
+    KMS_mean, KMS_std = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=0., kernel_fn=my_RBF)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
@@ -572,9 +581,6 @@ def main(args):
 
     log_py_x_fn = partial(posterior_log_llk, X=X, Y=Y, noise=noise, prior_cov_base=prior_cov_base)
     t0 = time.time()
-    from datetime import datetime
-    current_datetime = datetime.now()
-    print(f"Start IS at {current_datetime}")
     # IS_mean, IS_std = sensitivity_baselines.importance_sampling(log_py_x_fn, alpha_all, samples_all, g_samples_all, alpha_test_line)
     IS_mean = LSMC_mean
     time_IS_large = time.time() - t0

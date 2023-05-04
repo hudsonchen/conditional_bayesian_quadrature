@@ -208,6 +208,7 @@ def dxdy_Laplace(x, y, l):
     return part1
 
 
+@jax.jit
 def kme_Matern_Gaussian(l, y):
     """
     The implementation of the kernel mean embedding of the Matern kernel with Gaussian distribution
