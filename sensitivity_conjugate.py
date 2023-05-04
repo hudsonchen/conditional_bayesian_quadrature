@@ -446,7 +446,6 @@ def main(args):
     # post_mean: (test_num, D), post_var: (test_num, D, D)
     for i in range(test_num):
         ground_truth = ground_truth.at[i].set(g_ground_truth_fn(post_mean[i, :], post_var[i, :, :]))
-
     jnp.save(f"{args.save_path}/test_line.npy", alpha_test_line)
     jnp.save(f"{args.save_path}/ground_truth.npy", ground_truth)
 
