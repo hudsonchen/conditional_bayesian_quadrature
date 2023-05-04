@@ -18,6 +18,7 @@ from jax.config import config
 config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
 
+
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
@@ -182,9 +183,10 @@ def step(log_l, A, opt_state, optimizer, y, gy, Ky, psi_y_x_std, eps):
 
 
 # @jax.jit
-def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
+def Bayesian_Monte_Carlo_RBF(rng_key, y, gy, mu_y_x, sigma_y_x):
     """
-    :param mu_y_x:
+    :param sigma_y_x: (D, D)
+    :param mu_y_x: (D, )
     :param rng_key:
     :param y: (N, D)
     :param gy: (N, )
@@ -220,6 +222,40 @@ def Bayesian_Monte_Carlo(rng_key, y, gy, mu_y_x, sigma_y_x):
 
     BMC_mean = phi.T @ K_inv @ gy
     BMC_std = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
+    pause = True
+    return BMC_mean, BMC_std
+
+
+def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
+    """
+    We only implement this for D = 2.
+    :param u: (N, D)
+    :param sigma_y_x: (D, D)
+    :param mu_y_x: (D, )
+    :param rng_key:
+    :param y: (N, D)
+    :param gy: (N, )
+    :return:
+    """
+    N, D = y.shape[0], y.shape[1]
+    eps = 1e-6
+
+    A = 1.
+    l = 1.
+
+    u1 = u[:, 0][:, None]
+    u2 = u[:, 1][:, None]
+
+    K = A * my_Matern(u1, u1, l) + A * my_Matern(u2, u2, l)
+    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
+    phi = A * kme_Matern_Gaussian(l, u1) + A * kme_Matern_Gaussian(l, u2)
+    varphi = K.mean()
+
+    BMC_mean = phi.T @ K_inv @ gy
+    BMC_std = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
+
+    BMC_mean = BMC_mean.squeeze()
+    BMC_std = BMC_std.squeeze()
     pause = True
     return BMC_mean, BMC_std
 
@@ -361,6 +397,7 @@ def main(args):
             samples_all = jnp.zeros([n_alpha, n_theta, D])
             # This is g(Y), size n_alpha * n_theta
             g_samples_all = jnp.zeros([n_alpha, n_theta])
+            u_all = jnp.zeros([n_alpha, n_theta, D])
 
             prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
             mu_y_x_all, var_y_x_all = posterior_full(X, Y, prior_cov, noise)
@@ -368,22 +405,29 @@ def main(args):
             for i in range(n_alpha):
                 rng_key, _ = jax.random.split(rng_key)
                 if args.qmc:
-                    samples = sensitivity_utils.qmc_gaussian(mu_y_x_all[i, :], var_y_x_all[i, :, :], n_theta)
-                    samples = jnp.transpose(samples)
+                    samples, u = sensitivity_utils.qmc_gaussian(mu_y_x_all[i, :], var_y_x_all[i, :, :], n_theta)
                 else:
-                    samples = jax.random.multivariate_normal(rng_key, mean=mu_y_x_all[i, :], cov=var_y_x_all[i, :, :],
-                                                             shape=(n_theta,))
+                    u = jax.random.multivariate_normal(rng_key, mean=jnp.zeros_like(mu_y_x_all[i, :]),
+                                                       cov=jnp.diag(jnp.ones_like(mu_y_x_all[i, :])),
+                                                       shape=(n_theta,))
+                    L = jnp.linalg.cholesky(var_y_x_all[i, :, :])
+                    samples = mu_y_x_all[i, :] + jnp.matmul(L, u.T).T
+                u_all = u_all.at[i, :, :].set(u)
                 samples_all = samples_all.at[i, :, :].set(samples)
                 g_samples_all = g_samples_all.at[i, :].set(g(samples))
 
             for i in range(n_alpha):
                 samples_i = samples_all[i, :, :]
                 g_samples_i = g_samples_all[i, :]
+                u_i = u_all[i, :, :]
                 mu_y_x_i = mu_y_x_all[i, :]
                 var_y_x_i = var_y_x_all[i, :, :]
 
                 tt0 = time.time()
-                psi_mean, psi_std = Bayesian_Monte_Carlo(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
+                if args.kernel_y == "RBF":
+                    psi_mean, psi_std = Bayesian_Monte_Carlo_RBF(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
+                elif args.kernel_y == "Matern":
+                    psi_mean, psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
                 tt1 = time.time()
 
                 psi_mean_array = psi_mean_array.at[i].set(psi_mean)
@@ -393,15 +437,15 @@ def main(args):
                 mc_mean_array = mc_mean_array.at[i].set(MC_value)
 
                 # ============= Debug code =============
-                # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
-                # BMC_value = psi_mean
-                # print("=============")
-                # print('True value', true_value)
-                # print(f'MC with {n_theta} number of Y', MC_value)
-                # print(f'BMC with {n_theta} number of Y', BMC_value)
-                # print(f'BMC uncertainty {psi_std}')
-                # print(f"=============")
-                # pause = True
+                true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
+                BMC_value = psi_mean
+                print("=============")
+                print('True value', true_value)
+                print(f'MC with {n_theta} number of Y', MC_value)
+                print(f'BMC with {n_theta} number of Y', BMC_value)
+                print(f'BMC uncertainty {psi_std}')
+                print(f"=============")
+                pause = True
                 # ============= Debug code =============
 
             _, _ = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-1)
@@ -562,6 +606,8 @@ def get_config():
     parser.add_argument('--data_path', type=str, default='./data')
     parser.add_argument('--g_fn', type=str, default=None)
     parser.add_argument('--qmc', action='store_true', default=False)
+    parser.add_argument('--kernel_y', type=str)
+    parser.add_argument('--kernel_x', type=str)
     args = parser.parse_args()
     return args
 
@@ -571,9 +617,11 @@ def create_dir(args):
         args.seed = int(time.time())
     args.save_path += f'results/sensitivity_conjugate/'
     if args.qmc:
-        args.save_path += f"seed_{args.seed}__dim_{args.dim}_function_{args.g_fn}_qmc"
+        args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.g_fn}__Ky_{args.kernel_y}" \
+                          f"__Kx_{args.kernel_x}__qmc"
     else:
-        args.save_path += f"seed_{args.seed}__dim_{args.dim}_function_{args.g_fn}"
+        args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.g_fn}__Ky_{args.kernel_y}" \
+                          f"__Kx_{args.kernel_x}"
     os.makedirs(args.save_path, exist_ok=True)
     return args
 

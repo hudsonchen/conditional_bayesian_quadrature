@@ -64,13 +64,14 @@ def qmc_gaussian(mu, sigma, nsamples):
     :param mu: (D, )
     :param sigma: (D, D)
     :param nsamples:
-    :return: samples: (D, nsamples)
+    :return: samples: (nsamples, D)
     """
     D = mu.shape[0]
     u = i4_sobol_generate(D, nsamples)
     L = jnp.linalg.cholesky(sigma)
     samples = mu[:, None] + (norm.ppf(u) @ L).T
-    return samples
+    samples = samples.T
+    return samples, u
 
 
 def qmc_uniform(min_val, max_val, D, nsamples):

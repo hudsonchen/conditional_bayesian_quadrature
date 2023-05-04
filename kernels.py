@@ -2,6 +2,7 @@ import jax.numpy as jnp
 import jax
 from tensorflow_probability.substrates import jax as tfp
 from functools import partial
+from jax.scipy.stats import norm
 
 
 def stein_Matern(x, y, l, d_log_px, d_log_py):
@@ -205,6 +206,36 @@ def dxdy_Laplace(x, y, l):
     r = distance(x, y).squeeze()
     part1 = jnp.exp(- r / l) * (-1)
     return part1
+
+
+def kme_Matern_Gaussian(l, y):
+    """
+    The implementation of the kernel mean embedding of the Matern kernel with Gaussian distribution
+    Only in one dimension, and the Gaussian distribution is N(0, 1)
+    :param l:
+    :param y:
+    :return:
+    """
+    E10 = 1 - jnp.sqrt(3) * y / l
+    E11 = jnp.sqrt(3) / l
+    muA = -jnp.sqrt(3) / l
+
+    part11 = jnp.exp((3 + 2*jnp.sqrt(3) * y * l) / (2 * l ** 2))
+    part12 = (E10 + E11 * muA) * norm.cdf(muA - y)
+    part13 = E11 / jnp.sqrt(2 * jnp.pi) * jnp.exp(-(y - muA) ** 2 / 2)
+    part1 = part11 * (part12 + part13)
+
+    E20 = 1 + jnp.sqrt(3) * y / l
+    E21 = jnp.sqrt(3) / l
+    muB = jnp.sqrt(3) / l
+
+    part21 = jnp.exp((3 - 2*jnp.sqrt(3) * y * l) / (2 * l ** 2))
+    part22 = (E20 - E21 * muB) * norm.cdf(y - muB)
+    part23 = E21 / jnp.sqrt(2 * jnp.pi) * jnp.exp(-(y - muB) ** 2 / 2)
+    part2 = part21 * (part22 + part23)
+
+    final = part1 + part2
+    return final
 
 
 @jax.jit
