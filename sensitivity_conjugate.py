@@ -523,15 +523,15 @@ def main(args):
                 mc_mean_array = mc_mean_array.at[i].set(MC_value)
 
                 # ============= Debug code =============
-                true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
-                BMC_value = psi_mean
-                print("=============")
-                print('True value', true_value)
-                print(f'MC with {n_theta} number of Y', MC_value)
-                print(f'BMC with {n_theta} number of Y', BMC_value)
-                print(f'BMC uncertainty {psi_std}')
-                print(f"=============")
-                pause = True
+                # true_value = g_ground_truth_fn(mu_y_x_i, var_y_x_i)
+                # BMC_value = psi_mean
+                # print("=============")
+                # print('True value', true_value)
+                # print(f'MC with {n_theta} number of Y', MC_value)
+                # print(f'BMC with {n_theta} number of Y', BMC_value)
+                # print(f'BMC uncertainty {psi_std}')
+                # print(f"=============")
+                # pause = True
                 # ============= Debug code =============
 
             _, _ = GP(rng_key, mc_mean_array, None, alpha_all, alpha_test_line, eps=1e-1, kernel_fn=my_RBF)
@@ -585,12 +585,12 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            # print(f"=============")
-            # print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
-            # print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
-            # print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
-            # print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
-            # print(f"=============")
+            print(f"=============")
+            print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
+            print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
+            print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
+            print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
+            print(f"=============")
 
             # ============= Debug code =============
             # print(f"=============")
