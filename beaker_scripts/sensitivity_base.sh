@@ -1,4 +1,4 @@
-#$ -l tmem=20G
+#$ -l tmem=0G
 #$ -l h_vmem=20G
 #$ -l h_rt=6:0:0
 #$ -R y

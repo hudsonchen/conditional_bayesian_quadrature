@@ -1,4 +1,4 @@
-#$ -l mem=20G
+#$ -l mem=40G
 #$ -l h_rt=6:0:0
 #$ -R y
 #$ -S /bin/bash
