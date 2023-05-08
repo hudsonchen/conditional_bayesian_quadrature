@@ -208,7 +208,7 @@ def dxdy_Laplace(x, y, l):
     return part1
 
 
-@jax.jit
+# @jax.jit
 def kme_Matern_Gaussian(l, y):
     """
     The implementation of the kernel mean embedding of the Matern kernel with Gaussian distribution
@@ -221,7 +221,7 @@ def kme_Matern_Gaussian(l, y):
     E11 = jnp.sqrt(3) / l
     muA = -jnp.sqrt(3) / l
 
-    part11 = jnp.exp((3 + 2*jnp.sqrt(3) * y * l) / (2 * l ** 2))
+    part11 = jnp.exp((3 + 2 * jnp.sqrt(3) * y * l) / (2 * l ** 2))
     part12 = (E10 + E11 * muA) * norm.cdf(muA - y)
     part13 = E11 / jnp.sqrt(2 * jnp.pi) * jnp.exp(-(y - muA) ** 2 / 2)
     part1 = part11 * (part12 + part13)
@@ -230,12 +230,13 @@ def kme_Matern_Gaussian(l, y):
     E21 = jnp.sqrt(3) / l
     muB = jnp.sqrt(3) / l
 
-    part21 = jnp.exp((3 - 2*jnp.sqrt(3) * y * l) / (2 * l ** 2))
+    part21 = jnp.exp((3 - 2 * jnp.sqrt(3) * y * l) / (2 * l ** 2))
     part22 = (E20 - E21 * muB) * norm.cdf(y - muB)
     part23 = E21 / jnp.sqrt(2 * jnp.pi) * jnp.exp(-(y - muB) ** 2 / 2)
     part2 = part21 * (part22 + part23)
 
     final = part1 + part2
+    pause = True
     return final
 
 
