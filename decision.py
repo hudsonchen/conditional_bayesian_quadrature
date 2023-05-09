@@ -136,47 +136,72 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
     return BMC_mean, BMC_std
 
 
-def GP(psi_y_x_mean, psi_y_x_std, X, X_prime):
+def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
-    :param psi_y_x_mean: Nx * 1
-    :param psi_y_x_std: Nx * 1
-    :param X: Nx * 1
-    :param X_prime: N_prime * 1
+    :param psi_y_x_mean: (n_alpha, )
+    :param psi_y_x_std: (n_alpha, )
+    :param X: (n_alpha, D)
+    :param X_prime: (N_test, D)
     :return:
     """
-    Nx = psi_y_x_mean.shape[0]
-    X_standardized, X_mean, X_std = decision_utils.standardize(X)
-    psi_y_x_mean_standardized, psi_y_x_mean_mean, psi_y_x_mean_std = decision_utils.standardize(psi_y_x_mean)
-    X_prime_standardized = (X_prime - X_mean) / X_std
-    lx = 3.0
-    
+    Nx, D = X.shape[0], X.shape[1]
+    l_array = jnp.array([0.3, 1.0, 2.0, 3.0])
+
     if psi_y_x_std is None:
-        noise_array = jnp.array([0.01, 0.001, 0.0001])
-        nll_array = 0. * noise_array
-        for i, noise in enumerate(noise_array):
-            K_train_train = my_Matern(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)
-            nll = -(-0.5 * psi_y_x_mean_standardized.T @ K_train_train @ psi_y_x_mean_standardized -
-                    0.5 * jnp.log(jnp.linalg.det(K_train_train) + 1e-6)) / Nx
-            nll_array = nll_array.at[i].set(nll.squeeze())
-        noise = noise_array[jnp.argmin(nll_array)]
-        K_train_train = my_Matern(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = my_Matern(X_prime_standardized, X_standardized, lx)
-        K_test_test = my_Matern(X_prime_standardized, X_prime_standardized, lx) + noise
-        mu_y_x_prime = K_test_train @ K_train_train_inv @ psi_y_x_mean
-        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-        std_y_x_prime = jnp.sqrt(var_y_x_prime)
+        sigma_array = jnp.array([1.0, 0.1, 0.01, 0.001])
+        A_array = jnp.array([10.0, 100.0, 300.0, 1000.0])
+        nll_array = jnp.zeros([len(l_array), len(A_array), len(sigma_array)])
     else:
-        noise = psi_y_x_std.mean()
-        K_train_train = my_Matern(X_standardized, X_standardized, lx) + jnp.diag(psi_y_x_std ** 2)
+        sigma_array = jnp.array([0.0])
+        A_array = 0 * l_array
+        nll_array = jnp.zeros([len(l_array), 1])
+
+    if psi_y_x_std is None:
+        for i, l in enumerate(l_array):
+            for j, A in enumerate(A_array):
+                for k, sigma in enumerate(sigma_array):
+                    K = A * my_Matern(X, X, l) + jnp.eye(Nx) * sigma
+                    K_inv = jnp.linalg.inv(K)
+                    nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(
+                        jnp.linalg.det(K) + 1e-6)) / Nx
+                    nll_array = nll_array.at[i, j].set(nll.squeeze())
+        min_index_flat = jnp.argmin(nll_array)
+        i1, i2, i3 = jnp.unravel_index(min_index_flat, nll_array.shape)
+        l = l_array[i1]
+        A = A_array[i2]
+        sigma = sigma_array[i3]
+    else:
+        for i, l in enumerate(l_array):
+            K_no_scale = my_Matern(X, X, l)
+            A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / Nx
+            A_array = A_array.at[i].set(A.squeeze())
+            K = A * my_Matern(X, X, l) + eps * jnp.eye(Nx) + jnp.diag(psi_y_x_std ** 2)
+            K_inv = jnp.linalg.inv(K)
+            nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(
+                jnp.linalg.det(K) + 1e-6)) / Nx
+            nll_array = nll_array.at[i].set(nll.squeeze())
+
+        l = l_array[jnp.argmin(nll_array)]
+        A = A_array[jnp.argmin(nll_array)]
+
+    if psi_y_x_std is None:
+        K_train_train = A * my_Matern(X, X, l) + jnp.eye(Nx) * sigma
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = my_Matern(X_prime_standardized, X_standardized, lx)
-        K_test_test = my_Matern(X_prime_standardized, X_prime_standardized, lx) + noise
-        mu_y_x_prime = K_test_train @ K_train_train_inv @ psi_y_x_mean
-        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-        std_y_x_prime = jnp.sqrt(var_y_x_prime)
+        K_test_train = A * my_Matern(X_prime, X, l)
+        K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
+    else:
+        # print(A)
+        # A = 10.0
+        K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(Nx) + jnp.diag(psi_y_x_std ** 2)
+        K_train_train_inv = jnp.linalg.inv(K_train_train)
+        K_test_train = A * my_Matern(X_prime, X, l)
+        K_test_test = A * my_Matern(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
+    mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
+    var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    var_y_x = jnp.abs(var_y_x)
+    std_y_x = jnp.sqrt(var_y_x)
     pause = True
-    return mu_y_x_prime.squeeze(), std_y_x_prime.squeeze()
+    return mu_y_x, std_y_x
 
 
 def main(args):
@@ -225,7 +250,7 @@ def main(args):
     # ============= Debug code =============
 
     # ============= Code to generate test points Begins =============
-    N_test = 50
+    N_test = 100
     large_sample_size = 10000
     rng_key, _ = jax.random.split(rng_key)
     X_test = jax.random.multivariate_normal(rng_key, X_mean, X_sigma, shape=(N_test,))
@@ -265,12 +290,12 @@ def main(args):
     ground_truth_2 = f2_Y_test.mean(1)
     # ============= Code to generate test points Ends =============
 
-    Nx_array = jnp.array([10, 30])
+    Nx_array = jnp.array([10, 20, 30])
     # Nx_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #
     # Ny_array = jnp.array([10, 30])
-    Ny_array = jnp.array([10, 30, 50, 70, 100])
-    # Ny_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # Ny_array = jnp.array([10, 30, 50, 70, 100])
+    Ny_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 110, 10)))
 
     for Nx in Nx_array:
         rng_key, _ = jax.random.split(rng_key)
@@ -316,12 +341,12 @@ def main(args):
             f1_Y = f1(X1, Y1)
             f2_Y = f2(X2, Y2)
 
-            f1_psi_mean_array = jnp.zeros([Nx, 1]) + 0.0
-            f1_psi_std_array = jnp.zeros([Nx, 1]) + 0.0
-            f1_mc_mean_array = jnp.zeros([Nx, 1]) + 0.0
-            f2_psi_mean_array = jnp.zeros([Nx, 1]) + 0.0
-            f2_psi_std_array = jnp.zeros([Nx, 1]) + 0.0
-            f2_mc_mean_array = jnp.zeros([Nx, 1]) + 0.0
+            f1_psi_mean_array = jnp.zeros([Nx]) + 0.0
+            f1_psi_std_array = jnp.zeros([Nx]) + 0.0
+            f1_mc_mean_array = jnp.zeros([Nx]) + 0.0
+            f2_psi_mean_array = jnp.zeros([Nx]) + 0.0
+            f2_psi_std_array = jnp.zeros([Nx]) + 0.0
+            f2_mc_mean_array = jnp.zeros([Nx]) + 0.0
 
             # ============= Code for f1 Starts =============
             for i in range(Nx):
@@ -338,9 +363,9 @@ def main(args):
 
                 f1_mc_mean = f1_Y_i.mean()
 
-                f1_psi_mean_array = f1_psi_mean_array.at[i, :].set(f1_psi_mean)
-                f1_psi_std_array = f1_psi_std_array.at[i, :].set(f1_psi_std)
-                f1_mc_mean_array = f1_mc_mean_array.at[i, :].set(f1_mc_mean)
+                f1_psi_mean_array = f1_psi_mean_array.at[i].set(f1_psi_mean)
+                f1_psi_std_array = f1_psi_std_array.at[i].set(f1_psi_std)
+                f1_mc_mean_array = f1_mc_mean_array.at[i].set(f1_mc_mean)
 
                 # # ============= Debug code =============
                 # rng_key, _ = jax.random.split(rng_key)
@@ -358,8 +383,8 @@ def main(args):
                 # ============= Debug code =============
 
             LSMC_mean_1, LSMC_std_1 = decision_baselines.polynomial(X1, Y1, f1_Y, X1_test)
-            BMC_mean_1, BMC_std_1 = GP(f1_psi_mean_array, None, X1, X1_test)
-            KMS_mean_1, KMS_std_1 = GP(f1_mc_mean_array, None, X1, X1_test)
+            BMC_mean_1, BMC_std_1 = GP(f1_psi_mean_array, f1_psi_std_array, X1, X1_test, eps=f1_psi_std_array.mean())
+            KMS_mean_1, KMS_std_1 = GP(f1_mc_mean_array, None, X1, X1_test, eps=0.0)
 
             # ============= Code for f2 Starts =============
             for i in range(Nx):
@@ -368,7 +393,7 @@ def main(args):
                 f2_Y_i = f2_Y[i, :]
                 u2_i = u2[i, :, :]
                 # scale = f2_Y_i.mean()
-                scale = 2000.0
+                scale = 1000.0
                 f2_Y_i_standardized = f2_Y_i / scale
                 f2_psi_mean, f2_psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, Y2_i, f2_Y_i_standardized,
                                                                       f2_p_Y_X_mean[i, :], f2_p_Y_X_sigma)
@@ -376,9 +401,9 @@ def main(args):
 
                 f2_mc_mean = f2_Y_i.mean()
 
-                f2_psi_mean_array = f2_psi_mean_array.at[i, :].set(f2_psi_mean)
-                f2_psi_std_array = f2_psi_std_array.at[i, :].set(f2_psi_std)
-                f2_mc_mean_array = f2_mc_mean_array.at[i, :].set(f2_mc_mean)
+                f2_psi_mean_array = f2_psi_mean_array.at[i].set(f2_psi_mean)
+                f2_psi_std_array = f2_psi_std_array.at[i].set(f2_psi_std)
+                f2_mc_mean_array = f2_mc_mean_array.at[i].set(f2_mc_mean)
 
                 # # ============= Debug code =============
                 # rng_key, _ = jax.random.split(rng_key)
@@ -396,51 +421,60 @@ def main(args):
                 # ============= Debug code =============
 
             LSMC_mean_2, LSMC_std_2 = decision_baselines.polynomial(X2, Y2, f2_Y, X2_test)
-            BMC_mean_2, BMC_std_2 = GP(f2_psi_mean_array, None, X2, X2_test)
-            KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, X2, X2_test)
+            BMC_mean_2, BMC_std_2 = GP(f2_psi_mean_array, f2_psi_std_array, X2, X2_test, eps=f2_psi_std_array.mean())
+            KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, X2, X2_test, eps=0.0)
             
             # ============= Code for f2 Ends =============
             
-            true_value = jnp.maximum(ground_truth_1, ground_truth_2).mean()
-            BMC_value = jnp.maximum(BMC_mean_1, BMC_mean_2).mean()
-            KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2).mean()
-            LSMC_value = jnp.maximum(LSMC_mean_1, LSMC_mean_2).mean()
+            true_value = jnp.maximum(ground_truth_1, ground_truth_2)
+            BMC_value = jnp.maximum(BMC_mean_1, BMC_mean_2)
+            KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2)
+            LSMC_value = jnp.maximum(LSMC_mean_1, LSMC_mean_2)
 
-            rmse_BMC = jnp.abs(BMC_value - true_value)
-            rmse_KMS = jnp.abs(KMS_value - true_value)
-            rmse_LSMC = jnp.abs(LSMC_value - true_value)
+            rmse_BMC = jnp.sqrt(jnp.mean((BMC_value - true_value) ** 2))
+            rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
+            rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
+
+            # true_value = jnp.maximum(ground_truth_1, ground_truth_2).mean()
+            # BMC_value = jnp.maximum(BMC_mean_1, BMC_mean_2).mean()
+            # KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2).mean()
+            # LSMC_value = jnp.maximum(LSMC_mean_1, LSMC_mean_2).mean()
+            #
+            # rmse_BMC = jnp.sqrt(jnp.mean((BMC_value - true_value) ** 2))
+            # rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
+            # rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
 
             decision_utils.save(args, Nx, Ny, rmse_BMC, rmse_KMS, rmse_LSMC)
 
             # ============= Debug code =============
-            plt.figure()
-            X1_test_ = X1_test.squeeze()
-            ind = X1_test_.argsort()
-            plt.plot(X1_test_[ind], ground_truth_1[ind], label='Ground truth')
-            plt.plot(X1_test_[ind], BMC_mean_1[ind], label='BMC')
-            plt.plot(X1_test_[ind], KMS_mean_1[ind], label='KMS')
-            plt.scatter(X1.squeeze(), f1_psi_mean_array.squeeze())
-            plt.plot(X1_test_[ind], LSMC_mean_1[ind], label='LSMC')
-            plt.legend()
-            plt.show()
-            
-            plt.figure()
-            X2_test_ = X2_test.squeeze()
-            ind = X2_test_.argsort()
-            plt.plot(X2_test_[ind], ground_truth_2[ind], label='Ground truth')
-            plt.plot(X2_test_[ind], BMC_mean_2[ind], label='BMC')
-            plt.plot(X2_test_[ind], KMS_mean_2[ind], label='KMS')
-            plt.scatter(X2.squeeze(), f2_psi_mean_array.squeeze())
-            plt.plot(X2_test_[ind], LSMC_mean_2[ind], label='LSMC')
-            plt.legend()
-            plt.show()
-
-            print(f"=============")
-            print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_BMC)
-            print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_KMS)
-            print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_LSMC)
-            print(f"=============")
-            pause = True
+            # plt.figure()
+            # X1_test_ = X1_test.squeeze()
+            # ind = X1_test_.argsort()
+            # plt.plot(X1_test_[ind], ground_truth_1[ind], label='Ground truth')
+            # plt.plot(X1_test_[ind], BMC_mean_1[ind], label='BMC')
+            # plt.plot(X1_test_[ind], KMS_mean_1[ind], label='KMS')
+            # plt.scatter(X1.squeeze(), f1_psi_mean_array.squeeze())
+            # plt.plot(X1_test_[ind], LSMC_mean_1[ind], label='LSMC')
+            # plt.legend()
+            # plt.show()
+            #
+            # plt.figure()
+            # X2_test_ = X2_test.squeeze()
+            # ind = X2_test_.argsort()
+            # plt.plot(X2_test_[ind], ground_truth_2[ind], label='Ground truth')
+            # plt.plot(X2_test_[ind], BMC_mean_2[ind], label='BMC')
+            # plt.plot(X2_test_[ind], KMS_mean_2[ind], label='KMS')
+            # plt.scatter(X2.squeeze(), f2_psi_mean_array.squeeze())
+            # plt.plot(X2_test_[ind], LSMC_mean_2[ind], label='LSMC')
+            # plt.legend()
+            # plt.show()
+            #
+            # print(f"=============")
+            # print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_BMC)
+            # print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_KMS)
+            # print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_LSMC)
+            # print(f"=============")
+            # pause = True
             # ============= Debug code =============
 
 

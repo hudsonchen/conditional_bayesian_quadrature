@@ -16,7 +16,7 @@ def polynomial(X, Y, gY, X_prime, poly=2):
     :param poly: int
     :return:
     """
-    eps = 1.0
+    eps = 0.1
     X_standardized, X_mean, X_std = decision_utils.standardize(X)
     X_prime_standardized = (X_prime - X_mean) / X_std
 
