@@ -171,6 +171,27 @@ def g3_ground_truth(mu, Sigma):
     return jnp.diag(Sigma).sum() + mu.T @ mu
 
 
+def g4(y):
+    """
+    Only for D = 2
+    :param y: (N, D)
+    :return: (N, )
+    """
+    pred = jnp.array([0.3, 1.0])
+    return y @ pred
+
+
+def g4_ground_truth(mu, Sigma):
+    """
+    Only for D = 2
+    :param mu: (D, )
+    :param Sigma: (D, D)
+    :return: scalar
+    """
+    pred = jnp.array([0.3, 1.0])
+    return mu.T @ pred
+
+
 def Monte_Carlo(gy):
     return gy.mean(0)
 
@@ -409,6 +430,7 @@ def main(args):
     test_num = 200
     data_number = 5
     # X is (N, D-1), Y is (N, 1)
+    rng_key, _ = jax.random.split(rng_key)
     X, Y = generate_data(rng_key, D, data_number, noise)
 
     if args.g_fn == 'g1':
@@ -420,16 +442,19 @@ def main(args):
     elif args.g_fn == 'g3':
         g = g3
         g_ground_truth_fn = g3_ground_truth
+    elif args.g_fn == 'g4':
+        g = g4
+        g_ground_truth_fn = g4_ground_truth
     else:
-        raise ValueError('g_fn must be g1 or g2 or g3')
+        raise ValueError('g_fn must be g1 or g2 or g3 or g4!')
 
     # N_alpha_array = jnp.array([5, 10])
-    N_alpha_array = jnp.array([10, 50, 100])
-    # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
-    #
+    # N_alpha_array = jnp.array([10, 50, 100])
+    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+
     # N_theta_array = jnp.array([10, 30])
-    N_theta_array = jnp.array([10, 50, 100])
-    # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # N_theta_array = jnp.array([10, 50, 100])
+    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -585,12 +610,12 @@ def main(args):
                                    time_BMC, time_KMS, time_LSMC, time_IS, calibration)
 
             # ============= Debug code =============
-            print(f"=============")
-            print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
-            print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
-            print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
-            print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
-            print(f"=============")
+            # print(f"=============")
+            # print(f"RMSE of BMC with {n_alpha} number of X and {n_theta} number of Y", rmse_BMC)
+            # print(f"RMSE of KMS with {n_alpha} number of X and {n_theta} number of Y", rmse_KMS)
+            # print(f"RMSE of LSMC with {n_alpha} number of X and {n_theta} number of Y", rmse_LSMC)
+            # print(f"RMSE of IS with {n_alpha} number of X and {n_theta} number of Y", rmse_IS)
+            # print(f"=============")
 
             # ============= Debug code =============
             # print(f"=============")

@@ -4,7 +4,7 @@
 #$ -S /bin/bash
 #$ -wd /home/ucabzc9/Scratch/
 #$ -j y
-#$ -N cbq_sensitivity
+#$ -N cbq_decision
 
 JOB_PARAMS=$(sed "${SGE_TASK_ID}q;d" "$1")
 echo "Job params: $JOB_PARAMS"
