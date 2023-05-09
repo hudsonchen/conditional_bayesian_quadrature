@@ -146,15 +146,16 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime):
     """
     Nx = psi_y_x_mean.shape[0]
     X_standardized, X_mean, X_std = decision_utils.standardize(X)
+    psi_y_x_mean_standardized, psi_y_x_mean_mean, psi_y_x_mean_std = decision_utils.standardize(psi_y_x_mean)
     X_prime_standardized = (X_prime - X_mean) / X_std
-    lx = 1.0
+    lx = 3.0
     
     if psi_y_x_std is None:
         noise_array = jnp.array([0.01, 0.001, 0.0001])
         nll_array = 0. * noise_array
         for i, noise in enumerate(noise_array):
             K_train_train = my_Matern(X_standardized, X_standardized, lx) + noise * jnp.eye(Nx)
-            nll = -(-0.5 * psi_y_x_mean.T @ K_train_train @ psi_y_x_mean -
+            nll = -(-0.5 * psi_y_x_mean_standardized.T @ K_train_train @ psi_y_x_mean_standardized -
                     0.5 * jnp.log(jnp.linalg.det(K_train_train) + 1e-6)) / Nx
             nll_array = nll_array.at[i].set(nll.squeeze())
         noise = noise_array[jnp.argmin(nll_array)]
@@ -176,6 +177,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime):
         std_y_x_prime = jnp.sqrt(var_y_x_prime)
     pause = True
     return mu_y_x_prime.squeeze(), std_y_x_prime.squeeze()
+
 
 def main(args):
     seed = args.seed
@@ -204,8 +206,7 @@ def main(args):
 
     # X is index (4, 13), Y is index (0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18)
     X_mean = jnp.array([0.7, 0.8])
-    X_sigma = jnp.array([0.1, 0.1])
-    X_sigma = jnp.diag(X_sigma ** 2)
+    X_sigma = jnp.array([[0.01, 0.01 * 0.6], [0.01 * 0.6, 0.01]])
     Y_mean = jnp.array([1000., 0.1, 5.2, 400.,
                         0.3, 3.0, 0.25, -0.1, 0.5,
                         1500, 0.08, 6.1, 0.3,
@@ -224,7 +225,7 @@ def main(args):
     # ============= Debug code =============
 
     # ============= Code to generate test points Begins =============
-    N_test = 100
+    N_test = 50
     large_sample_size = 10000
     rng_key, _ = jax.random.split(rng_key)
     X_test = jax.random.multivariate_normal(rng_key, X_mean, X_sigma, shape=(N_test,))
@@ -237,7 +238,7 @@ def main(args):
     u1_test = jnp.zeros([N_test, large_sample_size, 9]) + 0.0
     Y2_test = jnp.zeros([N_test, large_sample_size, 9]) + 0.0
     u2_test = jnp.zeros([N_test, large_sample_size, 9]) + 0.0
-    for i in range(N_test):
+    for i in tqdm(range(N_test)):
         rng_key, _ = jax.random.split(rng_key)
         u1_temp = jax.random.multivariate_normal(rng_key,
                                                  mean=jnp.zeros_like(f1_p_Y_X_mean_test[i, :]),
@@ -264,22 +265,24 @@ def main(args):
     ground_truth_2 = f2_Y_test.mean(1)
     # ============= Code to generate test points Ends =============
 
-
-    Nx_array = jnp.array([5, 10])
+    Nx_array = jnp.array([10, 30])
     # Nx_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #
     # Ny_array = jnp.array([10, 30])
-    Ny_array = jnp.array([50, 100])
+    Ny_array = jnp.array([10, 30, 50, 70, 100])
     # Ny_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     for Nx in Nx_array:
         rng_key, _ = jax.random.split(rng_key)
         # X shape is (Nx, 2)
-        X = jax.random.multivariate_normal(rng_key, X_mean, X_sigma, shape=(Nx,))
-        X1 = X[:, 0][:, None]
-        X2 = X[:, 1][:, None]
+        # X = jax.random.multivariate_normal(rng_key, X_mean, X_sigma, shape=(Nx,))
+        # X1 = X[:, 0][:, None]
+        # X2 = X[:, 1][:, None]
 
-        for Ny in Ny_array:
+        X1 = jnp.linspace(X1_test.min(), X1_test.max(), Nx)[:, None]
+        X2 = jnp.linspace(X2_test.min(), X2_test.max(), Nx)[:, None]
+
+        for Ny in tqdm(Ny_array):
             f1_p_Y_X_mean, f1_p_Y_X_sigma = f1_cond_dist_fn(x=X1)
             f2_p_Y_X_mean, f2_p_Y_X_sigma = f2_cond_dist_fn(x=X2)
             # Y1, Y2 shape is (Nx, Ny, 9)
@@ -319,7 +322,8 @@ def main(args):
             f2_psi_mean_array = jnp.zeros([Nx, 1]) + 0.0
             f2_psi_std_array = jnp.zeros([Nx, 1]) + 0.0
             f2_mc_mean_array = jnp.zeros([Nx, 1]) + 0.0
-            
+
+            # ============= Code for f1 Starts =============
             for i in range(Nx):
                 rng_key, _ = jax.random.split(rng_key)
                 Y1_i = Y1[i, :, :]
@@ -328,8 +332,6 @@ def main(args):
                 # scale = f1_Y_i.mean()
                 scale = 1000.0
                 f1_Y_i_standardized = f1_Y_i / scale
-                # f1_psi_mean, f1_psi_std = Bayesian_Monte_Carlo_RBF(rng_key, Y1_i, f1_Y_i_standardized,
-                #                                                    f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma)
                 f1_psi_mean, f1_psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u1_i, Y1_i, f1_Y_i_standardized,
                                                                       f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma)
                 f1_psi_mean = f1_psi_mean * scale
@@ -340,38 +342,96 @@ def main(args):
                 f1_psi_std_array = f1_psi_std_array.at[i, :].set(f1_psi_std)
                 f1_mc_mean_array = f1_mc_mean_array.at[i, :].set(f1_mc_mean)
 
-                # ============= Debug code =============
-                rng_key, _ = jax.random.split(rng_key)
-                Y_temp_large = jax.random.multivariate_normal(rng_key, f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma,
-                                                              shape=(large_sample_size,))
-                f1_Y_large = f1(X1[i, :][None, :], Y_temp_large[None, :])
-                f1_mc_mean_large = f1_Y_large.mean()
-                print("=============")
-                print('Large sample MC', f1_mc_mean_large)
-                print(f'MC with {Ny} number of Y', f1_mc_mean)
-                print(f'BMC with {Ny} number of Y', f1_psi_mean)
-                print(f'BMC uncertainty {f1_psi_std}')
-                print(f"=============")
-                pause = True
+                # # ============= Debug code =============
+                # rng_key, _ = jax.random.split(rng_key)
+                # Y_temp_large = jax.random.multivariate_normal(rng_key, f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma,
+                #                                               shape=(large_sample_size,))
+                # f1_Y_large = f1(X1[i, :][None, :], Y_temp_large[None, :])
+                # f1_mc_mean_large = f1_Y_large.mean()
+                # print("=============")
+                # print('Large sample MC', f1_mc_mean_large)
+                # print(f'MC with {Ny} number of Y', f1_mc_mean)
+                # print(f'BMC with {Ny} number of Y', f1_psi_mean)
+                # print(f'BMC uncertainty {f1_psi_std}')
+                # print(f"=============")
+                # pause = True
                 # ============= Debug code =============
 
             LSMC_mean_1, LSMC_std_1 = decision_baselines.polynomial(X1, Y1, f1_Y, X1_test)
             BMC_mean_1, BMC_std_1 = GP(f1_psi_mean_array, None, X1, X1_test)
             KMS_mean_1, KMS_std_1 = GP(f1_mc_mean_array, None, X1, X1_test)
 
-            rmse_BMC = jnp.sqrt(jnp.mean((BMC_mean_1 - ground_truth_1) ** 2))
-            rmse_KMS = jnp.sqrt(jnp.mean((KMS_mean_1 - ground_truth_1) ** 2))
-            rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_mean_1 - ground_truth_1) ** 2))
+            # ============= Code for f2 Starts =============
+            for i in range(Nx):
+                rng_key, _ = jax.random.split(rng_key)
+                Y2_i = Y2[i, :, :]
+                f2_Y_i = f2_Y[i, :]
+                u2_i = u2[i, :, :]
+                # scale = f2_Y_i.mean()
+                scale = 2000.0
+                f2_Y_i_standardized = f2_Y_i / scale
+                f2_psi_mean, f2_psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, Y2_i, f2_Y_i_standardized,
+                                                                      f2_p_Y_X_mean[i, :], f2_p_Y_X_sigma)
+                f2_psi_mean = f2_psi_mean * scale
+
+                f2_mc_mean = f2_Y_i.mean()
+
+                f2_psi_mean_array = f2_psi_mean_array.at[i, :].set(f2_psi_mean)
+                f2_psi_std_array = f2_psi_std_array.at[i, :].set(f2_psi_std)
+                f2_mc_mean_array = f2_mc_mean_array.at[i, :].set(f2_mc_mean)
+
+                # # ============= Debug code =============
+                # rng_key, _ = jax.random.split(rng_key)
+                # Y_temp_large = jax.random.multivariate_normal(rng_key, f2_p_Y_X_mean[i, :], f2_p_Y_X_sigma,
+                #                                               shape=(large_sample_size,))
+                # f2_Y_large = f2(X2[i, :][None, :], Y_temp_large[None, :])
+                # f2_mc_mean_large = f2_Y_large.mean()
+                # print("=============")
+                # print('Large sample MC', f2_mc_mean_large)
+                # print(f'MC with {Ny} number of Y', f2_mc_mean)
+                # print(f'BMC with {Ny} number of Y', f2_psi_mean)
+                # print(f'BMC uncertainty {f2_psi_std}')
+                # print(f"=============")
+                # pause = True
+                # ============= Debug code =============
+
+            LSMC_mean_2, LSMC_std_2 = decision_baselines.polynomial(X2, Y2, f2_Y, X2_test)
+            BMC_mean_2, BMC_std_2 = GP(f2_psi_mean_array, None, X2, X2_test)
+            KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, X2, X2_test)
+            
+            # ============= Code for f2 Ends =============
+            
+            true_value = jnp.maximum(ground_truth_1, ground_truth_2).mean()
+            BMC_value = jnp.maximum(BMC_mean_1, BMC_mean_2).mean()
+            KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2).mean()
+            LSMC_value = jnp.maximum(LSMC_mean_1, LSMC_mean_2).mean()
+
+            rmse_BMC = jnp.abs(BMC_value - true_value)
+            rmse_KMS = jnp.abs(KMS_value - true_value)
+            rmse_LSMC = jnp.abs(LSMC_value - true_value)
+
+            decision_utils.save(args, Nx, Ny, rmse_BMC, rmse_KMS, rmse_LSMC)
 
             # ============= Debug code =============
             plt.figure()
-            X1_test = X1_test.squeeze()
-            ind = X1_test.argsort()
-            plt.plot(X1_test[ind], ground_truth_1[ind], label='Ground truth')
-            plt.plot(X1_test[ind], BMC_mean_1[ind], label='BMC')
-            plt.plot(X1_test[ind], KMS_mean_1[ind], label='KMS')
+            X1_test_ = X1_test.squeeze()
+            ind = X1_test_.argsort()
+            plt.plot(X1_test_[ind], ground_truth_1[ind], label='Ground truth')
+            plt.plot(X1_test_[ind], BMC_mean_1[ind], label='BMC')
+            plt.plot(X1_test_[ind], KMS_mean_1[ind], label='KMS')
             plt.scatter(X1.squeeze(), f1_psi_mean_array.squeeze())
-            plt.plot(X1_test[ind], LSMC_mean_1[ind], label='LSMC')
+            plt.plot(X1_test_[ind], LSMC_mean_1[ind], label='LSMC')
+            plt.legend()
+            plt.show()
+            
+            plt.figure()
+            X2_test_ = X2_test.squeeze()
+            ind = X2_test_.argsort()
+            plt.plot(X2_test_[ind], ground_truth_2[ind], label='Ground truth')
+            plt.plot(X2_test_[ind], BMC_mean_2[ind], label='BMC')
+            plt.plot(X2_test_[ind], KMS_mean_2[ind], label='KMS')
+            plt.scatter(X2.squeeze(), f2_psi_mean_array.squeeze())
+            plt.plot(X2_test_[ind], LSMC_mean_2[ind], label='LSMC')
             plt.legend()
             plt.show()
 
@@ -382,6 +442,7 @@ def main(args):
             print(f"=============")
             pause = True
             # ============= Debug code =============
+
 
 
 def get_config():
