@@ -1,0 +1,21 @@
+--seed 20
+--seed 21
+--seed 22
+--seed 23
+--seed 24
+--seed 25
+--seed 26
+--seed 27
+--seed 28
+--seed 29
+--seed 10
+--seed 11
+--seed 12
+--seed 13
+--seed 14
+--seed 15
+--seed 16
+--seed 17
+--seed 18
+--seed 19
+
