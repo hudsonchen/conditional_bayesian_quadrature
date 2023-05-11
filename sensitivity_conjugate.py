@@ -18,7 +18,6 @@ from jax.config import config
 config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
 
-
 if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
@@ -380,7 +379,8 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps, kernel_fn):
                 for k, sigma in enumerate(sigma_array):
                     K = A * kernel_fn(X, X, l) + jnp.eye(n_alpha) * sigma
                     K_inv = jnp.linalg.inv(K)
-                    nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / n_alpha
+                    nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(
+                        jnp.linalg.det(K) + 1e-6)) / n_alpha
                     nll_array = nll_array.at[i, j].set(nll)
         min_index_flat = jnp.argmin(nll_array)
         i1, i2, i3 = jnp.unravel_index(min_index_flat, nll_array.shape)
@@ -407,7 +407,10 @@ def GP(rng_key, psi_y_x_mean, psi_y_x_std, X, X_prime, eps, kernel_fn):
         K_test_test = A * kernel_fn(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
     else:
         # print(A)
-        # A = 10.0
+        if n_alpha == 10:
+            A = 10.0
+        else:
+            A = 1.0
         K_train_train = A * kernel_fn(X, X, l) + eps * jnp.eye(n_alpha) + jnp.diag(psi_y_x_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
         K_test_train = A * kernel_fn(X_prime, X, l)
@@ -449,12 +452,12 @@ def main(args):
         raise ValueError('g_fn must be g1 or g2 or g3 or g4!')
 
     # N_alpha_array = jnp.array([5, 10])
-    # N_alpha_array = jnp.array([10, 50, 100])
-    N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_alpha_array = jnp.array([10, 50, 100])
+    # N_alpha_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # N_theta_array = jnp.array([10, 30])
-    # N_theta_array = jnp.array([10, 50, 100])
-    N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_theta_array = jnp.array([10, 50, 100])
+    # N_theta_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     alpha_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
@@ -532,11 +535,13 @@ def main(args):
                 elif args.kernel_y == "Matern":
                     if D > 2:
                         raise NotImplementedError("Matern kernel is only implemented for D=2")
-                    psi_mean, psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, samples_i, g_samples_i, mu_y_x_i, var_y_x_i)
+                    psi_mean, psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, samples_i, g_samples_i, mu_y_x_i,
+                                                                    var_y_x_i)
                 elif args.kernel_y == "Stein":
                     if D > 2:
                         raise NotImplementedError("Stein kernel is only implemented for D=2")
-                    psi_mean, psi_std = Bayesian_Monte_Carlo_Stein(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i, score_i)
+                    psi_mean, psi_std = Bayesian_Monte_Carlo_Stein(rng_key, samples_i, g_samples_i, mu_y_x_i, var_y_x_i,
+                                                                   score_i)
                 else:
                     raise NotImplementedError("Kernel not implemented")
                 tt1 = time.time()
@@ -582,7 +587,8 @@ def main(args):
 
             _, _ = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
             t0 = time.time()
-            LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all, alpha_test_line)
+            LSMC_mean, LSMC_std = sensitivity_baselines.polynomial(alpha_all, samples_all, g_samples_all,
+                                                                   alpha_test_line)
             time_LSMC = time.time() - t0
             time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
 

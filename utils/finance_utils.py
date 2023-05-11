@@ -109,6 +109,35 @@ def price_visualize(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1):
     return ST, psi_ST_1 - psi_ST_2
 
 
+def calibrate(ground_truth, BMC_mean, BMC_std):
+    """
+    Calibrate the BMC mean and std
+    :param ground_truth: (N, )
+    :param BMC_mean: (N, )
+    :param BMC_std: (N, )
+    :return:
+    """
+    BMC_std /= 10
+    confidence_level = jnp.arange(0.0, 1.01, 0.05)
+    prediction_interval = jnp.zeros(len(confidence_level))
+    for i, c in enumerate(confidence_level):
+        z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
+        prob = jnp.less(jnp.abs(ground_truth - BMC_mean), z_score * BMC_std)
+        prediction_interval = prediction_interval.at[i].set(prob.mean())
+
+    plt.figure()
+    plt.plot(confidence_level, prediction_interval, label="Model calibration", marker="o")
+    plt.plot([0, 1], [0, 1], linestyle="--", label="Ideal calibration", color="black")
+    plt.xlabel("Confidence")
+    plt.ylabel("Coverage")
+    plt.title("Calibration plot")
+    plt.legend()
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.close()
+    # plt.show()
+    return prediction_interval
+
 def scale(Z):
     s = Z.std()
     standardized = Z / s

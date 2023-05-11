@@ -411,7 +411,7 @@ class CBQ:
 
     def save(self, Nx, Ny, psi_x_mean, St, St_prime,
              BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
-             time_cbq, time_IS, time_KMS, time_LSMC):
+             time_cbq, time_IS, time_KMS, time_LSMC, calibration):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
         # ========== Debug code ==========
@@ -446,6 +446,8 @@ class CBQ:
         time_dict = {'BMC': time_cbq, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
         with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
             pickle.dump(time_dict, f)
+
+        jnp.save(f"{args.save_path}/calibration_X_{Nx}_y_{Ny}", calibration)
 
         # ============= Debug code =============
         # print(f"=============")
@@ -554,10 +556,10 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    # Nx_array = jnp.array([20])
-    Nx_array = jnp.array([2, 5, 10, 20, 30])
-    # Ny_array = jnp.array([30, 50, 70])
-    Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    Nx_array = jnp.array([20, 30, 50])
+    # Nx_array = jnp.array([2, 5, 10, 20, 30])
+    Ny_array = jnp.array([20, 30, 50])
+    # Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_prime = jnp.linspace(20., 120., test_num)[:, None]
@@ -604,9 +606,12 @@ def cbq_option_pricing(args):
             t3 = time.time()
             time_cbq = t3 - t2 + t1 - t0
 
+            ground_truth = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
+            calibration = finance_utils.calibrate(ground_truth, BMC_mean, jnp.diag(BMC_std))
+
             CBQ_class.save(Nx, Ny, psi_x_mean, St, St_prime,
                            BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
-                           time_cbq, time_IS, time_KMS, time_LSMC)
+                           time_cbq, time_IS, time_KMS, time_LSMC, calibration)
 
     # For very very large Nx and Ny.
     Nx = 1000
