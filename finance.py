@@ -556,9 +556,9 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = jnp.array([20, 30, 50])
+    Nx_array = jnp.array([10, 50, 100])
     # Nx_array = jnp.array([2, 5, 10, 20, 30])
-    Ny_array = jnp.array([20, 30, 50])
+    Ny_array = jnp.array([10, 50, 100])
     # Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
