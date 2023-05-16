@@ -296,8 +296,8 @@ def main(args):
     # Nx_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #
     # Ny_array = jnp.array([10, 30])
-    Ny_array = jnp.array([10, 30, 50, 100])
-    # Ny_array = jnp.arange(10, 200, 10)
+    # Ny_array = jnp.array([10, 30, 50, 100])
+    Ny_array = jnp.arange(10, 200, 10)
 
     for Nx in Nx_array:
         rng_key, _ = jax.random.split(rng_key)

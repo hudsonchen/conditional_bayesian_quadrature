@@ -55,6 +55,6 @@ def calibrate(ground_truth, BMC_mean, BMC_std):
     plt.legend()
     plt.xlim(0, 1)
     plt.ylim(0, 1)
-    # plt.close()
-    plt.show()
+    plt.close()
+    # plt.show()
     return prediction_interval
