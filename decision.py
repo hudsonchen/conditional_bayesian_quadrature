@@ -146,6 +146,8 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
     Nx, D = X.shape[0], X.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0])
+    scale = 1000
+    psi_y_x_mean_standardized = psi_y_x_mean / scale
 
     if psi_y_x_std is None:
         sigma_array = jnp.array([1.0, 0.1, 0.01, 0.001])
@@ -162,7 +164,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
                 for k, sigma in enumerate(sigma_array):
                     K = A * my_Matern(X, X, l) + jnp.eye(Nx) * sigma
                     K_inv = jnp.linalg.inv(K)
-                    nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(
+                    nll = -(-0.5 * psi_y_x_mean_standardized.T @ K_inv @ psi_y_x_mean_standardized - 0.5 * jnp.log(
                         jnp.linalg.det(K) + 1e-6)) / Nx
                     nll_array = nll_array.at[i, j].set(nll.squeeze())
         min_index_flat = jnp.argmin(nll_array)
@@ -173,11 +175,11 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     else:
         for i, l in enumerate(l_array):
             K_no_scale = my_Matern(X, X, l)
-            A = psi_y_x_mean.T @ K_no_scale @ psi_y_x_mean / Nx
+            A = psi_y_x_mean_standardized.T @ K_no_scale @ psi_y_x_mean_standardized / Nx
             A_array = A_array.at[i].set(A.squeeze())
             K = A * my_Matern(X, X, l) + eps * jnp.eye(Nx) + jnp.diag(psi_y_x_std ** 2)
             K_inv = jnp.linalg.inv(K)
-            nll = -(-0.5 * psi_y_x_mean.T @ K_inv @ psi_y_x_mean - 0.5 * jnp.log(
+            nll = -(-0.5 * psi_y_x_mean_standardized.T @ K_inv @ psi_y_x_mean_standardized - 0.5 * jnp.log(
                 jnp.linalg.det(K) + 1e-6)) / Nx
             nll_array = nll_array.at[i].set(nll.squeeze())
 
@@ -190,16 +192,15 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         K_test_train = A * my_Matern(X_prime, X, l)
         K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
     else:
-        # print(A)
-        # A = 10.0
+        # A = 1
         K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(Nx) + jnp.diag(psi_y_x_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
         K_test_train = A * my_Matern(X_prime, X, l)
         K_test_test = A * my_Matern(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
-    mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean
+    mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean_standardized * scale
     var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_y_x = jnp.abs(var_y_x)
-    std_y_x = jnp.sqrt(var_y_x)
+    std_y_x = jnp.sqrt(var_y_x) * scale
     pause = True
     return mu_y_x, std_y_x
 
@@ -291,12 +292,12 @@ def main(args):
     # ============= Code to generate test points Ends =============
 
     # Nx_array = jnp.array([10, 20, 30])
-    Nx_array = jnp.array([10, 30, 50])
+    Nx_array = jnp.array([10, 30, 50, 100])
     # Nx_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #
     # Ny_array = jnp.array([10, 30])
-    # Ny_array = jnp.array([10, 30, 50, 70, 100])
-    Ny_array = jnp.arange(20, 200, 10)
+    Ny_array = jnp.array([10, 30, 50, 100])
+    # Ny_array = jnp.arange(10, 200, 10)
 
     for Nx in Nx_array:
         rng_key, _ = jax.random.split(rng_key)
@@ -361,8 +362,8 @@ def main(args):
                 f1_psi_mean, f1_psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u1_i, Y1_i, f1_Y_i_standardized,
                                                                       f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma)
                 f1_psi_mean = f1_psi_mean * scale
-
                 f1_mc_mean = f1_Y_i.mean()
+                f1_psi_std *= 10
 
                 f1_psi_mean_array = f1_psi_mean_array.at[i].set(f1_psi_mean)
                 f1_psi_std_array = f1_psi_std_array.at[i].set(f1_psi_std)
@@ -399,7 +400,7 @@ def main(args):
                 f2_psi_mean, f2_psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, Y2_i, f2_Y_i_standardized,
                                                                       f2_p_Y_X_mean[i, :], f2_p_Y_X_sigma)
                 f2_psi_mean = f2_psi_mean * scale
-
+                f2_psi_std *= 10
                 f2_mc_mean = f2_Y_i.mean()
 
                 f2_psi_mean_array = f2_psi_mean_array.at[i].set(f2_psi_mean)

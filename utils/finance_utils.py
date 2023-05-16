@@ -117,7 +117,6 @@ def calibrate(ground_truth, BMC_mean, BMC_std):
     :param BMC_std: (N, )
     :return:
     """
-    BMC_std /= 10
     confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):
