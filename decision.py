@@ -290,7 +290,8 @@ def main(args):
     ground_truth_2 = f2_Y_test.mean(1)
     # ============= Code to generate test points Ends =============
 
-    Nx_array = jnp.array([10, 20, 30])
+    # Nx_array = jnp.array([10, 20, 30])
+    Nx_array = jnp.array([10, 30, 50])
     # Nx_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #
     # Ny_array = jnp.array([10, 30])
@@ -425,7 +426,10 @@ def main(args):
             KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, X2, X2_test, eps=0.0)
             
             # ============= Code for f2 Ends =============
-            
+
+            calibration_1 = decision_utils.calibrate(ground_truth_1, BMC_mean_1, jnp.diag(BMC_std_1))
+            calibration_2 = decision_utils.calibrate(ground_truth_2, BMC_mean_2, jnp.diag(BMC_std_2))
+
             true_value = jnp.maximum(ground_truth_1, ground_truth_2)
             BMC_value = jnp.maximum(BMC_mean_1, BMC_mean_2)
             KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2)
@@ -444,7 +448,7 @@ def main(args):
             # rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
             # rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
 
-            decision_utils.save(args, Nx, Ny, rmse_BMC, rmse_KMS, rmse_LSMC)
+            decision_utils.save(args, Nx, Ny, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
 
             # ============= Debug code =============
             # plt.figure()
