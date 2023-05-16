@@ -146,7 +146,7 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
     """
     Nx, D = X.shape[0], X.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0])
-    scale = 1000
+    scale = 1.
     psi_y_x_mean_standardized = psi_y_x_mean / scale
 
     if psi_y_x_std is None:
@@ -473,15 +473,14 @@ def main(args):
             # plt.plot(X2_test_[ind], LSMC_mean_2[ind], label='LSMC')
             # plt.legend()
             # plt.show()
-            #
+
             # print(f"=============")
             # print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_BMC)
             # print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_KMS)
             # print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_LSMC)
             # print(f"=============")
-            # pause = True
+            pause = True
             # ============= Debug code =============
-
 
 
 def get_config():

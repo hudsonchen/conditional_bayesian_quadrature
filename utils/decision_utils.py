@@ -12,8 +12,8 @@ def save(args, Nx, Ny, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration
     with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
         pickle.dump(rmse_dict, f)
 
-    jnp.save(f"{args.save_path}/calibration_X_{Nx}_y_{Ny}", calibration_1)
-    jnp.save(f"{args.save_path}/calibration_X_{Nx}_y_{Ny}", calibration_2)
+    jnp.save(f"{args.save_path}/calibration_1_X_{Nx}_y_{Ny}", calibration_1)
+    jnp.save(f"{args.save_path}/calibration_2_X_{Nx}_y_{Ny}", calibration_2)
     return
 
 
@@ -38,7 +38,6 @@ def calibrate(ground_truth, BMC_mean, BMC_std):
     :param BMC_std: (N, )
     :return:
     """
-    BMC_std /= 10
     confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):
