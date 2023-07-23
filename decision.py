@@ -294,7 +294,7 @@ def main(args):
     # Nx_array = jnp.array([10, 20, 30])
     Nx_array = jnp.array([10, 30, 50, 100])
     # Nx_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
-    #
+    #·
     # Ny_array = jnp.array([10, 30])
     # Ny_array = jnp.array([10, 30, 50, 100])
     Ny_array = jnp.arange(10, 200, 10)
@@ -425,7 +425,7 @@ def main(args):
             LSMC_mean_2, LSMC_std_2 = decision_baselines.polynomial(X2, Y2, f2_Y, X2_test)
             BMC_mean_2, BMC_std_2 = GP(f2_psi_mean_array, f2_psi_std_array, X2, X2_test, eps=f2_psi_std_array.mean())
             KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, X2, X2_test, eps=0.0)
-            
+
             # ============= Code for f2 Ends =============
 
             calibration_1 = decision_utils.calibrate(ground_truth_1, BMC_mean_1, jnp.diag(BMC_std_1))
