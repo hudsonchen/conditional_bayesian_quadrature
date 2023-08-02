@@ -93,15 +93,11 @@ def generate_data(beta, gamma, T, dt, population, rng_key):
     return D['I']
 
 
-def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LSMC_mean, IS_mean,
-         ground_truth_array, beta_0_array, BMC_time, KMS_time, LSMC_time, IS_time, calibration):
-    # jnp.save(f"{args.save_path}/BMC_mean.npy", BMC_mean.squeeze())
-    # jnp.save(f"{args.save_path}/BMC_std.npy", BMC_std.squeeze())
-    # jnp.save(f"{args.save_path}/KMS_mean.npy", KMS_mean.squeeze())
-    # jnp.save(f"{args.save_path}/LSMC_mean.npy", LSMC_mean.squeeze())
+def save(args, T, N, theta_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LSMC_mean, IS_mean,
+         ground_truth_array, theta_array, BMC_time, KMS_time, LSMC_time, IS_time, calibration):
     KMS_mean = KMS_mean.squeeze()
     time_dict = {'BMC': BMC_time, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
-    with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+    with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(time_dict, f)
 
     rmse_dict = {}
@@ -109,35 +105,43 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     rmse_dict['IS'] = jnp.sqrt(((ground_truth_array - IS_mean) ** 2).mean())
     rmse_dict['LSMC'] = jnp.sqrt(((ground_truth_array - LSMC_mean) ** 2).mean())
     rmse_dict['KMS'] = jnp.sqrt(((ground_truth_array - KMS_mean) ** 2).mean())
-    with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+    with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(rmse_dict, f)
 
-    jnp.save(f"{args.save_path}/calibration_X_{Nx}_y_{Ny}", calibration)
+    jnp.save(f"{args.save_path}/calibration_T_{T}_N_{N}", calibration)
 
+    methods = ["BMC", "KMS", "LSMC", "IS"]
+    rmse_values = [rmse_dict['BMC'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
+
+    print("\n\n=======================================")
+    print(f"T = {T} and N = {N}")
+    print("=======================================")
+    print(" ".join([f"{method:<11}" for method in methods]))
+    print(" ".join([f"{value:<6.5f}" for value in rmse_values]))
+    print("=======================================\n\n")
+    
     # ========== Debug code ==========
-    # print(f"=============")
-    # print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_dict['BMC'])
-    # print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_dict['KMS'])
-    # print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_dict['LSMC'])
-    # print(f"RMSE of IS with {Nx} number of X and {Ny} number of Y", rmse_dict['IS'])
-    #
-    # print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_dict['BMC'])
-    # print(f"Time of KMS with {Nx} number of X and {Ny} number of Y", time_dict['KMS'])
-    # print(f"Time of LSMC with {Nx} number of X and {Ny} number of Y", time_dict['LSMC'])
-    # print(f"Time of IS with {Nx} number of X and {Ny} number of Y", time_dict['IS'])
+    # time_values = [time_dict['BMC'], time_dict['KMS'], time_dict['LSMC'], time_dict['IS']]
+
+    # print("\n\n=======================================")
+    # print(f"T = {T} and N = {N}")
+    # print("=======================================")
+    # print(" ".join([f"{method:<10}" for method in methods]))
+    # print(" ".join([f"{value:<10.6f}" for value in time_values]))
+    # print("=======================================\n\n")
     # print(f"=============")
 
     plt.figure()
-    plt.plot(beta_0_test, BMC_mean, color='blue', label='BMC')
-    plt.plot(beta_0_test, KMS_mean, color='red', label='KMS')
-    plt.plot(beta_0_test, LSMC_mean, color='green', label='LSMC')
-    plt.plot(beta_0_test, IS_mean, color='orange', label='IS')
-    plt.plot(beta_0_test, ground_truth_array, color='black', label='True')
-    plt.scatter(beta_0_array, BMC_mean_array, color='orange')
-    plt.fill_between(beta_0_test, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
+    plt.plot(theta_test, BMC_mean, color='blue', label='BMC')
+    plt.plot(theta_test, KMS_mean, color='red', label='KMS')
+    plt.plot(theta_test, LSMC_mean, color='green', label='LSMC')
+    plt.plot(theta_test, IS_mean, color='orange', label='IS')
+    plt.plot(theta_test, ground_truth_array, color='black', label='True')
+    plt.scatter(theta_array, BMC_mean_array, color='orange')
+    plt.fill_between(theta_test, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
     plt.legend()
-    plt.title(f"Nx={Nx}, Ny={Ny}")
-    plt.savefig(f"{args.save_path}/figures/SIR_X_{Nx}_y_{Ny}.pdf")
+    plt.title(f"T={T}, N={N}")
+    plt.savefig(f"{args.save_path}/figures/SIR_T_{T}_N_{N}.pdf")
     # plt.show()
     plt.close()
     pause = True
@@ -145,9 +149,9 @@ def save(args, Nx, Ny, beta_0_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean,
     return
 
 
-def save_large(args, Nx, Ny, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, KMS_time, LSMC_time, IS_time):
+def save_large(args, T, N, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, KMS_time, LSMC_time, IS_time):
     time_dict = {'BMS': None, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
-    with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+    with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(time_dict, f)
 
     rmse_dict = {}
@@ -155,7 +159,7 @@ def save_large(args, Nx, Ny, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, K
     rmse_dict['LSMC'] = ((ground_truth_array - LSMC_mean) ** 2).mean()
     rmse_dict['KMS'] = ((ground_truth_array - KMS_mean) ** 2).mean()
     rmse_dict['BMS'] = None
-    with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+    with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(rmse_dict, f)
     return
 

@@ -35,15 +35,14 @@
             "args": ["--kernel_theta", "rbf", "--kernel_x", "log_normal_rbf"]
         },
         {
-            "name": "Python: finance",
+            "name": "Python: SIR",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceRoot}/finance.py",
+            "program": "${workspaceRoot}/SIR.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
             "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
-            "args": ["--kernel_theta", "rbf", "--kernel_x", "log_normal_rbf"]
         },
     ]
 }
