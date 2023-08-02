@@ -44,5 +44,15 @@
             "justMyCode": true,
             "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
         },
+        {
+            "name": "Python: decision",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/decision.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
+        },
     ]
 }

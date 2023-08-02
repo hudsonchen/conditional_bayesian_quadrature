@@ -4,16 +4,16 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 
 
-def save(args, Nx, Ny, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2):
+def save(args, T, N, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2):
     rmse_dict = {}
     rmse_dict["BMC"] = rmse_BMC
     rmse_dict["KMS"] = rmse_KMS
     rmse_dict["LSMC"] = rmse_LSMC
-    with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+    with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(rmse_dict, f)
 
-    jnp.save(f"{args.save_path}/calibration_1_X_{Nx}_y_{Ny}", calibration_1)
-    jnp.save(f"{args.save_path}/calibration_2_X_{Nx}_y_{Ny}", calibration_2)
+    jnp.save(f"{args.save_path}/calibration_1_T_{T}_N_{N}", calibration_1)
+    jnp.save(f"{args.save_path}/calibration_2_T_{T}_N_{N}", calibration_2)
     return
 
 

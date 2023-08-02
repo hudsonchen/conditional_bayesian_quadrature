@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import optax
 from functools import partial
 from tqdm import tqdm
-import decision_baselines
+import baselines
 from kernels import *
 from utils import decision_utils
 import os
@@ -23,7 +23,8 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
     print(os.getcwd())
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
-    os.chdir("/home/zongchen/CBQ")
+    # os.chdir("/home/zongchen/CBQ")
+    os.chdir("/home/zongchen/fx_bayesian_quaduature/CBQ")
     print(os.getcwd())
 elif pwd.getpwuid(os.getuid())[0] == 'ucabzc9':
     os.chdir("/home/ucabzc9/Scratch/CBQ")
@@ -38,76 +39,76 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 
 
-def f1(x, y):
+def f1(theta, x):
     """
-    :param x: (T, 1)
-    :param y: (T, N, 9)
+    :param theta: (T, 1)
+    :param x: (T, N, 9)
     :return: (T, N)
     """
     lamba_ = 1e4
     # lamba_ = 1.0
-    # lambda * (X_5 * X_6 * X_7 + X_8 * X_9 * X_10) - (X_1 + X_2 * X_3 * X_4)
-    # X_5 is x
-    # X_1 is y[0], X_2 is y[1], X_3 is y[2], X_4 is y[3], X_6 is y[4], X_7 is y[5], X_8 is y[6],
-    # X_9 is y[7], X_10 is y[8],
-    return lamba_ * (x * y[:, :, 4] * y[:, :, 5] + y[:, :, 6] * y[:, :, 7] * y[:, :, 8]) - \
-           (y[:, :, 0] + y[:, :, 1] * y[:, :, 2] * y[:, :, 3])
+    # lambda * (Theta_5 * Theta_6 * Theta_7 + Theta_8 * Theta_9 * Theta_10) - (Theta_1 + Theta_2 * Theta_3 * Theta_4)
+    # Theta_5 is theta
+    # Theta_1 is x[0], Theta_2 is x[1], Theta_3 is x[2], Theta_4 is x[3], Theta_6 is x[4], Theta_7 is x[5], Theta_8 is x[6],
+    # Theta_9 is x[7], Theta_10 is x[8],
+    return lamba_ * (theta * x[:, :, 4] * x[:, :, 5] + x[:, :, 6] * x[:, :, 7] * x[:, :, 8]) - \
+           (x[:, :, 0] + x[:, :, 1] * x[:, :, 2] * x[:, :, 3])
 
 
-def f2(x, y):
+def f2(theta, x):
     """
-    :param x: (T, 1)
-    :param y: (T, N, 9)
+    :param theta: (T, 1)
+    :param x: (T, N, 9)
     :return: (N, T)
     """
     lamba_ = 1e4
-    # lambda * (X_5 * X_6 * X_7 + X_8 * X_9 * X_10) - (X_1 + X_2 * X_3 * X_4)
-    # X_14 is x
-    # X_4 is y[0], X_11 is y[1], X_12 is y[2], X_13 is y[3], X_15 is y[4], X_16 is y[5],
-    # X_17 is y[6], X_18 is y[7], X_19 is y[8]
-    return lamba_ * (x * y[:, :, 4] * y[:, :, 5] + y[:, :, 6] * y[:, :, 7] * y[:, :, 8]) - \
-           (y[:, :, 1] + y[:, :, 2] * y[:, :, 3] * y[:, :, 0])
+    # lambda * (Theta_5 * Theta_6 * Theta_7 + Theta_8 * Theta_9 * Theta_10) - (Theta_1 + Theta_2 * Theta_3 * Theta_4)
+    # Theta_14 is theta
+    # Theta_4 is x[0], Theta_11 is x[1], Theta_12 is x[2], Theta_13 is x[3], Theta_15 is x[4], Theta_16 is x[5],
+    # Theta_17 is x[6], Theta_18 is x[7], Theta_19 is x[8]
+    return lamba_ * (theta * x[:, :, 4] * x[:, :, 5] + x[:, :, 6] * x[:, :, 7] * x[:, :, 8]) - \
+           (x[:, :, 1] + x[:, :, 2] * x[:, :, 3] * x[:, :, 0])
 
 
-def conditional_distribution(joint_mean, joint_covariance, x, dimensions_y, dimensions_x):
+def conditional_distribution(joint_mean, joint_covariance, theta, dimensions_x, dimensions_theta):
     """
     :param joint_mean: (19,)
     :param joint_covariance: (19, 19)
-    :param x: (N, len(dimensions_x))
-    :param dimensions_y: list
+    :param theta: (N, len(dimensions_theta))
     :param dimensions_x: list
-    :return: (N, len(dimensions_y))
+    :param dimensions_theta: list
+    :return: (N, len(dimensions_x))
     """
 
-    dimensions_y = jnp.array(dimensions_y)
     dimensions_x = jnp.array(dimensions_x)
+    dimensions_theta = jnp.array(dimensions_theta)
 
+    mean_theta = jnp.take(joint_mean, dimensions_theta)[:, None]
     mean_x = jnp.take(joint_mean, dimensions_x)[:, None]
-    mean_y = jnp.take(joint_mean, dimensions_y)[:, None]
 
     # Create a grid of indices from A and B using meshgrid
+    cov_ThetaTheta = joint_covariance[jnp.ix_(dimensions_theta, dimensions_theta)]
     cov_XX = joint_covariance[jnp.ix_(dimensions_x, dimensions_x)]
-    cov_YY = joint_covariance[jnp.ix_(dimensions_y, dimensions_y)]
-    cov_YX = joint_covariance[jnp.ix_(dimensions_y, dimensions_x)]
-    cov_XY = joint_covariance[jnp.ix_(dimensions_x, dimensions_y)]
+    cov_XTheta = joint_covariance[jnp.ix_(dimensions_x, dimensions_theta)]
+    cov_ThetaX = joint_covariance[jnp.ix_(dimensions_theta, dimensions_x)]
 
-    x_t = x.T
-    mean_y_given_x = mean_y + cov_YX @ jnp.linalg.inv(cov_XX) @ (x_t - mean_x)
-    cov_y_given_x = cov_YY - cov_YX @ jnp.linalg.inv(cov_XX) @ cov_XY
-    return mean_y_given_x.T, cov_y_given_x
+    theta_t = theta.T
+    mean_x_given_theta = mean_x + cov_XTheta @ jnp.linalg.inv(cov_ThetaTheta) @ (theta_t - mean_theta)
+    cov_x_given_theta = cov_XX - cov_XTheta @ jnp.linalg.inv(cov_ThetaTheta) @ cov_ThetaX
+    return mean_x_given_theta.T, cov_x_given_theta
 
 
-def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
+def Bayesian_Monte_Carlo_Matern(rng_key, u, x, gx, mu_x_theta, sigma_x_theta):
     """
     :param u: (N, D)
-    :param sigma_y_x: (D, D)
-    :param mu_y_x: (D, )
+    :param sigma_x_theta: (D, D)
+    :param mu_x_theta: (D, )
     :param rng_key:
-    :param y: (N, D)
-    :param gy: (N, )
+    :param x: (N, D)
+    :param gx: (N, )
     :return:
     """
-    N, D = y.shape[0], y.shape[1]
+    N, D = x.shape[0], x.shape[1]
     eps = 1e-6
 
     K_no_scale = jnp.zeros([N, N])
@@ -120,14 +121,14 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
         K_no_scale += my_Matern(u_i, u_i, l)
         phi_no_scale += kme_Matern_Gaussian(l, u_i)
 
-    A = gy.T @ K_no_scale @ gy / N
+    A = gx.T @ K_no_scale @ gx / N
     K = A * K_no_scale
     phi = A * phi_no_scale
 
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
     varphi = phi.mean()
 
-    BMC_mean = phi.T @ K_inv @ gy
+    BMC_mean = phi.T @ K_inv @ gx
     BMC_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
 
     BMC_mean = BMC_mean.squeeze()
@@ -136,20 +137,20 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, y, gy, mu_y_x, sigma_y_x):
     return BMC_mean, BMC_std
 
 
-def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
+def GP(psi_x_theta_mean, psi_x_theta_std, Theta, Theta_test, eps):
     """
-    :param psi_y_x_mean: (n_alpha, )
-    :param psi_y_x_std: (n_alpha, )
-    :param X: (n_alpha, D)
-    :param X_prime: (N_test, D)
+    :param psi_x_theta_mean: (n_alpha, )
+    :param psi_x_theta_std: (n_alpha, )
+    :param Theta: (n_alpha, D)
+    :param Theta_test: (T_test, D)
     :return:
     """
-    Nx, D = X.shape[0], X.shape[1]
+    T, D = Theta.shape[0], Theta.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0])
     scale = 1.
-    psi_y_x_mean_standardized = psi_y_x_mean / scale
+    psi_x_theta_mean_standardized = psi_x_theta_mean / scale
 
-    if psi_y_x_std is None:
+    if psi_x_theta_std is None:
         sigma_array = jnp.array([1.0, 0.1, 0.01, 0.001])
         A_array = jnp.array([10.0, 100.0, 300.0, 1000.0])
         nll_array = jnp.zeros([len(l_array), len(A_array), len(sigma_array)])
@@ -158,14 +159,14 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         A_array = 0 * l_array
         nll_array = jnp.zeros([len(l_array), 1])
 
-    if psi_y_x_std is None:
+    if psi_x_theta_std is None:
         for i, l in enumerate(l_array):
             for j, A in enumerate(A_array):
                 for k, sigma in enumerate(sigma_array):
-                    K = A * my_Matern(X, X, l) + jnp.eye(Nx) * sigma
+                    K = A * my_Matern(Theta, Theta, l) + jnp.eye(T) * sigma
                     K_inv = jnp.linalg.inv(K)
-                    nll = -(-0.5 * psi_y_x_mean_standardized.T @ K_inv @ psi_y_x_mean_standardized - 0.5 * jnp.log(
-                        jnp.linalg.det(K) + 1e-6)) / Nx
+                    nll = -(-0.5 * psi_x_theta_mean_standardized.T @ K_inv @ psi_x_theta_mean_standardized - 0.5 * jnp.log(
+                        jnp.linalg.det(K) + 1e-6)) / T
                     nll_array = nll_array.at[i, j].set(nll.squeeze())
         min_index_flat = jnp.argmin(nll_array)
         i1, i2, i3 = jnp.unravel_index(min_index_flat, nll_array.shape)
@@ -174,257 +175,253 @@ def GP(psi_y_x_mean, psi_y_x_std, X, X_prime, eps):
         sigma = sigma_array[i3]
     else:
         for i, l in enumerate(l_array):
-            K_no_scale = my_Matern(X, X, l)
-            A = psi_y_x_mean_standardized.T @ K_no_scale @ psi_y_x_mean_standardized / Nx
+            K_no_scale = my_Matern(Theta, Theta, l)
+            A = psi_x_theta_mean_standardized.T @ K_no_scale @ psi_x_theta_mean_standardized / T
             A_array = A_array.at[i].set(A.squeeze())
-            K = A * my_Matern(X, X, l) + eps * jnp.eye(Nx) + jnp.diag(psi_y_x_std ** 2)
+            K = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
             K_inv = jnp.linalg.inv(K)
-            nll = -(-0.5 * psi_y_x_mean_standardized.T @ K_inv @ psi_y_x_mean_standardized - 0.5 * jnp.log(
-                jnp.linalg.det(K) + 1e-6)) / Nx
+            nll = -(-0.5 * psi_x_theta_mean_standardized.T @ K_inv @ psi_x_theta_mean_standardized - 0.5 * jnp.log(
+                jnp.linalg.det(K) + 1e-6)) / T
             nll_array = nll_array.at[i].set(nll.squeeze())
 
         l = l_array[jnp.argmin(nll_array)]
         A = A_array[jnp.argmin(nll_array)]
 
-    if psi_y_x_std is None:
-        K_train_train = A * my_Matern(X, X, l) + jnp.eye(Nx) * sigma
+    if psi_x_theta_std is None:
+        K_train_train = A * my_Matern(Theta, Theta, l) + jnp.eye(T) * sigma
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(X_prime, X, l)
-        K_test_test = A * my_Matern(X_prime, X_prime, l) + jnp.eye(X_prime.shape[0]) * sigma
+        K_test_train = A * my_Matern(Theta_test, Theta, l)
+        K_test_test = A * my_Matern(Theta_test, Theta_test, l) + jnp.eye(Theta_test.shape[0]) * sigma
     else:
         # A = 1
-        K_train_train = A * my_Matern(X, X, l) + eps * jnp.eye(Nx) + jnp.diag(psi_y_x_std ** 2)
+        K_train_train = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(X_prime, X, l)
-        K_test_test = A * my_Matern(X_prime, X_prime, l) + eps * jnp.eye(X_prime.shape[0])
-    mu_y_x = K_test_train @ K_train_train_inv @ psi_y_x_mean_standardized * scale
-    var_y_x = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    var_y_x = jnp.abs(var_y_x)
-    std_y_x = jnp.sqrt(var_y_x) * scale
+        K_test_train = A * my_Matern(Theta_test, Theta, l)
+        K_test_test = A * my_Matern(Theta_test, Theta_test, l) + eps * jnp.eye(Theta_test.shape[0])
+    mu_x_theta = K_test_train @ K_train_train_inv @ psi_x_theta_mean_standardized * scale
+    var_x_theta = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    var_x_theta = jnp.abs(var_x_theta)
+    std_x_theta = jnp.sqrt(var_x_theta) * scale
     pause = True
-    return mu_y_x, std_y_x
+    return mu_x_theta, std_x_theta
 
 
 def main(args):
     seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
-    XY_mean = jnp.array([1000., 0.1, 5.2, 400., 0.7,
+    ThetaX_mean = jnp.array([1000., 0.1, 5.2, 400., 0.7,
                          0.3, 3.0, 0.25, -0.1, 0.5,
                          1500, 0.08, 6.1, 0.8, 0.3,
                          3.0, 0.2, -0.1, 0.5])
-    XY_sigma = jnp.array([1.0, 0.02, 1.0, 200, 0.1,
+    ThetaX_sigma = jnp.array([1.0, 0.02, 1.0, 200, 0.1,
                           0.1, 0.5, 0.1, 0.02, 0.2,
                           1.0, 0.02, 1.0, 0.1, 0.05,
                           1.0, 0.05, 0.02, 0.2])
-    XY_sigma = jnp.diag(XY_sigma ** 2)
-    XY_sigma = XY_sigma.at[4, 6].set(0.6 * jnp.sqrt(XY_sigma[4, 4]) * jnp.sqrt(XY_sigma[6, 6]))
-    XY_sigma = XY_sigma.at[6, 4].set(0.6 * jnp.sqrt(XY_sigma[4, 4]) * jnp.sqrt(XY_sigma[6, 6]))
-    XY_sigma = XY_sigma.at[4, 13].set(0.6 * jnp.sqrt(XY_sigma[4, 4]) * jnp.sqrt(XY_sigma[13, 13]))
-    XY_sigma = XY_sigma.at[13, 4].set(0.6 * jnp.sqrt(XY_sigma[4, 4]) * jnp.sqrt(XY_sigma[13, 13]))
-    XY_sigma = XY_sigma.at[4, 15].set(0.6 * jnp.sqrt(XY_sigma[4, 4]) * jnp.sqrt(XY_sigma[15, 15]))
-    XY_sigma = XY_sigma.at[15, 4].set(0.6 * jnp.sqrt(XY_sigma[4, 4]) * jnp.sqrt(XY_sigma[15, 15]))
-    XY_sigma = XY_sigma.at[6, 13].set(0.6 * jnp.sqrt(XY_sigma[6, 6]) * jnp.sqrt(XY_sigma[13, 13]))
-    XY_sigma = XY_sigma.at[13, 6].set(0.6 * jnp.sqrt(XY_sigma[6, 6]) * jnp.sqrt(XY_sigma[13, 13]))
-    XY_sigma = XY_sigma.at[6, 15].set(0.6 * jnp.sqrt(XY_sigma[6, 6]) * jnp.sqrt(XY_sigma[15, 15]))
-    XY_sigma = XY_sigma.at[15, 6].set(0.6 * jnp.sqrt(XY_sigma[6, 6]) * jnp.sqrt(XY_sigma[15, 15]))
-    XY_sigma = XY_sigma.at[13, 15].set(0.6 * jnp.sqrt(XY_sigma[13, 13]) * jnp.sqrt(XY_sigma[15, 15]))
-    XY_sigma = XY_sigma.at[15, 13].set(0.6 * jnp.sqrt(XY_sigma[13, 13]) * jnp.sqrt(XY_sigma[15, 15]))
+    ThetaX_sigma = jnp.diag(ThetaX_sigma ** 2)
+    ThetaX_sigma = ThetaX_sigma.at[4, 6].set(0.6 * jnp.sqrt(ThetaX_sigma[4, 4]) * jnp.sqrt(ThetaX_sigma[6, 6]))
+    ThetaX_sigma = ThetaX_sigma.at[6, 4].set(0.6 * jnp.sqrt(ThetaX_sigma[4, 4]) * jnp.sqrt(ThetaX_sigma[6, 6]))
+    ThetaX_sigma = ThetaX_sigma.at[4, 13].set(0.6 * jnp.sqrt(ThetaX_sigma[4, 4]) * jnp.sqrt(ThetaX_sigma[13, 13]))
+    ThetaX_sigma = ThetaX_sigma.at[13, 4].set(0.6 * jnp.sqrt(ThetaX_sigma[4, 4]) * jnp.sqrt(ThetaX_sigma[13, 13]))
+    ThetaX_sigma = ThetaX_sigma.at[4, 15].set(0.6 * jnp.sqrt(ThetaX_sigma[4, 4]) * jnp.sqrt(ThetaX_sigma[15, 15]))
+    ThetaX_sigma = ThetaX_sigma.at[15, 4].set(0.6 * jnp.sqrt(ThetaX_sigma[4, 4]) * jnp.sqrt(ThetaX_sigma[15, 15]))
+    ThetaX_sigma = ThetaX_sigma.at[6, 13].set(0.6 * jnp.sqrt(ThetaX_sigma[6, 6]) * jnp.sqrt(ThetaX_sigma[13, 13]))
+    ThetaX_sigma = ThetaX_sigma.at[13, 6].set(0.6 * jnp.sqrt(ThetaX_sigma[6, 6]) * jnp.sqrt(ThetaX_sigma[13, 13]))
+    ThetaX_sigma = ThetaX_sigma.at[6, 15].set(0.6 * jnp.sqrt(ThetaX_sigma[6, 6]) * jnp.sqrt(ThetaX_sigma[15, 15]))
+    ThetaX_sigma = ThetaX_sigma.at[15, 6].set(0.6 * jnp.sqrt(ThetaX_sigma[6, 6]) * jnp.sqrt(ThetaX_sigma[15, 15]))
+    ThetaX_sigma = ThetaX_sigma.at[13, 15].set(0.6 * jnp.sqrt(ThetaX_sigma[13, 13]) * jnp.sqrt(ThetaX_sigma[15, 15]))
+    ThetaX_sigma = ThetaX_sigma.at[15, 13].set(0.6 * jnp.sqrt(ThetaX_sigma[13, 13]) * jnp.sqrt(ThetaX_sigma[15, 15]))
 
-    # X is index (4, 13), Y is index (0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18)
-    X_mean = jnp.array([0.7, 0.8])
-    X_sigma = jnp.array([[0.01, 0.01 * 0.6], [0.01 * 0.6, 0.01]])
-    Y_mean = jnp.array([1000., 0.1, 5.2, 400.,
+    # Theta is index (4, 13), X is index (0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18)
+    Theta_mean = jnp.array([0.7, 0.8])
+    Theta_sigma = jnp.array([[0.01, 0.01 * 0.6], [0.01 * 0.6, 0.01]])
+    X_mean = jnp.array([1000., 0.1, 5.2, 400.,
                         0.3, 3.0, 0.25, -0.1, 0.5,
                         1500, 0.08, 6.1, 0.3,
                         3.0, 0.2, -0.1, 0.5])
-    Y_sigma = jnp.array([1.0, 0.02, 1.0, 200,
+    X_sigma = jnp.array([1.0, 0.02, 1.0, 200,
                          0.1, 0.5, 0.1, 0.02, 0.2,
                          1.0, 0.02, 1.0, 0.05,
                          1.0, 0.05, 0.02, 0.2])
-    f1_cond_dist_fn = partial(conditional_distribution, joint_mean=XY_mean, joint_covariance=XY_sigma,
-                              dimensions_x=[4], dimensions_y=[0, 1, 2, 3, 5, 6, 7, 8, 9])
-    f2_cond_dist_fn = partial(conditional_distribution, joint_mean=XY_mean, joint_covariance=XY_sigma,
-                              dimensions_x=[13], dimensions_y=[3, 10, 11, 12, 14, 15, 16, 17, 18])
-    # ============= Debug code =============
-    # dummy_y_x_mean, dummy_y_x_sigma = cond_dist_fn(x=X_mean[None, :])
-    # pause = True
-    # ============= Debug code =============
+    f1_cond_dist_fn = partial(conditional_distribution, joint_mean=ThetaX_mean, joint_covariance=ThetaX_sigma,
+                              dimensions_theta=[4], dimensions_x=[0, 1, 2, 3, 5, 6, 7, 8, 9])
+    f2_cond_dist_fn = partial(conditional_distribution, joint_mean=ThetaX_mean, joint_covariance=ThetaX_sigma,
+                              dimensions_theta=[13], dimensions_x=[3, 10, 11, 12, 14, 15, 16, 17, 18])
 
     # ============= Code to generate test points Begins =============
-    N_test = 100
+    T_test = 100
     large_sample_size = 10000
     rng_key, _ = jax.random.split(rng_key)
-    X_test = jax.random.multivariate_normal(rng_key, X_mean, X_sigma, shape=(N_test,))
-    X1_test = X_test[:, 0][:, None]
-    X2_test = X_test[:, 1][:, None]
-    f1_p_Y_X_mean_test, f1_p_Y_X_sigma_test = f1_cond_dist_fn(x=X1_test)
-    f2_p_Y_X_mean_test, f2_p_Y_X_sigma_test = f2_cond_dist_fn(x=X2_test)
+    Theta_test = jax.random.multivariate_normal(rng_key, Theta_mean, Theta_sigma, shape=(T_test,))
+    Theta1_test = Theta_test[:, 0][:, None]
+    Theta2_test = Theta_test[:, 1][:, None]
+    f1_p_X_Theta_mean_test, f1_p_X_Theta_sigma_test = f1_cond_dist_fn(theta=Theta1_test)
+    f2_p_X_Theta_mean_test, f2_p_X_Theta_sigma_test = f2_cond_dist_fn(theta=Theta2_test)
 
-    Y1_test = jnp.zeros([N_test, large_sample_size, 9]) + 0.0
-    u1_test = jnp.zeros([N_test, large_sample_size, 9]) + 0.0
-    Y2_test = jnp.zeros([N_test, large_sample_size, 9]) + 0.0
-    u2_test = jnp.zeros([N_test, large_sample_size, 9]) + 0.0
-    for i in tqdm(range(N_test)):
+    X1_test = jnp.zeros([T_test, large_sample_size, 9]) + 0.0
+    u1_test = jnp.zeros([T_test, large_sample_size, 9]) + 0.0
+    X2_test = jnp.zeros([T_test, large_sample_size, 9]) + 0.0
+    u2_test = jnp.zeros([T_test, large_sample_size, 9]) + 0.0
+    for i in tqdm(range(T_test)):
         rng_key, _ = jax.random.split(rng_key)
         u1_temp = jax.random.multivariate_normal(rng_key,
-                                                 mean=jnp.zeros_like(f1_p_Y_X_mean_test[i, :]),
-                                                 cov=jnp.eye(f1_p_Y_X_sigma_test.shape[0]),
+                                                 mean=jnp.zeros_like(f1_p_X_Theta_mean_test[i, :]),
+                                                 cov=jnp.eye(f1_p_X_Theta_sigma_test.shape[0]),
                                                  shape=(large_sample_size,))
-        L1 = jnp.linalg.cholesky(f1_p_Y_X_sigma_test)
-        Y1_temp = f1_p_Y_X_mean_test[i, :] + jnp.matmul(L1, u1_temp.T).T
-        # Y1_temp = jax.random.multivariate_normal(rng_key, f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma, shape=(Ny,))
-        Y1_test = Y1_test.at[i, :, :].set(Y1_temp)
+        L1 = jnp.linalg.cholesky(f1_p_X_Theta_sigma_test)
+        X1_temp = f1_p_X_Theta_mean_test[i, :] + jnp.matmul(L1, u1_temp.T).T
+        # X1_temp = jax.random.multivariate_normal(rng_key, f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma, shape=(N,))
+        X1_test = X1_test.at[i, :, :].set(X1_temp)
         u1_test = u1_test.at[i, :, :].set(u1_temp)
 
         rng_key, _ = jax.random.split(rng_key)
         u2_temp = jax.random.multivariate_normal(rng_key,
-                                                 mean=jnp.zeros_like(f2_p_Y_X_mean_test[i, :]),
-                                                 cov=jnp.eye(f2_p_Y_X_sigma_test.shape[0]),
+                                                 mean=jnp.zeros_like(f2_p_X_Theta_mean_test[i, :]),
+                                                 cov=jnp.eye(f2_p_X_Theta_sigma_test.shape[0]),
                                                  shape=(large_sample_size,))
-        L2 = jnp.linalg.cholesky(f2_p_Y_X_sigma_test)
-        Y2_temp = f2_p_Y_X_mean_test[i, :] + jnp.matmul(L2, u2_temp.T).T
-        Y2_test = Y2_test.at[i, :, :].set(Y2_temp)
+        L2 = jnp.linalg.cholesky(f2_p_X_Theta_sigma_test)
+        X2_temp = f2_p_X_Theta_mean_test[i, :] + jnp.matmul(L2, u2_temp.T).T
+        X2_test = X2_test.at[i, :, :].set(X2_temp)
         u2_test = u2_test.at[i, :, :].set(u2_temp)
-    f1_Y_test = f1(X1_test, Y1_test)
-    f2_Y_test = f2(X2_test, Y2_test)
-    ground_truth_1 = f1_Y_test.mean(1)
-    ground_truth_2 = f2_Y_test.mean(1)
+    f1_X_test = f1(Theta1_test, X1_test)
+    f2_X_test = f2(Theta2_test, X2_test)
+    ground_truth_1 = f1_X_test.mean(1)
+    ground_truth_2 = f2_X_test.mean(1)
     # ============= Code to generate test points Ends =============
 
-    # Nx_array = jnp.array([10, 20, 30])
-    Nx_array = jnp.array([10, 30, 50, 100])
-    # Nx_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # T_array = jnp.array([10, 20, 30])
+    T_array = jnp.array([10, 30, 50, 100])
+    # T_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #·
-    # Ny_array = jnp.array([10, 30])
-    # Ny_array = jnp.array([10, 30, 50, 100])
-    Ny_array = jnp.arange(10, 200, 10)
+    # N_array = jnp.array([10, 30])
+    # N_array = jnp.array([10, 30, 50, 100])
+    N_array = jnp.arange(10, 200, 10)
 
-    for Nx in Nx_array:
+    for T in T_array:
         rng_key, _ = jax.random.split(rng_key)
-        # X shape is (Nx, 2)
-        # X = jax.random.multivariate_normal(rng_key, X_mean, X_sigma, shape=(Nx,))
-        # X1 = X[:, 0][:, None]
-        # X2 = X[:, 1][:, None]
+        # Theta shape is (T, 2)
+        # Theta = jax.random.multivariate_normal(rng_key, Theta_mean, Theta_sigma, shape=(T,))
+        # Theta1 = Theta[:, 0][:, None]
+        # Theta2 = Theta[:, 1][:, None]
 
-        X1 = jnp.linspace(X1_test.min(), X1_test.max(), Nx)[:, None]
-        X2 = jnp.linspace(X2_test.min(), X2_test.max(), Nx)[:, None]
+        Theta1 = jnp.linspace(Theta1_test.min(), Theta1_test.max(), T)[:, None]
+        Theta2 = jnp.linspace(Theta2_test.min(), Theta2_test.max(), T)[:, None]
 
-        for Ny in tqdm(Ny_array):
-            f1_p_Y_X_mean, f1_p_Y_X_sigma = f1_cond_dist_fn(x=X1)
-            f2_p_Y_X_mean, f2_p_Y_X_sigma = f2_cond_dist_fn(x=X2)
-            # Y1, Y2 shape is (Nx, Ny, 9)
-            Y1 = jnp.zeros([Nx, Ny, 9]) + 0.0
-            u1 = jnp.zeros([Nx, Ny, 9]) + 0.0
-            Y2 = jnp.zeros([Nx, Ny, 9]) + 0.0
-            u2 = jnp.zeros([Nx, Ny, 9]) + 0.0
-            for i in range(Nx):
+        for N in tqdm(N_array):
+            f1_p_X_Theta_mean, f1_p_X_Theta_sigma = f1_cond_dist_fn(theta=Theta1)
+            f2_p_X_Theta_mean, f2_p_X_Theta_sigma = f2_cond_dist_fn(theta=Theta2)
+            # X1, X2 shape is (T, N, 9)
+            X1 = jnp.zeros([T, N, 9]) + 0.0
+            u1 = jnp.zeros([T, N, 9]) + 0.0
+            X2 = jnp.zeros([T, N, 9]) + 0.0
+            u2 = jnp.zeros([T, N, 9]) + 0.0
+            for i in range(T):
                 rng_key, _ = jax.random.split(rng_key)
                 u1_temp = jax.random.multivariate_normal(rng_key,
-                                                         mean=jnp.zeros_like(f1_p_Y_X_mean[i, :]),
-                                                         cov=jnp.eye(f1_p_Y_X_sigma.shape[0]),
-                                                         shape=(Ny,))
-                L1 = jnp.linalg.cholesky(f1_p_Y_X_sigma)
-                Y1_temp = f1_p_Y_X_mean[i, :] + jnp.matmul(L1, u1_temp.T).T
-                # Y1_temp = jax.random.multivariate_normal(rng_key, f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma, shape=(Ny,))
-                Y1 = Y1.at[i, :, :].set(Y1_temp)
+                                                         mean=jnp.zeros_like(f1_p_X_Theta_mean[i, :]),
+                                                         cov=jnp.eye(f1_p_X_Theta_sigma.shape[0]),
+                                                         shape=(N,))
+                L1 = jnp.linalg.cholesky(f1_p_X_Theta_sigma)
+                X1_temp = f1_p_X_Theta_mean[i, :] + jnp.matmul(L1, u1_temp.T).T
+                # X1_temp = jax.random.multivariate_normal(rng_key, f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma, shape=(N,))
+                X1 = X1.at[i, :, :].set(X1_temp)
                 u1 = u1.at[i, :, :].set(u1_temp)
 
                 rng_key, _ = jax.random.split(rng_key)
                 u2_temp = jax.random.multivariate_normal(rng_key,
-                                                         mean=jnp.zeros_like(f2_p_Y_X_mean[i, :]),
-                                                         cov=jnp.eye(f2_p_Y_X_sigma.shape[0]),
-                                                         shape=(Ny,))
-                L2 = jnp.linalg.cholesky(f2_p_Y_X_sigma)
-                Y2_temp = f2_p_Y_X_mean[i, :] + jnp.matmul(L2, u2_temp.T).T
-                Y2 = Y2.at[i, :, :].set(Y2_temp)
+                                                         mean=jnp.zeros_like(f2_p_X_Theta_mean[i, :]),
+                                                         cov=jnp.eye(f2_p_X_Theta_sigma.shape[0]),
+                                                         shape=(N,))
+                L2 = jnp.linalg.cholesky(f2_p_X_Theta_sigma)
+                X2_temp = f2_p_X_Theta_mean[i, :] + jnp.matmul(L2, u2_temp.T).T
+                X2 = X2.at[i, :, :].set(X2_temp)
                 u2 = u2.at[i, :, :].set(u2_temp)
 
-            # f_Y shape is (Nx, Ny)
-            f1_Y = f1(X1, Y1)
-            f2_Y = f2(X2, Y2)
+            # f_X shape is (T, N)
+            f1_X = f1(Theta1, X1)
+            f2_X = f2(Theta2, X2)
 
-            f1_psi_mean_array = jnp.zeros([Nx]) + 0.0
-            f1_psi_std_array = jnp.zeros([Nx]) + 0.0
-            f1_mc_mean_array = jnp.zeros([Nx]) + 0.0
-            f2_psi_mean_array = jnp.zeros([Nx]) + 0.0
-            f2_psi_std_array = jnp.zeros([Nx]) + 0.0
-            f2_mc_mean_array = jnp.zeros([Nx]) + 0.0
+            I1_BQ_mean_array = jnp.zeros([T]) + 0.0
+            I1_BQ_std_array = jnp.zeros([T]) + 0.0
+            f1_mc_mean_array = jnp.zeros([T]) + 0.0
+            I2_BQ_mean_array = jnp.zeros([T]) + 0.0
+            I2_BQ_std_array = jnp.zeros([T]) + 0.0
+            f2_mc_mean_array = jnp.zeros([T]) + 0.0
 
             # ============= Code for f1 Starts =============
-            for i in range(Nx):
+            for i in range(T):
                 rng_key, _ = jax.random.split(rng_key)
-                Y1_i = Y1[i, :, :]
-                f1_Y_i = f1_Y[i, :]
+                X1_i = X1[i, :, :]
+                f1_X_i = f1_X[i, :]
                 u1_i = u1[i, :, :]
-                # scale = f1_Y_i.mean()
+                # scale = f1_X_i.mean()
                 scale = 1000.0
-                f1_Y_i_standardized = f1_Y_i / scale
-                f1_psi_mean, f1_psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u1_i, Y1_i, f1_Y_i_standardized,
-                                                                      f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma)
-                f1_psi_mean = f1_psi_mean * scale
-                f1_mc_mean = f1_Y_i.mean()
-                f1_psi_std *= 10
+                f1_X_i_standardized = f1_X_i / scale
+                I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u1_i, X1_i, f1_X_i_standardized,
+                                                                      f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma)
+                I1_BQ_mean = I1_BQ_mean * scale
+                f1_mc_mean = f1_X_i.mean()
+                I1_BQ_std *= 10
 
-                f1_psi_mean_array = f1_psi_mean_array.at[i].set(f1_psi_mean)
-                f1_psi_std_array = f1_psi_std_array.at[i].set(f1_psi_std)
+                I1_BQ_mean_array = I1_BQ_mean_array.at[i].set(I1_BQ_mean)
+                I1_BQ_std_array = I1_BQ_std_array.at[i].set(I1_BQ_std)
                 f1_mc_mean_array = f1_mc_mean_array.at[i].set(f1_mc_mean)
 
                 # # ============= Debug code =============
                 # rng_key, _ = jax.random.split(rng_key)
-                # Y_temp_large = jax.random.multivariate_normal(rng_key, f1_p_Y_X_mean[i, :], f1_p_Y_X_sigma,
+                # X_temp_large = jax.random.multivariate_normal(rng_key, f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma,
                 #                                               shape=(large_sample_size,))
-                # f1_Y_large = f1(X1[i, :][None, :], Y_temp_large[None, :])
-                # f1_mc_mean_large = f1_Y_large.mean()
+                # f1_X_large = f1(Theta1[i, :][None, :], X_temp_large[None, :])
+                # f1_mc_mean_large = f1_X_large.mean()
                 # print("=============")
                 # print('Large sample MC', f1_mc_mean_large)
-                # print(f'MC with {Ny} number of Y', f1_mc_mean)
-                # print(f'BMC with {Ny} number of Y', f1_psi_mean)
-                # print(f'BMC uncertainty {f1_psi_std}')
+                # print(f'MC with {N} number of X', f1_mc_mean)
+                # print(f'BMC with {N} number of X', I1_BQ_mean)
+                # print(f'BMC uncertainty {I1_BQ_std}')
                 # print(f"=============")
                 # pause = True
                 # ============= Debug code =============
 
-            LSMC_mean_1, LSMC_std_1 = decision_baselines.polynomial(X1, Y1, f1_Y, X1_test)
-            BMC_mean_1, BMC_std_1 = GP(f1_psi_mean_array, f1_psi_std_array, X1, X1_test, eps=f1_psi_std_array.mean())
-            KMS_mean_1, KMS_std_1 = GP(f1_mc_mean_array, None, X1, X1_test, eps=0.0)
+            LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test)
+            BMC_mean_1, BMC_std_1 = GP(I1_BQ_mean_array, I1_BQ_std_array, Theta1, Theta1_test, eps=I1_BQ_std_array.mean())
+            KMS_mean_1, KMS_std_1 = GP(f1_mc_mean_array, None, Theta1, Theta1_test, eps=0.0)
 
             # ============= Code for f2 Starts =============
-            for i in range(Nx):
+            for i in range(T):
                 rng_key, _ = jax.random.split(rng_key)
-                Y2_i = Y2[i, :, :]
-                f2_Y_i = f2_Y[i, :]
+                X2_i = X2[i, :, :]
+                f2_X_i = f2_X[i, :]
                 u2_i = u2[i, :, :]
-                # scale = f2_Y_i.mean()
+                # scale = f2_X_i.mean()
                 scale = 1000.0
-                f2_Y_i_standardized = f2_Y_i / scale
-                f2_psi_mean, f2_psi_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, Y2_i, f2_Y_i_standardized,
-                                                                      f2_p_Y_X_mean[i, :], f2_p_Y_X_sigma)
-                f2_psi_mean = f2_psi_mean * scale
-                f2_psi_std *= 10
-                f2_mc_mean = f2_Y_i.mean()
+                f2_X_i_standardized = f2_X_i / scale
+                I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, X2_i, f2_X_i_standardized,
+                                                                      f2_p_X_Theta_mean[i, :], f2_p_X_Theta_sigma)
+                I2_BQ_mean = I2_BQ_mean * scale
+                I2_BQ_std *= 10
+                f2_mc_mean = f2_X_i.mean()
 
-                f2_psi_mean_array = f2_psi_mean_array.at[i].set(f2_psi_mean)
-                f2_psi_std_array = f2_psi_std_array.at[i].set(f2_psi_std)
+                I2_BQ_mean_array = I2_BQ_mean_array.at[i].set(I2_BQ_mean)
+                I2_BQ_std_array = I2_BQ_std_array.at[i].set(I2_BQ_std)
                 f2_mc_mean_array = f2_mc_mean_array.at[i].set(f2_mc_mean)
 
                 # # ============= Debug code =============
                 # rng_key, _ = jax.random.split(rng_key)
-                # Y_temp_large = jax.random.multivariate_normal(rng_key, f2_p_Y_X_mean[i, :], f2_p_Y_X_sigma,
+                # X_temp_large = jax.random.multivariate_normal(rng_key, f2_p_X_Theta_mean[i, :], f2_p_X_Theta_sigma,
                 #                                               shape=(large_sample_size,))
-                # f2_Y_large = f2(X2[i, :][None, :], Y_temp_large[None, :])
-                # f2_mc_mean_large = f2_Y_large.mean()
+                # f2_X_large = f2(Theta2[i, :][None, :], X_temp_large[None, :])
+                # f2_mc_mean_large = f2_X_large.mean()
                 # print("=============")
                 # print('Large sample MC', f2_mc_mean_large)
-                # print(f'MC with {Ny} number of Y', f2_mc_mean)
-                # print(f'BMC with {Ny} number of Y', f2_psi_mean)
-                # print(f'BMC uncertainty {f2_psi_std}')
+                # print(f'MC with {N} number of X', f2_mc_mean)
+                # print(f'BMC with {N} number of X', I2_BQ_mean)
+                # print(f'BMC uncertainty {I2_BQ_std}')
                 # print(f"=============")
                 # pause = True
                 # ============= Debug code =============
 
-            LSMC_mean_2, LSMC_std_2 = decision_baselines.polynomial(X2, Y2, f2_Y, X2_test)
-            BMC_mean_2, BMC_std_2 = GP(f2_psi_mean_array, f2_psi_std_array, X2, X2_test, eps=f2_psi_std_array.mean())
-            KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, X2, X2_test, eps=0.0)
+            LSMC_mean_2, LSMC_std_2 = baselines.polynomial(Theta2, X2, f2_X, Theta2_test)
+            BMC_mean_2, BMC_std_2 = GP(I2_BQ_mean_array, I2_BQ_std_array, Theta2, Theta2_test, eps=I2_BQ_std_array.mean())
+            KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, Theta2, Theta2_test, eps=0.0)
 
             # ============= Code for f2 Ends =============
 
@@ -440,44 +437,45 @@ def main(args):
             rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
             rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
 
-            # true_value = jnp.maximum(ground_truth_1, ground_truth_2).mean()
-            # BMC_value = jnp.maximum(BMC_mean_1, BMC_mean_2).mean()
-            # KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2).mean()
-            # LSMC_value = jnp.maximum(LSMC_mean_1, LSMC_mean_2).mean()
-            #
-            # rmse_BMC = jnp.sqrt(jnp.mean((BMC_value - true_value) ** 2))
-            # rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
-            # rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
+            decision_utils.save(args, T, N, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
 
-            decision_utils.save(args, Nx, Ny, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
+            methods = ["BMC", "KMS", "LSMC", "IS"]
+            rmse_values = [rmse_BMC, rmse_KMS, rmse_LSMC, np.nan]
+
+            print("\n\n=======================================")
+            print(f"T = {T} and N = {N}")
+            print("=======================================")
+            print(" ".join([f"{method:<11}" for method in methods]))
+            print(" ".join([f"{value:<6.5f}" for value in rmse_values]))
+            print("=======================================\n\n")
 
             # ============= Debug code =============
             # plt.figure()
-            # X1_test_ = X1_test.squeeze()
-            # ind = X1_test_.argsort()
-            # plt.plot(X1_test_[ind], ground_truth_1[ind], label='Ground truth')
-            # plt.plot(X1_test_[ind], BMC_mean_1[ind], label='BMC')
-            # plt.plot(X1_test_[ind], KMS_mean_1[ind], label='KMS')
-            # plt.scatter(X1.squeeze(), f1_psi_mean_array.squeeze())
-            # plt.plot(X1_test_[ind], LSMC_mean_1[ind], label='LSMC')
+            # Theta1_test_ = Theta1_test.squeeze()
+            # ind = Theta1_test_.argsort()
+            # plt.plot(Theta1_test_[ind], ground_truth_1[ind], label='Ground truth')
+            # plt.plot(Theta1_test_[ind], BMC_mean_1[ind], label='BMC')
+            # plt.plot(Theta1_test_[ind], KMS_mean_1[ind], label='KMS')
+            # plt.scatter(Theta1.squeeze(), I1_BQ_mean_array.squeeze())
+            # plt.plot(Theta1_test_[ind], LSMC_mean_1[ind], label='LSMC')
             # plt.legend()
             # plt.show()
             #
             # plt.figure()
-            # X2_test_ = X2_test.squeeze()
-            # ind = X2_test_.argsort()
-            # plt.plot(X2_test_[ind], ground_truth_2[ind], label='Ground truth')
-            # plt.plot(X2_test_[ind], BMC_mean_2[ind], label='BMC')
-            # plt.plot(X2_test_[ind], KMS_mean_2[ind], label='KMS')
-            # plt.scatter(X2.squeeze(), f2_psi_mean_array.squeeze())
-            # plt.plot(X2_test_[ind], LSMC_mean_2[ind], label='LSMC')
+            # Theta2_test_ = Theta2_test.squeeze()
+            # ind = Theta2_test_.argsort()
+            # plt.plot(Theta2_test_[ind], ground_truth_2[ind], label='Ground truth')
+            # plt.plot(Theta2_test_[ind], BMC_mean_2[ind], label='BMC')
+            # plt.plot(Theta2_test_[ind], KMS_mean_2[ind], label='KMS')
+            # plt.scatter(Theta2.squeeze(), I2_BQ_mean_array.squeeze())
+            # plt.plot(Theta2_test_[ind], LSMC_mean_2[ind], label='LSMC')
             # plt.legend()
             # plt.show()
 
             # print(f"=============")
-            # print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_BMC)
-            # print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_KMS)
-            # print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_LSMC)
+            # print(f"RMSE of BMC with {T} number of Theta and {N} number of X", rmse_BMC)
+            # print(f"RMSE of KMS with {T} number of Theta and {N} number of X", rmse_KMS)
+            # print(f"RMSE of LSMC with {T} number of Theta and {N} number of X", rmse_LSMC)
             # print(f"=============")
             pause = True
             # ============= Debug code =============

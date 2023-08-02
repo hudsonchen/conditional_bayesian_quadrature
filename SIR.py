@@ -11,7 +11,7 @@ from functools import partial
 from utils import SIR_utils
 from tensorflow_probability.substrates import jax as tfp
 from jax.config import config
-import SIR_baselines, baselines
+import baselines
 import argparse
 import os
 import pwd
@@ -338,10 +338,10 @@ def SIR(args, rng_key):
 
             # Importance sampling
             log_px_theta_fn = partial(log_prior, rate=rate, rng_key=rng_key)
-            _, _ = SIR_baselines.importance_sampling(log_px_theta_fn, theta_test[:, None], theta_array[:, None],
+            _, _ = baselines.importance_sampling_SIR(log_px_theta_fn, theta_test[:, None], theta_array[:, None],
                                                      X_array_all, f_X_array_all)
             t0 = time.time()
-            IS_mean, _ = SIR_baselines.importance_sampling(log_px_theta_fn, theta_test[:, None], theta_array[:, None],
+            IS_mean, _ = baselines.importance_sampling_SIR(log_px_theta_fn, theta_test[:, None], theta_array[:, None],
                                                            X_array_all, f_X_array_all)
             IS_time = time.time() - t0
 
