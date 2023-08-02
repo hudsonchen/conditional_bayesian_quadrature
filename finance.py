@@ -46,8 +46,8 @@ def get_config():
     parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for finance data')
 
     # Data settings
+    parser.add_argument('--kernel_theta', type=str)
     parser.add_argument('--kernel_x', type=str)
-    parser.add_argument('--kernel_y', type=str)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
@@ -56,10 +56,10 @@ def get_config():
 
 
 @jax.jit
-def grad_y_log_py_x(y, x, y_mean, y_scale, sigma, T, t):
-    # dx log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
+def grad_y_log_py_theta(y, theta, y_mean, y_scale, sigma, T, t):
+    # dtheta log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
     y = y * y_scale + y_mean
-    part1 = (jnp.log(y) + sigma ** 2 * (T - t) / 2 - jnp.log(x)) / y / (sigma ** 2 * (T - t))
+    part1 = (jnp.log(y) + sigma ** 2 * (T - t) / 2 - jnp.log(theta)) / y / (sigma ** 2 * (T - t))
     return (-1. / y - part1) * y_scale
 
 
@@ -83,10 +83,10 @@ def px_theta_fn(x, theta, x_scale, x_mean, sigma, T, t):
 
 
 # @jax.jit
-def log_py_x_fn(y, x, y_scale, sigma, T, t):
-    # log p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
+def log_py_theta_fn(y, theta, y_scale, sigma, T, t):
+    # log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
     y_tilde = y * y_scale
-    z = jnp.log(y_tilde / x)
+    z = jnp.log(y_tilde / theta)
     n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
     p_n = jax.scipy.stats.norm.pdf(n)
     p_z = p_n / (sigma * jnp.sqrt(T - t))
@@ -156,34 +156,34 @@ def stein_Laplace(x, y, l, d_log_px, d_log_py):
     return part1 + part2 + part3 + part4
 
 
-@partial(jax.jit, static_argnames=['Ky'])
-def nllk_func(l, c, A, y, gy, d_log_py, Ky, eps):
+@partial(jax.jit, static_argnames=['Kx'])
+def nllk_func(l, c, A, y, gy, d_log_py, Kx, eps):
     n = y.shape[0]
-    K = A * Ky(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
+    K = A * Kx(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
     nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
     return nll[0][0]
 
 
-@partial(jax.jit, static_argnames=['optimizer', 'Ky'])
-def step(l, c, A, opt_state, optimizer, y, gy, d_log_py, Ky, eps):
-    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A, y, gy, d_log_py, Ky, eps)
+@partial(jax.jit, static_argnames=['optimizer', 'Kx'])
+def step(l, c, A, opt_state, optimizer, y, gy, d_log_py, Kx, eps):
+    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A, y, gy, d_log_py, Kx, eps)
     updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
     l, c, A = optax.apply_updates((l, c, A), updates)
     return l, c, A, opt_state, nllk_value
 
 
-def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
+def train(theta, x, x_scale, gx, d_log_px, dx_log_px_fn, rng_key, Kx):
     """
-    :param y:
-    :param gy:
-    :param d_log_py:
-    :param dy_log_py_fn:
+    :param x:
+    :param gx:
+    :param d_log_px:
+    :param dx_log_px_fn:
     :param rng_key:
     :return:
     """
     rng_key, _ = jax.random.split(rng_key)
-    n = y.shape[0]
+    n = x.shape[0]
     learning_rate = 1e-2
     optimizer = optax.adam(learning_rate)
     eps = 1e-6
@@ -196,17 +196,17 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     # @jax.jit
     # def nllk_func(l, c, A):
     #     # l = jnp.exp(log_l)
-    #     n = y.shape[0]
-    #     K = A * Ky(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
-    #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
-    #     nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
+    #     n = x.shape[0]
+    #     K = A * Kx(x, x, l, d_log_px, d_log_px) + c + A * jnp.exe(n)
+    #     K_inv = jnp.linalg.inv(K + eps * jnp.exe(n))
+    #     nll = -(-0.5 * gx.T @ K_inv @ gx - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
     #     return nll[0][0]
     #
     # @jax.jit
-    # def step(l, c, A, opt_state, rng_key):
+    # def step(l, c, A, opt_state, rng_kex):
     #     nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A)
     #     updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
-    #     l, c, A = optax.apply_updates((l, c, A), updates)
+    #     l, c, A = optax.applx_updates((l, c, A), updates)
     #     return l, c, A, opt_state, nllk_value
 
     # # Debug code
@@ -216,11 +216,11 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
     # nll_debug_list = []
     for _ in range(10):
         rng_key, _ = jax.random.split(rng_key)
-        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, y, gy, d_log_py, Ky, eps)
+        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, x, gx, d_log_px, Kx, eps)
         # # Debug code
         # if jnp.isnan(nllk_value):
         #     # l = jnp.exp(log_l)
-        #     K = A * Ky(y, y, l, d_log_py, d_log_py) + c + jnp.eye(n)
+        #     K = A * Kx(x, x, l, d_log_px, d_log_px) + c + jnp.eye(n)
         #     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
         #     pause = True
         # l_debug_list.append(l)
@@ -238,87 +238,85 @@ def train(x, y, y_scale, gy, d_log_py, dy_log_py_fn, rng_key, Ky):
 
     # l = jnp.exp(log_l)
     # A = jnp.exp(log_A)
-    # y_debug = jnp.linspace(20, 160, 100)[:, None] / y_scale
-    # d_log_py_debug = dy_log_py_fn(y_debug, x)
-    # K_train_train = stein_Laplace(y, y, l, d_log_py, d_log_py) + c
+    # x_debug = jnp.linspace(20, 160, 100)[:, None] / x_scale
+    # d_log_px_debug = dx_log_px_fn(x_debug, x)
+    # K_train_train = stein_Laplace(x, x, l, d_log_px, d_log_px) + c
     # K_train_train_inv = jnp.linalg.inv(K_train_train + eps * jnp.eye(n))
-    # K_test_train = stein_Laplace(y_debug, y, l, d_log_py_debug, d_log_py) + c
-    # gy_debug = K_test_train @ K_train_train_inv @ gy
+    # K_test_train = stein_Laplace(x_debug, x, l, d_log_px_debug, d_log_px) + c
+    # gx_debug = K_test_train @ K_train_train_inv @ gx
     # plt.figure()
-    # plt.scatter(y * y_scale, gy)
-    # plt.plot(y_debug * y_scale, gy_debug)
+    # plt.scatter(x * x_scale, gx)
+    # plt.plot(x_debug * x_scale, gx_debug)
     # plt.show()
     pause = True
     return l, c, A
 
 
 class CBQ:
-    def __init__(self, kernel_x, kernel_y):
-        if kernel_y == 'stein_matern':
-            self.Ky = stein_Matern
-        elif kernel_y == 'stein_laplace':
-            self.Ky = stein_Laplace
-        elif kernel_y == 'stein_rbf':
-            self.Ky = stein_Gaussian
-        elif kernel_y == 'log_normal_RBF':
-            self.Ky = log_normal_RBF
-            self.ly = 0.1
+    def __init__(self, kernel_theta, kernel_x):
+        if kernel_x == 'stein_matern':
+            self.Kx = stein_Matern
+        elif kernel_x == 'stein_laplace':
+            self.Kx = stein_Laplace
+        elif kernel_x == 'stein_rbf':
+            self.Kx = stein_Gaussian
+        elif kernel_x == 'log_normal_rbf':
+            self.Kx = log_normal_RBF
+            self.lx = 0.1
         else:
             raise NotImplementedError
 
-        if 'stein' not in kernel_y:
+        if 'stein' not in kernel_x:
             self.cbq = self.cbq_no_stein
-        elif 'stein' in kernel_y:
+        elif 'stein' in kernel_x:
             self.cbq = self.cbq_stein
         else:
             pass
 
-        if kernel_x == 'rbf':  # This is the best kernel for x
-            self.Kx = my_RBF
+        if kernel_theta == 'rbf':  # This is the best kernel for x
+            self.Ktheta = my_RBF
             self.one_d_Kx = my_RBF
-            self.lx = 1.5
-        elif kernel_x == 'matern':
-            self.Kx = my_Matern
+            self.ltheta = 1.5
+        elif kernel_theta == 'matern':
+            self.Ktheta = my_Matern
             self.one_d_Kx = my_Matern
-            self.lx = 0.7
+            self.ltheta = 0.7
         else:
             raise NotImplementedError
         return
 
     # @partial(jax.jit, static_argnums=(0,))
-    def cbq_no_stein(self, X, Y, gY, rng_key):
+    def cbq_no_stein(self, Theta, X, gX, rng_key):
         sigma = 0.3
-        T = 2
-        t = 1
+        T_finance = 2
+        t_finance = 1
 
-        T = X.shape[0]
-        N = Y.shape[1]
+        T = Theta.shape[0]
+        N = X.shape[1]
         eps = 1e-6
         Sigma = jnp.zeros(T)
         Mu = jnp.zeros(T)
         for i in range(T):
-            x = X[i]
-            Yi = Y[i, :][:, None]
-            # Yi_standardized, Yi_scale = finance_utils.scale(Yi)
-            Yi_standardized = Yi
-            gYi = gY[i, :][:, None]
-            # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y'|x)p(y|x)dydy'
+            theta = Theta[i]
+            Xi = X[i, :][:, None]
+            Xi_standardized = Xi
+            gXi = gX[i, :][:, None]
 
-            K = self.Ky(Yi_standardized, Yi_standardized, self.ly, None, None) + eps * jnp.eye(N)
+            K = self.Kx(Xi_standardized, Xi_standardized, self.lx, None, None) + eps * jnp.eye(N)
             K_inv = jnp.linalg.inv(K)
-            a = -sigma ** 2 * (T - t) / 2 + jnp.log(x)
-            b = jnp.sqrt(sigma ** 2 * (T - t))
-            phi = phi_log_normal_RBF(Yi_standardized, self.ly, a, b)
-            varphi = varphi_log_normal_RBF(self.ly, a, b)
-            mu_standardized = phi.T @ K_inv @ gYi
+            a = -sigma ** 2 * (T_finance - t_finance) / 2 + jnp.log(theta)
+            b = jnp.sqrt(sigma ** 2 * (T_finance - t_finance))
+            phi = phi_log_normal_RBF(Xi_standardized, self.lx, a, b)
+            varphi = varphi_log_normal_RBF(self.lx, a, b)
+            mu_standardized = phi.T @ K_inv @ gXi
             std_standardized = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
 
             Sigma = Sigma.at[i].set(std_standardized.squeeze())
             Mu = Mu.at[i].set(mu_standardized.squeeze())
 
             # ============= Debug code =============
-            # print('True value', price(X[i], 10000, rng_key)[1].mean())
-            # print(f'MC with {N} number of Y', gYi.mean())
+            # print('True value', price(Theta[i], 10000, rng_key)[1].mean())
+            # print(f'MC with {N} number of Y', gX.mean())
             # print(f'BMC with {N} number of Y', mu_standardized.squeeze())
             # print(f"=================")
             # pause = True
@@ -326,34 +324,33 @@ class CBQ:
         return Mu, Sigma
 
     # @partial(jax.jit, static_argnums=(0,))
-    def cbq_stein(self, X, Y, gY, rng_key):
+    def cbq_stein(self, Theta, Y, gY, rng_key):
         """
-        :param X: X is of size T
+        :param theta: theta is of size T
         :param Y: Y is of size T * N
         :param gY: gY is g(Y)
-        :return: return the expectation E[g(Y)|X=x] of size T
+        :return: return the expectation E[g(Y)|theta=theta] of size T
         """
 
-        T = X.shape[0]
+        T = Theta.shape[0]
         N = Y.shape[1]
         eps = 1e-6
         Sigma = jnp.zeros(T)
         Mu = jnp.zeros(T)
 
         for i in range(T):
-            x = X[i]
+            theta = Theta[i]
             Yi = Y[i, :][:, None]
             Yi_standardized, Yi_mean, Yi_scale = finance_utils.standardize(Yi)
             gYi = gY[i, :][:, None]
 
-            grad_y_log_py_x_fn = partial(grad_y_log_py_x, sigma=0.3, T=2, t=1, y_mean=Yi_mean, y_scale=Yi_scale)
-            dy_log_py_x = grad_y_log_py_x_fn(Yi_standardized, x)
+            grad_y_log_py_theta_fn = partial(grad_y_log_py_theta, sigma=0.3, T=2, t=1, y_mean=Yi_mean, y_scale=Yi_scale)
+            dy_log_py_theta = grad_y_log_py_theta_fn(Yi_standardized, theta)
             if i == 0:
-                ly, c, A = train(x, Yi_standardized, Yi_scale, gYi,
-                                 dy_log_py_x, grad_y_log_py_x_fn, rng_key, self.Ky)
-            # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
+                ly, c, A = train(theta, Yi_standardized, Yi_scale, gYi,
+                                 dy_log_py_theta, grad_y_log_py_theta_fn, rng_key, self.Kx)
 
-            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, dy_log_py_x, dy_log_py_x) + c + A * jnp.eye(N)
+            K = A * self.Kx(Yi_standardized, Yi_standardized, ly, dy_log_py_theta, dy_log_py_theta) + c + A * jnp.eye(N)
             K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
             mu = c * (K_inv @ gYi).sum()
             std = jnp.sqrt(c - K_inv.sum() * c ** 2)
@@ -362,7 +359,7 @@ class CBQ:
             Mu = Mu.at[i].set(mu.squeeze())
 
             # # Large sample mu
-            # print('True value', price(X[i], 10000, rng_key)[1].mean())
+            # print('True value', price(theta[i], 10000, rng_key)[1].mean())
             # print(f'MC with {N} number of Y', gYi.mean())
             # print(f'BMC with {N} number of Y', mu)
             # print(f"=================")
@@ -370,62 +367,62 @@ class CBQ:
         return Mu, Sigma
 
     # @partial(jax.jit, static_argnums=(0,))
-    def GP(self, psi_y_x_mean, psi_y_x_std, X, X_test):
+    def GP(self, I_BQ_mean, I_BQ_std, theta, theta_test):
         """
-        :param psi_y_x_mean: T * 1
-        :param psi_y_x_std: T * 1
-        :param X: T * 1
-        :param X_test: N_test * 1
+        :param I_BQ_mean: T * 1
+        :param I_BQ_std: T * 1
+        :param theta: T * 1
+        :param theta_test: N_test * 1
         :return:
         """
-        T = psi_y_x_mean.shape[0]
-        X_standardized, X_mean, X_std = finance_utils.standardize(X)
-        X_test_standardized = (X_test - X_mean) / X_std
+        T = I_BQ_mean.shape[0]
+        theta_standardized, theta_mean, theta_std = finance_utils.standardize(theta)
+        theta_test_standardized = (theta_test - theta_mean) / theta_std
 
-        if psi_y_x_std is None:
+        if I_BQ_std is None:
             noise_array = jnp.array([0.01, 0.001, 0.0001])
             nll_array = 0. * noise_array
             for i, noise in enumerate(noise_array):
-                K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(T)
-                nll = -(-0.5 * psi_y_x_mean.T @ K_train_train @ psi_y_x_mean -
+                K_train_train = self.Ktheta(theta_standardized, theta_standardized, self.ltheta) + noise * jnp.eye(T)
+                nll = -(-0.5 * I_BQ_mean.T @ K_train_train @ I_BQ_mean -
                         0.5 * jnp.log(jnp.linalg.det(K_train_train) + 1e-6)) / T
                 nll_array = nll_array.at[i].set(nll.squeeze())
             noise = noise_array[jnp.argmin(nll_array)]
-            K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(T)
+            K_train_train = self.Ktheta(theta_standardized, theta_standardized, self.ltheta) + noise * jnp.eye(T)
             K_train_train_inv = jnp.linalg.inv(K_train_train)
-            K_test_train = self.Kx(X_test_standardized, X_standardized, self.lx)
-            K_test_test = self.Kx(X_test_standardized, X_test_standardized, self.lx) + noise
-            mu_y_x_test = K_test_train @ K_train_train_inv @ psi_y_x_mean
-            var_y_x_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-            std_y_x_test = jnp.sqrt(var_y_x_test)
+            K_test_train = self.Ktheta(theta_test_standardized, theta_standardized, self.ltheta)
+            K_test_test = self.Ktheta(theta_test_standardized, theta_test_standardized, self.ltheta) + noise
+            mu_y_theta_test = K_test_train @ K_train_train_inv @ I_BQ_mean
+            var_y_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+            std_y_theta_test = jnp.sqrt(var_y_theta_test)
         else:
-            noise = psi_y_x_mean.mean()
-            K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(psi_y_x_std ** 2)
+            noise = I_BQ_mean.mean()
+            K_train_train = self.Ktheta(theta_standardized, theta_standardized, self.ltheta) + jnp.diag(I_BQ_std ** 2)
             K_train_train_inv = jnp.linalg.inv(K_train_train)
-            K_test_train = self.Kx(X_test_standardized, X_standardized, self.lx)
-            K_test_test = self.Kx(X_test_standardized, X_test_standardized, self.lx) + noise
-            mu_y_x_test = K_test_train @ K_train_train_inv @ psi_y_x_mean
-            var_y_x_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-            std_y_x_test = jnp.sqrt(var_y_x_test)
+            K_test_train = self.Ktheta(theta_test_standardized, theta_standardized, self.ltheta)
+            K_test_test = self.Ktheta(theta_test_standardized, theta_test_standardized, self.ltheta) + noise
+            mu_y_theta_test = K_test_train @ K_train_train_inv @ I_BQ_mean
+            var_y_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+            std_y_theta_test = jnp.sqrt(var_y_theta_test)
         pause = True
-        return mu_y_x_test, std_y_x_test
+        return mu_y_theta_test, std_y_theta_test
 
     def save(self, T, N, I_BQ_mean, St, St_test,
              BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
              time_cbq, time_IS, time_KMS, time_LSMC, calibration):
-        true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
+        true_EgX_theta = jnp.load(f"{args.save_path}/finance_EgX_theta.npy")
 
         # ========== Debug code ==========
         # plt.figure()
-        # plt.plot(St_test.squeeze(), true_EgY_X, color='red', label='true')
+        # plt.plot(St_test.squeeze(), true_EgX_theta, color='red', label='true')
         # plt.scatter(St.squeeze(), I_BQ_mean.squeeze())
-        # plt.plot(St_test.squeeze(), mu_y_x_test_cbq.squeeze(), color='blue', label='BMC')
-        # plt.plot(St_test.squeeze(), mu_y_x_test_IS.squeeze(), color='green', label='IS')
-        # plt.plot(St_test.squeeze(), mu_y_x_test_LSMC.squeeze(), color='orange', label='LSMC')
+        # plt.plot(St_test.squeeze(), mu_y_theta_test_cbq.squeeze(), color='blue', label='BMC')
+        # plt.plot(St_test.squeeze(), mu_y_theta_test_IS.squeeze(), color='green', label='IS')
+        # plt.plot(St_test.squeeze(), mu_y_theta_test_LSMC.squeeze(), color='orange', label='LSMC')
         # plt.plot(St_test.squeeze(), KMS_mean, color='purple', label='KMS')
         # plt.legend()
-        # plt.title(f"GP_finance_X_{T}_y_{N}")
-        # plt.savefig(f"{args.save_path}/figures/finance_X_{T}_y_{N}.pdf")
+        # plt.title(f"GP_finance_theta_{T}_y_{N}")
+        # plt.savefig(f"{args.save_path}/figures/finance_theta_{T}_y_{N}.pdf")
         # plt.show()
         # plt.close()
         # ========== Debug code ==========
@@ -434,21 +431,21 @@ class CBQ:
         L_IS = jnp.maximum(IS_mean, 0).mean()
         L_LSMC = jnp.maximum(LSMC_mean, 0).mean()
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
-        L_true = jnp.maximum(true_EgY_X, 0).mean()
+        L_true = jnp.maximum(true_EgX_theta, 0).mean()
 
         rmse_dict = {}
         rmse_dict['BMC'] = (L_true - L_BMC) ** 2
         rmse_dict['IS'] = (L_true - L_IS) ** 2
         rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
         rmse_dict['KMS'] = (L_true - L_KMS) ** 2
-        with open(f"{args.save_path}/rmse_dict_X_{T}_y_{N}", 'wb') as f:
+        with open(f"{args.save_path}/rmse_dict_theta_{T}_y_{N}", 'wb') as f:
             pickle.dump(rmse_dict, f)
 
         time_dict = {'BMC': time_cbq, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
-        with open(f"{args.save_path}/time_dict_X_{T}_y_{N}", 'wb') as f:
+        with open(f"{args.save_path}/time_dict_theta_{T}_y_{N}", 'wb') as f:
             pickle.dump(time_dict, f)
 
-        jnp.save(f"{args.save_path}/calibration_X_{T}_y_{N}", calibration)
+        jnp.save(f"{args.save_path}/calibration_theta_{T}_y_{N}", calibration)
 
         methods = ["BMC", "KMS", "LSMC", "IS"]
         rmse_values = [rmse_dict['BMC'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
@@ -473,28 +470,28 @@ class CBQ:
 
         return
 
-    def save_large(self, T, N, KMS_mean, mu_y_x_test_LSMC, IS_mean, time_KMS, time_LSMC, time_IS):
-        true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
+    def save_large(self, T, N, KMS_mean, LSMC_mean, IS_mean, time_KMS, time_LSMC, time_IS):
+        true_EgX_theta = jnp.load(f"{args.save_path}/finance_EgX_theta.npy")
 
-        # Saving this would explode the memory on cluster
-        # jnp.save(f"{args.save_path}/LSMC_mean_X_{T}_y_{N}.npy", mu_y_x_test_LSMC.squeeze())
-        # jnp.save(f"{args.save_path}/KMS_mean_X_{T}_y_{N}.npy", KMS_mean)
+        # Saving this would ethetaplode the memory on cluster
+        # jnp.save(f"{args.save_path}/LSMC_mean_theta_{T}_y_{N}.npy", LSMC_mean.squeeze())
+        # jnp.save(f"{args.save_path}/KMS_mean_theta_{T}_y_{N}.npy", KMS_mean)
 
-        L_LSMC = jnp.maximum(mu_y_x_test_LSMC, 0).mean()
+        L_LSMC = jnp.maximum(LSMC_mean, 0).mean()
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
         L_IS = jnp.maximum(IS_mean, 0).mean()
-        L_true = jnp.maximum(true_EgY_X, 0).mean()
+        L_true = jnp.maximum(true_EgX_theta, 0).mean()
 
         rmse_dict = {}
         rmse_dict['BMC'] = None
         rmse_dict['IS'] = (L_true - L_IS) ** 2
         rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
         rmse_dict['KMS'] = (L_true - L_KMS) ** 2
-        with open(f"{args.save_path}/rmse_dict_X_{T}_y_{N}", 'wb') as f:
+        with open(f"{args.save_path}/rmse_dict_theta_{T}_y_{N}", 'wb') as f:
             pickle.dump(rmse_dict, f)
 
         time_dict = {'BMC': None, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
-        with open(f"{args.save_path}/time_dict_X_{T}_y_{N}", 'wb') as f:
+        with open(f"{args.save_path}/time_dict_theta_{T}_y_{N}", 'wb') as f:
             pickle.dump(time_dict, f)
         pause = True
         return
@@ -539,12 +536,12 @@ def save_true_value(St, args):
 
     _, loss = price(St, 100000, rng_key)
     value = loss.mean(1)
-    jnp.save(f"{args.save_path}/finance_X.npy", St)
-    jnp.save(f"{args.save_path}/finance_EgY_X.npy", value)
+    jnp.save(f"{args.save_path}/finance_theta.npy", St)
+    jnp.save(f"{args.save_path}/finance_EgX_theta.npy", value)
     plt.figure()
     plt.plot(St, value)
-    plt.xlabel(r"$X$")
-    plt.ylabel(r"$\mathbb{E}[g(Y) \mid X]$")
+    plt.xlabel(r"$theta$")
+    plt.ylabel(r"$\mathbb{E}[g(Y) \mid theta]$")
     plt.title("True value for finance experiment")
     plt.savefig(f"{args.save_path}/true_distribution.pdf")
     # plt.show()
@@ -573,9 +570,9 @@ def cbq_option_pricing(args):
     St_test = jnp.linspace(20., 120., test_num)[:, None]
     save_true_value(St_test, args)
 
+    kernel_theta = args.kernel_theta
     kernel_x = args.kernel_x
-    kernel_y = args.kernel_y
-    CBQ_class = CBQ(kernel_x=kernel_x, kernel_y=kernel_y)
+    CBQ_class = CBQ(kernel_theta=kernel_theta, kernel_x=kernel_x)
 
     for T in T_array:
         for N in tqdm(N_array):
@@ -614,7 +611,7 @@ def cbq_option_pricing(args):
             t3 = time.time()
             time_cbq = t3 - t2 + t1 - t0
 
-            ground_truth = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
+            ground_truth = jnp.load(f"{args.save_path}/finance_EgX_theta.npy")
             calibration = finance_utils.calibrate(ground_truth, BMC_mean, jnp.diag(BMC_std))
 
             CBQ_class.save(T, N, I_BQ_mean, St, St_test,
@@ -675,7 +672,7 @@ def main(args):
 def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
-    if 'stein' in args.kernel_y:
+    if 'stein' in args.kernel_x:
         args.save_path += f'results/finance_stein/'
     else:
         args.save_path += f'results/finance/'

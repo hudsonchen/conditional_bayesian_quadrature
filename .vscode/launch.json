@@ -13,6 +13,17 @@
             "args" : ["--dim", "2", "--g_fn", "g3", "--kernel_x", "RBF", "--kernel_theta", "Matern"]
         },
         {
+            "name": "Python: finance stein",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/finance.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
+            "args": ["--kernel_theta", "rbf", "--kernel_x", "stein_matern"]
+        },       
+        {
             "name": "Python: finance",
             "type": "python",
             "request": "launch",
@@ -21,7 +32,18 @@
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
             "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
-            "args": ["--kernel_x", "rbf", "--kernel_y", "stein_matern"]
+            "args": ["--kernel_theta", "rbf", "--kernel_x", "log_normal_rbf"]
+        },
+        {
+            "name": "Python: finance",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/finance.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
+            "args": ["--kernel_theta", "rbf", "--kernel_x", "log_normal_rbf"]
         },
     ]
 }
