@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import optax
 from functools import partial
 from tqdm import tqdm
-import finance_baselines
+import baselines
 from kernels import *
 from utils import finance_utils
 import os
@@ -26,7 +26,8 @@ if pwd.getpwuid(os.getuid())[0] == 'hudsonchen':
     os.chdir("/Users/hudsonchen/research/fx_bayesian_quaduature/CBQ")
     print(os.getcwd())
 elif pwd.getpwuid(os.getuid())[0] == 'zongchen':
-    os.chdir("/home/zongchen/CBQ")
+    # os.chdir("/home/zongchen/CBQ")
+    os.chdir("/home/zongchen/fx_bayesian_quaduature/CBQ")
     print(os.getcwd())
 elif pwd.getpwuid(os.getuid())[0] == 'ucabzc9':
     os.chdir("/home/ucabzc9/Scratch/CBQ")
@@ -63,22 +64,22 @@ def grad_y_log_py_x(y, x, y_mean, y_scale, sigma, T, t):
 
 
 @jax.jit
-def py_x_fn(y, x, y_scale, y_mean, sigma, T, t):
+def px_theta_fn(x, theta, x_scale, x_mean, sigma, T, t):
     """
-    :param y: Ny * 1
+    :param x: N * 1
     :param x: scalar
-    :param y_scale: scalar
+    :param x_scale: scalar
     :return: scalar
     """
     # p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
-    y_tilde = y * y_scale + y_mean
-    z = jnp.log(y_tilde / x)
+    x_tilde = x * x_scale + x_mean
+    z = jnp.log(x_tilde / theta)
     n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
     p_n = jax.scipy.stats.norm.pdf(n)
     p_z = p_n / (sigma * jnp.sqrt(T - t))
-    p_y_tilde = p_z / y_tilde
-    p_y = p_y_tilde / y_scale
-    return p_y
+    p_x_tilde = p_z / x_tilde
+    p_x = p_x_tilde / x_scale
+    return p_x
 
 
 # @jax.jit
@@ -290,12 +291,12 @@ class CBQ:
         T = 2
         t = 1
 
-        Nx = X.shape[0]
-        Ny = Y.shape[1]
+        T = X.shape[0]
+        N = Y.shape[1]
         eps = 1e-6
-        Sigma = jnp.zeros(Nx)
-        Mu = jnp.zeros(Nx)
-        for i in range(Nx):
+        Sigma = jnp.zeros(T)
+        Mu = jnp.zeros(T)
+        for i in range(T):
             x = X[i]
             Yi = Y[i, :][:, None]
             # Yi_standardized, Yi_scale = finance_utils.scale(Yi)
@@ -303,7 +304,7 @@ class CBQ:
             gYi = gY[i, :][:, None]
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y'|x)p(y|x)dydy'
 
-            K = self.Ky(Yi_standardized, Yi_standardized, self.ly, None, None) + eps * jnp.eye(Ny)
+            K = self.Ky(Yi_standardized, Yi_standardized, self.ly, None, None) + eps * jnp.eye(N)
             K_inv = jnp.linalg.inv(K)
             a = -sigma ** 2 * (T - t) / 2 + jnp.log(x)
             b = jnp.sqrt(sigma ** 2 * (T - t))
@@ -317,8 +318,8 @@ class CBQ:
 
             # ============= Debug code =============
             # print('True value', price(X[i], 10000, rng_key)[1].mean())
-            # print(f'MC with {Ny} number of Y', gYi.mean())
-            # print(f'BMC with {Ny} number of Y', mu_standardized.squeeze())
+            # print(f'MC with {N} number of Y', gYi.mean())
+            # print(f'BMC with {N} number of Y', mu_standardized.squeeze())
             # print(f"=================")
             # pause = True
             # ============= Debug code =============
@@ -327,19 +328,19 @@ class CBQ:
     # @partial(jax.jit, static_argnums=(0,))
     def cbq_stein(self, X, Y, gY, rng_key):
         """
-        :param X: X is of size Nx
-        :param Y: Y is of size Nx * Ny
+        :param X: X is of size T
+        :param Y: Y is of size T * N
         :param gY: gY is g(Y)
-        :return: return the expectation E[g(Y)|X=x] of size Nx
+        :return: return the expectation E[g(Y)|X=x] of size T
         """
 
-        Nx = X.shape[0]
-        Ny = Y.shape[1]
+        T = X.shape[0]
+        N = Y.shape[1]
         eps = 1e-6
-        Sigma = jnp.zeros(Nx)
-        Mu = jnp.zeros(Nx)
+        Sigma = jnp.zeros(T)
+        Mu = jnp.zeros(T)
 
-        for i in range(Nx):
+        for i in range(T):
             x = X[i]
             Yi = Y[i, :][:, None]
             Yi_standardized, Yi_mean, Yi_scale = finance_utils.standardize(Yi)
@@ -352,8 +353,8 @@ class CBQ:
                                  dy_log_py_x, grad_y_log_py_x_fn, rng_key, self.Ky)
             # phi = \int ky(Y, y)p(y|x)dy, varphi = \int \int ky(y', y)p(y|x)p(y|x)dydy'
 
-            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, dy_log_py_x, dy_log_py_x) + c + A * jnp.eye(Ny)
-            K_inv = jnp.linalg.inv(K + eps * jnp.eye(Ny))
+            K = A * self.Ky(Yi_standardized, Yi_standardized, ly, dy_log_py_x, dy_log_py_x) + c + A * jnp.eye(N)
+            K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
             mu = c * (K_inv @ gYi).sum()
             std = jnp.sqrt(c - K_inv.sum() * c ** 2)
 
@@ -362,69 +363,69 @@ class CBQ:
 
             # # Large sample mu
             # print('True value', price(X[i], 10000, rng_key)[1].mean())
-            # print(f'MC with {Ny} number of Y', gYi.mean())
-            # print(f'BMC with {Ny} number of Y', mu)
+            # print(f'MC with {N} number of Y', gYi.mean())
+            # print(f'BMC with {N} number of Y', mu)
             # print(f"=================")
             pause = True
         return Mu, Sigma
 
     # @partial(jax.jit, static_argnums=(0,))
-    def GP(self, psi_y_x_mean, psi_y_x_std, X, X_prime):
+    def GP(self, psi_y_x_mean, psi_y_x_std, X, X_test):
         """
-        :param psi_y_x_mean: Nx * 1
-        :param psi_y_x_std: Nx * 1
-        :param X: Nx * 1
-        :param X_prime: N_prime * 1
+        :param psi_y_x_mean: T * 1
+        :param psi_y_x_std: T * 1
+        :param X: T * 1
+        :param X_test: N_test * 1
         :return:
         """
-        Nx = psi_y_x_mean.shape[0]
+        T = psi_y_x_mean.shape[0]
         X_standardized, X_mean, X_std = finance_utils.standardize(X)
-        X_prime_standardized = (X_prime - X_mean) / X_std
+        X_test_standardized = (X_test - X_mean) / X_std
 
         if psi_y_x_std is None:
             noise_array = jnp.array([0.01, 0.001, 0.0001])
             nll_array = 0. * noise_array
             for i, noise in enumerate(noise_array):
-                K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
+                K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(T)
                 nll = -(-0.5 * psi_y_x_mean.T @ K_train_train @ psi_y_x_mean -
-                        0.5 * jnp.log(jnp.linalg.det(K_train_train) + 1e-6)) / Nx
+                        0.5 * jnp.log(jnp.linalg.det(K_train_train) + 1e-6)) / T
                 nll_array = nll_array.at[i].set(nll.squeeze())
             noise = noise_array[jnp.argmin(nll_array)]
-            K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(Nx)
+            K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + noise * jnp.eye(T)
             K_train_train_inv = jnp.linalg.inv(K_train_train)
-            K_test_train = self.Kx(X_prime_standardized, X_standardized, self.lx)
-            K_test_test = self.Kx(X_prime_standardized, X_prime_standardized, self.lx) + noise
-            mu_y_x_prime = K_test_train @ K_train_train_inv @ psi_y_x_mean
-            var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-            std_y_x_prime = jnp.sqrt(var_y_x_prime)
+            K_test_train = self.Kx(X_test_standardized, X_standardized, self.lx)
+            K_test_test = self.Kx(X_test_standardized, X_test_standardized, self.lx) + noise
+            mu_y_x_test = K_test_train @ K_train_train_inv @ psi_y_x_mean
+            var_y_x_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+            std_y_x_test = jnp.sqrt(var_y_x_test)
         else:
             noise = psi_y_x_mean.mean()
             K_train_train = self.Kx(X_standardized, X_standardized, self.lx) + jnp.diag(psi_y_x_std ** 2)
             K_train_train_inv = jnp.linalg.inv(K_train_train)
-            K_test_train = self.Kx(X_prime_standardized, X_standardized, self.lx)
-            K_test_test = self.Kx(X_prime_standardized, X_prime_standardized, self.lx) + noise
-            mu_y_x_prime = K_test_train @ K_train_train_inv @ psi_y_x_mean
-            var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-            std_y_x_prime = jnp.sqrt(var_y_x_prime)
+            K_test_train = self.Kx(X_test_standardized, X_standardized, self.lx)
+            K_test_test = self.Kx(X_test_standardized, X_test_standardized, self.lx) + noise
+            mu_y_x_test = K_test_train @ K_train_train_inv @ psi_y_x_mean
+            var_y_x_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+            std_y_x_test = jnp.sqrt(var_y_x_test)
         pause = True
-        return mu_y_x_prime, std_y_x_prime
+        return mu_y_x_test, std_y_x_test
 
-    def save(self, Nx, Ny, psi_x_mean, St, St_prime,
+    def save(self, T, N, I_BQ_mean, St, St_test,
              BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
              time_cbq, time_IS, time_KMS, time_LSMC, calibration):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
         # ========== Debug code ==========
         # plt.figure()
-        # plt.plot(St_prime.squeeze(), true_EgY_X, color='red', label='true')
-        # plt.scatter(St.squeeze(), psi_x_mean.squeeze())
-        # plt.plot(St_prime.squeeze(), mu_y_x_prime_cbq.squeeze(), color='blue', label='BMC')
-        # plt.plot(St_prime.squeeze(), mu_y_x_prime_IS.squeeze(), color='green', label='IS')
-        # plt.plot(St_prime.squeeze(), mu_y_x_prime_LSMC.squeeze(), color='orange', label='LSMC')
-        # plt.plot(St_prime.squeeze(), KMS_mean, color='purple', label='KMS')
+        # plt.plot(St_test.squeeze(), true_EgY_X, color='red', label='true')
+        # plt.scatter(St.squeeze(), I_BQ_mean.squeeze())
+        # plt.plot(St_test.squeeze(), mu_y_x_test_cbq.squeeze(), color='blue', label='BMC')
+        # plt.plot(St_test.squeeze(), mu_y_x_test_IS.squeeze(), color='green', label='IS')
+        # plt.plot(St_test.squeeze(), mu_y_x_test_LSMC.squeeze(), color='orange', label='LSMC')
+        # plt.plot(St_test.squeeze(), KMS_mean, color='purple', label='KMS')
         # plt.legend()
-        # plt.title(f"GP_finance_X_{Nx}_y_{Ny}")
-        # plt.savefig(f"{args.save_path}/figures/finance_X_{Nx}_y_{Ny}.pdf")
+        # plt.title(f"GP_finance_X_{T}_y_{N}")
+        # plt.savefig(f"{args.save_path}/figures/finance_X_{T}_y_{N}.pdf")
         # plt.show()
         # plt.close()
         # ========== Debug code ==========
@@ -440,38 +441,46 @@ class CBQ:
         rmse_dict['IS'] = (L_true - L_IS) ** 2
         rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
         rmse_dict['KMS'] = (L_true - L_KMS) ** 2
-        with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        with open(f"{args.save_path}/rmse_dict_X_{T}_y_{N}", 'wb') as f:
             pickle.dump(rmse_dict, f)
 
         time_dict = {'BMC': time_cbq, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
-        with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        with open(f"{args.save_path}/time_dict_X_{T}_y_{N}", 'wb') as f:
             pickle.dump(time_dict, f)
 
-        jnp.save(f"{args.save_path}/calibration_X_{Nx}_y_{Ny}", calibration)
+        jnp.save(f"{args.save_path}/calibration_X_{T}_y_{N}", calibration)
+
+        methods = ["BMC", "KMS", "LSMC", "IS"]
+        rmse_values = [rmse_dict['BMC'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
+
+        print("\n\n=======================================")
+        print(f"T = {T} and N = {N}")
+        print("=======================================")
+        print(" ".join([f"{method:<10}" for method in methods]))
+        print(" ".join([f"{value:<10.6f}" for value in rmse_values]))
+        print("=======================================\n\n")
 
         # ============= Debug code =============
-        # print(f"=============")
-        # print(f"RMSE of BMC with {Nx} number of X and {Ny} number of Y", rmse_dict['BMC'])
-        # print(f"RMSE of IS with {Nx} number of X and {Ny} number of Y", rmse_dict['IS'])
-        # print(f"RMSE of LSMC with {Nx} number of X and {Ny} number of Y", rmse_dict['LSMC'])
-        # print(f"RMSE of KMS with {Nx} number of X and {Ny} number of Y", rmse_dict['KMS'])
-        # print(f"Time of BMC with {Nx} number of X and {Ny} number of Y", time_cbq)
-        # print(f"Time of IS with {Nx} number of X and {Ny} number of Y", time_IS)
-        # print(f"Time of LSMC with {Nx} number of X and {Ny} number of Y", time_LSMC)
-        # print(f"Time of KMS with {Nx} number of X and {Ny} number of Y", time_KMS)
-        # print(f"=============")
+        # time_values = [time_BMC, time_KMS, time_LSMC, time_IS]
+        # 
+        # print("\n\n=======================================")
+        # print(f"T = {T} and N = {N}")
+        # print("=======================================")
+        # print(" ".join([f"{method:<10}" for method in methods]))
+        # print(" ".join([f"{value:<10.6f}" for value in time_values]))
+        # print("=======================================\n\n")
         # ============= Debug code =============
-        pause = True
+
         return
 
-    def save_large(self, Nx, Ny, KMS_mean, mu_y_x_prime_LSMC, IS_mean, time_KMS, time_LSMC, time_IS):
+    def save_large(self, T, N, KMS_mean, mu_y_x_test_LSMC, IS_mean, time_KMS, time_LSMC, time_IS):
         true_EgY_X = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
 
         # Saving this would explode the memory on cluster
-        # jnp.save(f"{args.save_path}/LSMC_mean_X_{Nx}_y_{Ny}.npy", mu_y_x_prime_LSMC.squeeze())
-        # jnp.save(f"{args.save_path}/KMS_mean_X_{Nx}_y_{Ny}.npy", KMS_mean)
+        # jnp.save(f"{args.save_path}/LSMC_mean_X_{T}_y_{N}.npy", mu_y_x_test_LSMC.squeeze())
+        # jnp.save(f"{args.save_path}/KMS_mean_X_{T}_y_{N}.npy", KMS_mean)
 
-        L_LSMC = jnp.maximum(mu_y_x_prime_LSMC, 0).mean()
+        L_LSMC = jnp.maximum(mu_y_x_test_LSMC, 0).mean()
         L_KMS = jnp.maximum(KMS_mean, 0).mean()
         L_IS = jnp.maximum(IS_mean, 0).mean()
         L_true = jnp.maximum(true_EgY_X, 0).mean()
@@ -481,11 +490,11 @@ class CBQ:
         rmse_dict['IS'] = (L_true - L_IS) ** 2
         rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
         rmse_dict['KMS'] = (L_true - L_KMS) ** 2
-        with open(f"{args.save_path}/rmse_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        with open(f"{args.save_path}/rmse_dict_X_{T}_y_{N}", 'wb') as f:
             pickle.dump(rmse_dict, f)
 
         time_dict = {'BMC': None, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
-        with open(f"{args.save_path}/time_dict_X_{Nx}_y_{Ny}", 'wb') as f:
+        with open(f"{args.save_path}/time_dict_X_{T}_y_{N}", 'wb') as f:
             pickle.dump(time_dict, f)
         pause = True
         return
@@ -496,7 +505,7 @@ def price(St, N, rng_key):
     """
     :param St: the price St at time t
     :return: The function returns the price ST at time T sampled from the conditional
-    distribution p(ST|St), and the loss \psi(ST) - \psi((1+s)ST) due to the shock. Their shape is Nx * Ny
+    distribution p(ST|St), and the loss \psi(ST) - \psi((1+s)ST) due to the shock. Their shape is T * N
     """
     K1 = 50
     K2 = 150
@@ -556,85 +565,84 @@ def cbq_option_pricing(args):
     T = 2
     sigma = 0.3
     S0 = 50
-    Nx_array = jnp.array([10, 50, 100])
-    # Nx_array = jnp.array([2, 5, 10, 20, 30])
-    Ny_array = jnp.array([10, 50, 100])
-    # Ny_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    T_array = jnp.array([10, 20, 30])
+    N_array = jnp.array([50, 100])
+    # N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
-    St_prime = jnp.linspace(20., 120., test_num)[:, None]
-    save_true_value(St_prime, args)
+    St_test = jnp.linspace(20., 120., test_num)[:, None]
+    save_true_value(St_test, args)
 
     kernel_x = args.kernel_x
     kernel_y = args.kernel_y
     CBQ_class = CBQ(kernel_x=kernel_x, kernel_y=kernel_y)
 
-    for Nx in Nx_array:
-        for Ny in tqdm(Ny_array):
+    for T in T_array:
+        for N in tqdm(N_array):
             rng_key, _ = jax.random.split(rng_key)
-            # epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
+            # epsilon = jax.random.normal(rng_key, shape=(T, 1))
             # St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-            St = jnp.linspace(20, 120, Nx)[:, None]
-            ST, loss = price(St, Ny.item(), rng_key)
+            St = jnp.linspace(20, 120, T)[:, None]
+            ST, loss = price(St, N.item(), rng_key)
 
             mc_mean = loss.mean(1)[:, None]
-            _, _ = CBQ_class.GP(mc_mean, None, St, St_prime)
             t0 = time.time()
-            KMS_mean, KMS_std = CBQ_class.GP(mc_mean, None, St, St_prime)
+            KMS_mean, KMS_std = CBQ_class.GP(mc_mean, None, St, St_test)
             KMS_mean = KMS_mean.squeeze()
             time_KMS = time.time() - t0
 
-            _, _ = finance_baselines.importance_sampling(py_x_fn, St_prime, St, ST, loss)
+            _, _ = baselines.importance_sampling_finance(px_theta_fn, St_test, St, ST, loss)
             t0 = time.time()
-            IS_mean, IS_std = finance_baselines.importance_sampling(py_x_fn, St_prime, St, ST, loss)
+            IS_mean, IS_std = baselines.importance_sampling_finance(px_theta_fn, St_test, St, ST, loss)
             time_IS = time.time() - t0
 
-            _, _ = finance_baselines.polynomial(args, St, ST, loss, St_prime)
+            _, _ = baselines.polynomial(St, ST, loss, St_test)
             t0 = time.time()
-            LSMC_mean, LSMC_std = finance_baselines.polynomial(args, St, ST, loss, St_prime)
+            LSMC_mean, LSMC_std = baselines.polynomial(St, ST, loss, St_test)
             time_LSMC = time.time() - t0
 
             _, _ = CBQ_class.cbq(St, ST, loss, rng_key)
             t0 = time.time()
-            # St is X, ST is Y, loss is g(Y)
-            psi_x_mean, psi_x_std = CBQ_class.cbq(St, ST, loss, rng_key)
+            # St is theta, ST is X, loss is g(X)
+            I_BQ_mean, I_BQ_std = CBQ_class.cbq(St, ST, loss, rng_key)
+
             t1 = time.time()
-            psi_x_std = np.nan_to_num(psi_x_std, nan=0.3)
-            _, _ = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
+            I_BQ_std = np.nan_to_num(I_BQ_std, nan=0.3)
+            _, _ = CBQ_class.GP(I_BQ_mean, I_BQ_std, St, St_test)
             t2 = time.time()
-            BMC_mean, BMC_std = CBQ_class.GP(psi_x_mean, psi_x_std, St, St_prime)
+            BMC_mean, BMC_std = CBQ_class.GP(I_BQ_mean, I_BQ_std, St, St_test)
             t3 = time.time()
             time_cbq = t3 - t2 + t1 - t0
 
             ground_truth = jnp.load(f"{args.save_path}/finance_EgY_X.npy")
             calibration = finance_utils.calibrate(ground_truth, BMC_mean, jnp.diag(BMC_std))
 
-            CBQ_class.save(Nx, Ny, psi_x_mean, St, St_prime,
+            CBQ_class.save(T, N, I_BQ_mean, St, St_test,
                            BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
                            time_cbq, time_IS, time_KMS, time_LSMC, calibration)
 
-    # For very very large Nx and Ny.
-    Nx = 1000
-    Ny = 1000
-    epsilon = jax.random.normal(rng_key, shape=(Nx, 1))
+    # For very very large T and N.
+    T = 1000
+    N = 1000
+    epsilon = jax.random.normal(rng_key, shape=(T, 1))
     St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
-    # St = jnp.linspace(20, 120, Nx)[:, None]
-    ST, loss = price(St, Ny, rng_key)
+    # St = jnp.linspace(20, 120, T)[:, None]
+    ST, loss = price(St, N, rng_key)
 
     t0 = time.time()
     mc_mean = loss.mean(1)[:, None]
-    KMS_mean_large, _ = CBQ_class.GP(mc_mean, None, St, St_prime)
+    KMS_mean_large, _ = CBQ_class.GP(mc_mean, None, St, St_test)
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
-    LSMC_mean_large, _ = finance_baselines.polynomial(args, St, ST, loss, St_prime)
+    LSMC_mean_large, _ = baselines.polynomial(St, ST, loss, St_test)
     time_LSMC_large = time.time() - t0
 
     t0 = time.time()
-    IS_mean_large, IS_std = finance_baselines.importance_sampling(py_x_fn, St_prime, St, ST, loss)
+    IS_mean_large, IS_std = baselines.importance_sampling_finance(px_theta_fn, St_test, St, ST, loss)
     time_IS_large = time.time() - t0
 
-    CBQ_class.save_large(Nx, Ny, KMS_mean_large, LSMC_mean_large, IS_mean_large,
+    CBQ_class.save_large(T, N, KMS_mean_large, LSMC_mean_large, IS_mean_large,
                          time_KMS_large, time_LSMC_large, time_IS_large)
     pause = True
     return
