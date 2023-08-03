@@ -105,6 +105,45 @@ def normal_logpdf(x, mu, Sigma):
     return normalization + exponent  # Shape (N2, N3)
 
 
+# @jax.jit
+def normal_logpdf_vectorized(x, mu, Sigma):
+    """
+    :param x: (N1, N2, D)
+    :param mu: (N3, D)
+    :param Sigma: (N3, D, D)
+    :return: (N1, N2, N3)
+    """
+    D = x.shape[-1]
+    x_expanded = jnp.expand_dims(x, 2)
+    mean_expanded = jnp.expand_dims(mu, (0, 1))
+    # covariance_expanded = jnp.expand_dims(covariance, 0)
+
+    diff = x_expanded - mean_expanded
+    precision_matrix = jnp.linalg.inv(Sigma)
+    exponent = -0.5 * jnp.einsum('nijk, jkl, nijl->nij', diff, precision_matrix, diff)
+    normalization = -0.5 * (D * jnp.log(2 * jnp.pi) - 0.5 * jnp.log(jnp.linalg.det(Sigma)))
+    return normalization + exponent
+
+
+# @jax.jit
+def posterior_log_llk_vectorized(X, prior_cov_base, Y, Z, theta, noise):
+    """
+    :param X: (N1, N2, D)
+    :param prior_cov_base: scalar
+    :param Y: data
+    :param Z: data
+    :param theta: (N3, D)
+    :param noise: scalar
+    :return:
+    """
+    D = X.shape[-1]
+    # prior_cov is (N3, D)
+    prior_cov = jnp.ones([1, D]) * prior_cov_base + theta
+    # post_mean is (N3, D), post_cov is (N3, D, D)
+    post_mean, post_cov = posterior_full(Y, Z, prior_cov, noise)
+    return normal_logpdf_vectorized(X, post_mean, post_cov)
+
+
 
 # @jax.jit
 def posterior_log_llk(X, prior_cov_base, Y, Z, theta, noise):
@@ -296,57 +335,27 @@ def GP(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
     T, D = X.shape[0], X.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
 
-    if I_std is None:
-        sigma_array = jnp.array([1.0, 0.1, 0.01, 0.001])
-        A_array = jnp.array([10.0, 100.0, 300.0, 1000.0])
-        nll_array = jnp.zeros([len(l_array), len(A_array), len(sigma_array)])
-    else:
-        sigma_array = jnp.array([0.0])
-        A_array = 0 * l_array
-        nll_array = jnp.zeros([len(l_array), 1])
+    sigma_array = jnp.array([0.0])
+    A_array = 0 * l_array
+    nll_array = jnp.zeros([len(l_array), 1])
 
-    if I_std is None:
-        for i, l in enumerate(l_array):
-            for j, A in enumerate(A_array):
-                for k, sigma in enumerate(sigma_array):
-                    K = A * kernel_fn(X, X, l) + jnp.eye(T) * sigma
-                    K_inv = jnp.linalg.inv(K)
-                    nll = -(-0.5 * I_mean.T @ K_inv @ I_mean - 0.5 * jnp.log(
-                        jnp.linalg.det(K) + 1e-6)) / T
-                    nll_array = nll_array.at[i, j].set(nll)
-        min_index_flat = jnp.argmin(nll_array)
-        i1, i2, i3 = jnp.unravel_index(min_index_flat, nll_array.shape)
-        l = l_array[i1]
-        A = A_array[i2]
-        sigma = sigma_array[i3]
-    else:
-        for i, l in enumerate(l_array):
-            K_no_scale = kernel_fn(X, X, l)
-            A = I_mean.T @ K_no_scale @ I_mean / T
-            A_array = A_array.at[i].set(A)
-            K = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
-            K_inv = jnp.linalg.inv(K)
-            nll = -(-0.5 * I_mean.T @ K_inv @ I_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / T
-            nll_array = nll_array.at[i].set(nll)
+    for i, l in enumerate(l_array):
+        K_no_scale = kernel_fn(X, X, l)
+        A = I_mean.T @ K_no_scale @ I_mean / T
+        A_array = A_array.at[i].set(A)
+        K = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
+        K_inv = jnp.linalg.inv(K)
+        nll = -(-0.5 * I_mean.T @ K_inv @ I_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / T
+        nll_array = nll_array.at[i].set(nll)
 
-        l = l_array[jnp.argmin(nll_array)]
-        A = A_array[jnp.argmin(nll_array)]
+    l = l_array[jnp.argmin(nll_array)]
+    A = A_array[jnp.argmin(nll_array)]
 
-    if I_std is None:
-        K_train_train = A * kernel_fn(X, X, l) + jnp.eye(T) * sigma
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * kernel_fn(X_test, X, l)
-        K_test_test = A * kernel_fn(X_test, X_test, l) + jnp.eye(X_test.shape[0]) * sigma
-    else:
-        # print(A)
-        if T == 10:
-            A = 10.0
-        else:
-            A = 1.0
-        K_train_train = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * kernel_fn(X_test, X, l)
-        K_test_test = A * kernel_fn(X_test, X_test, l) + eps * jnp.eye(X_test.shape[0])
+    K_train_train = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
+    K_train_train_inv = jnp.linalg.inv(K_train_train)
+    K_test_train = A * kernel_fn(X_test, X, l)
+    K_test_test = A * kernel_fn(X_test, X_test, l) + eps * jnp.eye(X_test.shape[0])
+
     mu_X_theta_test = K_test_train @ K_train_train_inv @ I_mean
     var_X_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_X_theta_test = jnp.abs(var_X_theta_test)
@@ -408,16 +417,6 @@ def main(args):
             Theta = sensitivity_utils.qmc_uniform(-1.0, 1.0, D, T)
         else:
             Theta = jax.random.uniform(rng_key, shape=(T, D), minval=-1.0, maxval=1.0)
-
-        rmse_CBQ_array = jnp.zeros(len(N_array))
-        rmse_KMS_array = jnp.zeros(len(N_array))
-        rmse_LSMC_array = jnp.zeros(len(N_array))
-        rmse_IS_array = jnp.zeros(len(N_array))
-
-        time_CBQ_array = jnp.zeros(len(N_array))
-        time_KMS_array = jnp.zeros(len(N_array))
-        time_LSMC_array = jnp.zeros(len(N_array))
-        time_IS_array = jnp.zeros(len(N_array))
 
         for j, N in enumerate(tqdm(N_array)):
             I_BQ_mean_array = jnp.zeros(T)
@@ -521,8 +520,13 @@ def main(args):
             time_LSMC = time.time() - time0
 
             time0 = time.time()
-            log_px_theta_fn = partial(posterior_log_llk, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
-            IS_mean, IS_std = baselines.importance_sampling(log_px_theta_fn, Theta_test, Theta, X, f_X)
+            # This is unvectorized version of importance sampling
+            # log_px_theta_fn = partial(posterior_log_llk, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
+            # IS_mean, IS_std = baselines.importance_sampling(log_px_theta_fn, Theta_test, Theta, X, f_X)
+
+            # This is vectorized version of importance sampling
+            log_px_theta_fn_vectorized = partial(posterior_log_llk_vectorized, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
+            IS_mean, IS_std = baselines.importance_sampling_sensitivity(log_px_theta_fn_vectorized, Theta_test, Theta, X, f_X)
             time_IS = time.time() - time0
 
             rmse_CBQ = jnp.sqrt(jnp.mean((CBQ_mean - ground_truth) ** 2))

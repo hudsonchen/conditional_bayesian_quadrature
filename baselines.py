@@ -135,7 +135,7 @@ def kernel_mean_shrinkage(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
 
 
 # @partial(jax.jit, static_argnums=(0,))
-def importance_sampling_sensitivity(log_pX_theta_fn, theta, X, f_X, theta_test):
+def importance_sampling_sensitivity(log_pX_theta_fn, Theta_test, Theta, X, f_X):
     """
     :param log_pX_theta_fn:
     :param theta_test: T_test*D
@@ -145,9 +145,9 @@ def importance_sampling_sensitivity(log_pX_theta_fn, theta, X, f_X, theta_test):
     :return:
     """
     # log_pX_theta_test is (T, N, T_Test)
-    log_pX_theta_test = log_pX_theta_fn(X=X, theta=theta_test)
+    log_pX_theta_test = log_pX_theta_fn(X=X, theta=Theta_test)
     # log_pX_theta_i is (T, N, T)
-    log_pX_theta_i = log_pX_theta_fn(X=X, theta=theta)
+    log_pX_theta_i = log_pX_theta_fn(X=X, theta=Theta)
 
     # log_pX_theta_test is (T, N, T_Test)
     log_pX_theta_test = log_pX_theta_test.transpose(2, 0, 1)
@@ -159,7 +159,7 @@ def importance_sampling_sensitivity(log_pX_theta_fn, theta, X, f_X, theta_test):
     # mu is (T_Test, T)
     mu = (weight * f_X).mean(2)
     IS_mean = mu.mean(1)
-    return IS_mean, 0
+    return IS_mean, 0 * IS_mean
 
 
 def importance_sampling_single_finance(tree, pX_theta_fn, theta_test):
