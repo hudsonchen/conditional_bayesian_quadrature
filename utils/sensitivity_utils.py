@@ -5,43 +5,45 @@ from scipy.stats import norm
 from sobol_seq import i4_sobol_generate
 
 
-def save(args, n_alpha, n_theta, rmse_BMC, rmse_KMS, rmse_LSMC, rmse_IS,
-         time_BMC, time_KMS, time_LSMC, time_IS, calibration):
+def save(args, T, N, rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS,
+         time_CBQ, time_BQ, time_KMS, time_LSMC, time_IS, calibration):
     rmse_dict = {}
-    rmse_dict["BMC"] = rmse_BMC
+    rmse_dict["CBQ"] = rmse_CBQ
+    rmse_dict["BQ"] = rmse_BQ
     rmse_dict["KMS"] = rmse_KMS
     rmse_dict["LSMC"] = rmse_LSMC
     rmse_dict["IS"] = rmse_IS
-    with open(f"{args.save_path}/rmse_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
+    with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(rmse_dict, f)
 
     time_dict = {}
-    time_dict["BMC"] = time_BMC
+    time_dict["CBQ"] = time_CBQ
+    time_dict["BQ"] = time_BQ
     time_dict["KMS"] = time_KMS
     time_dict["LSMC"] = time_LSMC
     time_dict["IS"] = time_IS
-    with open(f"{args.save_path}/time_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
+    with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(time_dict, f)
 
-    jnp.save(f"{args.save_path}/calibration_X_{n_alpha}_y_{n_theta}", calibration)
+    jnp.save(f"{args.save_path}/calibration_T_{T}_N_{N}", calibration)
     return
 
 
-def save_large(args, n_alpha, n_theta, rmse_KMS, rmse_LSMC, rmse_IS, time_KMS, time_LSMC, time_IS):
+def save_large(args, T, N, rmse_KMS, rmse_LSMC, rmse_IS, time_KMS, time_LSMC, time_IS):
     rmse_dict = {}
-    rmse_dict["BMC"] = None
+    rmse_dict["CBQ"] = None
     rmse_dict["KMS"] = rmse_KMS
     rmse_dict["LSMC"] = rmse_LSMC
     rmse_dict["IS"] = rmse_IS
-    with open(f"{args.save_path}/rmse_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
+    with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(rmse_dict, f)
 
     time_dict = {}
-    time_dict["BMC"] = None
+    time_dict["CBQ"] = None
     time_dict["KMS"] = time_KMS
     time_dict["LSMC"] = time_LSMC
     time_dict["IS"] = time_IS
-    with open(f"{args.save_path}/time_dict_X_{n_alpha}_y_{n_theta}", 'wb') as f:
+    with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(time_dict, f)
     return
 
@@ -86,20 +88,20 @@ def qmc_uniform(min_val, max_val, D, nsamples):
     return samples
 
 
-def calibrate(ground_truth, BMC_mean, BMC_std):
+def calibrate(ground_truth, CBQ_mean, CBQ_std):
     """
-    Calibrate the BMC mean and std
+    Calibrate the CBQ mean and std
     :param ground_truth: (N, )
-    :param BMC_mean: (N, )
-    :param BMC_std: (N, )
+    :param CBQ_mean: (N, )
+    :param CBQ_std: (N, )
     :return:
     """
-    BMC_std /= 10
+    CBQ_std /= 10
     confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):
         z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
-        prob = jnp.less(jnp.abs(ground_truth - BMC_mean), z_score * BMC_std)
+        prob = jnp.less(jnp.abs(ground_truth - CBQ_mean), z_score * CBQ_std)
         prediction_interval = prediction_interval.at[i].set(prob.mean())
 
     plt.figure()

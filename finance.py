@@ -593,9 +593,9 @@ def cbq_option_pricing(args):
             IS_mean, IS_std = baselines.importance_sampling_finance(px_theta_fn, St_test, St, ST, loss)
             time_IS = time.time() - t0
 
-            _, _ = baselines.polynomial(St, ST, loss, St_test)
+            _, _ = baselines.polynomial(args, St, ST, loss, St_test)
             t0 = time.time()
-            LSMC_mean, LSMC_std = baselines.polynomial(St, ST, loss, St_test)
+            LSMC_mean, LSMC_std = baselines.polynomial(args, St, ST, loss, St_test)
             time_LSMC = time.time() - t0
 
             _, _ = CBQ_class.cbq(St, ST, loss, rng_key)
@@ -632,7 +632,7 @@ def cbq_option_pricing(args):
     time_KMS_large = time.time() - t0
 
     t0 = time.time()
-    LSMC_mean_large, _ = baselines.polynomial(St, ST, loss, St_test)
+    LSMC_mean_large, _ = baselines.polynomial(args, St, ST, loss, St_test)
     time_LSMC_large = time.time() - t0
 
     t0 = time.time()

@@ -84,40 +84,47 @@ def posterior_full(Y, Z, prior_cov, noise):
 # @jax.jit
 def normal_logpdf(x, mu, Sigma):
     """
-    :param x: (N1, N2, D)
+    :param x: (N2, D)
     :param mu: (N3, D)
     :param Sigma: (N3, D, D)
-    :return: (N1, N2, N3)
+    :return: (N2, N3)
     """
-    D = x.shape[-1]
-    x_expanded = jnp.expand_dims(x, 2)
-    mean_expanded = jnp.expand_dims(mu, (0, 1))
-    # covariance_expanded = jnp.expand_dims(covariance, 0)
+    N2, D = x.shape
+    N3 = mu.shape[0]
 
-    diff = x_expanded - mean_expanded
-    precision_matrix = jnp.linalg.inv(Sigma)
-    exponent = -0.5 * jnp.einsum('nijk, jkl, nijl->nij', diff, precision_matrix, diff)
-    normalization = -0.5 * (D * jnp.log(2 * jnp.pi) - 0.5 * jnp.log(jnp.linalg.det(Sigma)))
-    return normalization + exponent
+    x_expanded = jnp.expand_dims(x, 1)  # Shape (N2, 1, D)
+    mean_expanded = jnp.expand_dims(mu, 0)  # Shape (1, N3, D)
+
+    diff = x_expanded - mean_expanded  # Shape (N2, N3, D)
+    precision_matrix = jnp.linalg.inv(Sigma)  # Shape (N3, D, D)
+    exponent = -0.5 * jnp.einsum('nij, njk, nik->ni', diff, precision_matrix, diff)  # Shape (N2, N3)
+
+    normalization = -0.5 * (D * jnp.log(2 * jnp.pi) + jnp.log(jnp.linalg.det(Sigma)))  # Shape (N3,)
+    normalization = jnp.expand_dims(normalization, 0)  # Shape (1, N3)
+
+    return normalization + exponent  # Shape (N2, N3)
+
 
 
 # @jax.jit
 def posterior_log_llk(X, prior_cov_base, Y, Z, theta, noise):
     """
-    :param X: (N1, N2, D)
+    :param X: (N2, D)
     :param prior_cov_base: scalar
     :param Y: data
     :param Z: data
-    :param theta: (N3, D)
-    :param noise: scalar
+    :param theta: (D, )
+    :param noise: data noise
     :return:
     """
-    D = X.shape[2]
+    D = X.shape[-1]
+    # Turn theta into shape (N3, D)
+    theta = theta[None, :]
     # prior_cov is (N3, D)
     prior_cov = jnp.ones([1, D]) * prior_cov_base + theta
     # post_mean is (N3, D), post_cov is (N3, D, D)
     post_mean, post_cov = posterior_full(Y, Z, prior_cov, noise)
-    return normal_logpdf(X, post_mean, post_cov)
+    return normal_logpdf(X, post_mean, post_cov).squeeze()
 
 
 def score_fn(X, mu, sigma):
@@ -197,13 +204,13 @@ def Monte_Carlo(gy):
 
 
 # @jax.jit
-def Bayesian_Monte_Carlo_RBF(rng_key, X, g_X, mu_X_theta, var_X_theta):
+def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta):
     """
     :param var_X_theta: (D, D)
     :param mu_X_theta: (D, )
     :param rng_key:
     :param X: (N, D)
-    :param g_X: (N, )
+    :param f_X: (N, )
     :return:§
     """
     N, D = X.shape[0], X.shape[1]
@@ -215,11 +222,11 @@ def Bayesian_Monte_Carlo_RBF(rng_key, X, g_X, mu_X_theta, var_X_theta):
 
     for i, l in enumerate(l_array):
         K_no_scale = my_RBF(X, X, l)
-        A = g_X.T @ K_no_scale @ g_X / N
+        A = f_X.T @ K_no_scale @ f_X / N
         A_list.append(A)
         K = A * K_no_scale
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
-        nll = -(-0.5 * g_X.T @ K_inv @ g_X - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
+        nll = -(-0.5 * f_X.T @ K_inv @ f_X - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
         nll_array = nll_array.at[i].set(nll)
 
     if D > 2:
@@ -234,13 +241,13 @@ def Bayesian_Monte_Carlo_RBF(rng_key, X, g_X, mu_X_theta, var_X_theta):
     phi = A * kme_RBF_Gaussian(mu_X_theta, var_X_theta, l, X)
     varphi = A * kme_double_RBF_Gaussian(mu_X_theta, var_X_theta, l)
 
-    BMC_mean = phi.T @ K_inv @ g_X
-    BMC_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
+    CBQ_mean = phi.T @ K_inv @ f_X
+    CBQ_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
     pause = True
-    return BMC_mean, BMC_std
+    return CBQ_mean, CBQ_std
 
 
-def Bayesian_Monte_Carlo_Matern(rng_key, u, X, g_X, mu_X_theta, var_X_theta):
+def Bayesian_Monte_Carlo_Matern(rng_key, u, X, f_X, mu_X_theta, var_X_theta):
     """
     We only implement this for D = 2.
     :param u: (N, D)
@@ -248,7 +255,7 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, X, g_X, mu_X_theta, var_X_theta):
     :param mu_X_theta: (D, )
     :param rng_key:
     :param y: (N, D)
-    :param g_X: (N, )
+    :param f_X: (N, )
     :return:
     """
     N, D = X.shape[0], X.shape[1]
@@ -265,90 +272,14 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, X, g_X, mu_X_theta, var_X_theta):
     phi = A * kme_Matern_Gaussian(l, u1) + A * kme_Matern_Gaussian(l, u2)
     varphi = phi.mean()
 
-    BMC_mean = phi.T @ K_inv @ g_X
-    BMC_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
+    CBQ_mean = phi.T @ K_inv @ f_X
+    CBQ_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
 
-    BMC_mean = BMC_mean.squeeze()
-    BMC_std = BMC_std.squeeze()
+    CBQ_mean = CBQ_mean.squeeze()
+    CBQ_std = CBQ_std.squeeze()
     pause = True
-    return BMC_mean, BMC_std
+    return CBQ_mean, CBQ_std
 
-
-@partial(jax.jit)
-def nllk_func(log_l, c, A, X, g_X, score, eps):
-    N = X.shape[0]
-    l = jnp.exp(log_l)
-    K = A * stein_Matern(X, X, l, score, score) + c + A * jnp.eye(N)
-    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
-    nll = -(-0.5 * g_X.T @ K_inv @ g_X - 0.5 * jnp.log(jnp.linalg.det(K) + eps))
-    return nll
-
-
-@partial(jax.jit, static_argnames=['optimizer'])
-def step(log_l, c, A, opt_state, optimizer, X, g_X, score, eps):
-    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(log_l, c, A, X, g_X, score, eps)
-    updates, opt_state = optimizer.update(grads, opt_state, (log_l, c, A))
-    log_l, c, A = optax.apply_updates((log_l, c, A), updates)
-    return log_l, c, A, opt_state, nllk_value
-
-
-def Bayesian_Monte_Carlo_Stein(rng_key, X, g_X, mu_X_theta, var_X_theta, score):
-    """
-    We only implement this for D = 2.
-    :param score: (N, D)
-    :param var_X_theta: (D, D)
-    :param mu_X_theta: (D, )
-    :param rng_key:
-    :param X: (N, D)
-    :param g_X: (N, )
-    :return:
-    """
-    N, D = X.shape[0], X.shape[1]
-    eps = 1e-6
-
-    g_X_standardized = g_X / g_X.mean()
-
-    learning_rate = 1e-2
-    optimizer = optax.adam(learning_rate)
-    c_init = c = 1.0
-    log_l_init = log_l = jnp.log(2.0)
-    A_init = A = 1.0
-    opt_state = optimizer.init((log_l_init, c_init, A_init))
-
-    # # ============= Debug code =============
-    l_debug_list = []
-    c_debug_list = []
-    A_debug_list = []
-    nll_debug_list = []
-    # ============= Debug code =============
-    for _ in range(100):
-        rng_key, _ = jax.random.split(rng_key)
-        log_l, c, A, opt_state, nllk_value = step(log_l, c, A, opt_state, optimizer, X, g_X_standardized, score, eps)
-        # ============= Debug code =============
-        if jnp.isnan(nllk_value):
-            pause = True
-        l_debug_list.append(jnp.exp(log_l))
-        c_debug_list.append(c)
-        A_debug_list.append(A)
-        nll_debug_list.append(nllk_value)
-
-    fig = plt.figure(figsize=(15, 6))
-    ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
-    ax_1.plot(l_debug_list)
-    ax_2.plot(c_debug_list)
-    ax_3.plot(A_debug_list)
-    ax_4.plot(nll_debug_list)
-    plt.show()
-    # ============= Debug code =============
-
-    l = jnp.exp(log_l)
-    K = A * stein_Matern(X, X, l, score, score) + c + A * jnp.eye(N)
-    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
-    BMC_mean = c * (K_inv @ g_X_standardized).sum()
-    BMC_mean *= g_X.mean()
-    BMC_std = jnp.sqrt(jnp.abs(c - K_inv.sum() * c ** 2))
-    pause = True
-    return BMC_mean, BMC_std
 
 
 # @jax.jit
@@ -431,7 +362,7 @@ def main(args):
     prior_cov_base = 2.0
     noise = 1.0
     sample_size = 5000
-    test_num = 200
+    T_test = 200
     data_number = 5
     # theta is (N, D-1), X is (N, 1)
     rng_key, _ = jax.random.split(rng_key)
@@ -459,31 +390,31 @@ def main(args):
     # N_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
-    T_test_line = jax.random.uniform(rng_key, shape=(test_num, D), minval=-1.0, maxval=1.0)
-    cov_test_line = jnp.array([[prior_cov_base] * D]) + T_test_line
-    ground_truth = jnp.zeros(test_num)
+    Theta_test = jax.random.uniform(rng_key, shape=(T_test, D), minval=-1.0, maxval=1.0)
+    prior_cov_test = jnp.array([[prior_cov_base] * D]) + Theta_test
+    ground_truth = jnp.zeros(T_test)
 
-    post_mean, post_var = posterior_full(Y, Z, cov_test_line, noise)
-    # post_mean: (test_num, D), post_var: (test_num, D, D)
-    for i in range(test_num):
-        ground_truth = ground_truth.at[i].set(g_ground_truth_fn(post_mean[i, :], post_var[i, :, :]))
-    jnp.save(f"{args.save_path}/test_line.npy", T_test_line)
+    mu_x_theta_test, var_x_theta_test = posterior_full(Y, Z, prior_cov_test, noise)
+    # post_mean: (T_test, D), post_var: (T_test, D, D)
+    for i in range(T_test):
+        ground_truth = ground_truth.at[i].set(g_ground_truth_fn(mu_x_theta_test[i, :], var_x_theta_test[i, :, :]))
+    jnp.save(f"{args.save_path}/Theta_test.npy", Theta_test)
     jnp.save(f"{args.save_path}/ground_truth.npy", ground_truth)
 
     for T in T_array:
         rng_key, _ = jax.random.split(rng_key)
         # This is theta, size T * D
         if args.qmc:
-            alpha_all = sensitivity_utils.qmc_uniform(-1.0, 1.0, D, T)
+            Theta = sensitivity_utils.qmc_uniform(-1.0, 1.0, D, T)
         else:
-            alpha_all = jax.random.uniform(rng_key, shape=(T, D), minval=-1.0, maxval=1.0)
+            Theta = jax.random.uniform(rng_key, shape=(T, D), minval=-1.0, maxval=1.0)
 
-        rmse_BMC_array = jnp.zeros(len(N_array))
+        rmse_CBQ_array = jnp.zeros(len(N_array))
         rmse_KMS_array = jnp.zeros(len(N_array))
         rmse_LSMC_array = jnp.zeros(len(N_array))
         rmse_IS_array = jnp.zeros(len(N_array))
 
-        time_BMC_array = jnp.zeros(len(N_array))
+        time_CBQ_array = jnp.zeros(len(N_array))
         time_KMS_array = jnp.zeros(len(N_array))
         time_LSMC_array = jnp.zeros(len(N_array))
         time_IS_array = jnp.zeros(len(N_array))
@@ -495,12 +426,12 @@ def main(args):
 
             # This is X, size T * N * D
             X = jnp.zeros([T, N, D]) + 0.0
-            # This is g(X), size T * N
-            g_X = jnp.zeros([T, N]) + 0.0
+            # This is f(X), size T * N
+            f_X = jnp.zeros([T, N]) + 0.0
             u_all = jnp.zeros([T, N, D]) + 0.0
             score_all = jnp.zeros([T, N, D]) + 0.0
 
-            prior_cov = jnp.array([[prior_cov_base] * D]) + alpha_all
+            prior_cov = jnp.array([[prior_cov_base] * D]) + Theta
             mu_x_theta_all, var_x_theta_all = posterior_full(Y, Z, prior_cov, noise)
 
             for i in range(T):
@@ -518,11 +449,11 @@ def main(args):
                 score_all = score_all.at[i, :, :].set(score)
                 u_all = u_all.at[i, :, :].set(u)
                 X = X.at[i, :, :].set(X_i)
-                g_X = g_X.at[i, :].set(g(X_i))
+                f_X = f_X.at[i, :].set(g(X_i))
 
             for i in range(T):
                 X_i = X[i, :, :]
-                g_X_i = g_X[i, :]
+                f_X_i = f_X[i, :]
                 u_i = u_all[i, :, :]
                 score_i = score_all[i, :, :]
                 mu_X_theta_i = mu_x_theta_all[i, :]
@@ -530,17 +461,12 @@ def main(args):
 
                 tt0 = time.time()
                 if args.kernel_x == "RBF":
-                    I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_RBF(rng_key, X_i, g_X_i, mu_X_theta_i, var_X_theta_i)
+                    I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_RBF(rng_key, X_i, f_X_i, mu_X_theta_i, var_X_theta_i)
                 elif args.kernel_x == "Matern":
                     if D > 2:
                         raise NotImplementedError("Matern kernel is only implemented for D=2")
-                    I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, X_i, g_X_i, mu_X_theta_i,
+                    I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, X_i, f_X_i, mu_X_theta_i,
                                                                       var_X_theta_i)
-                elif args.kernel_x == "Stein":
-                    if D > 2:
-                        raise NotImplementedError("Stein kernel is only implemented for D=2")
-                    I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_Stein(rng_key, X_i, g_X_i, mu_X_theta_i, var_X_theta_i,
-                                                                     score_i)
                 else:
                     raise NotImplementedError("Kernel not implemented")
                 tt1 = time.time()
@@ -548,93 +474,84 @@ def main(args):
                 I_BQ_mean_array = I_BQ_mean_array.at[i].set(I_BQ_mean)
                 I_BQ_std_array = I_BQ_std_array.at[i].set(I_BQ_std if not jnp.isnan(I_BQ_std) else 0.01)
 
-                I_MC_mean_array = I_MC_mean_array.at[i].set(g_X_i.mean())
+                I_MC_mean_array = I_MC_mean_array.at[i].set(f_X_i.mean())
 
                 # ============= Debug code =============
                 # true_value = g_ground_truth_fn(mu_X_theta_i, var_X_theta_i)
-                # BMC_value = I_BQ_mean
+                # CBQ_value = I_BQ_mean
                 # print("=============")
                 # print('True value', true_value)
                 # print(f'MC with N={N}', MC_value)
-                # print(f'BMC with N={N}', BMC_value)
-                # print(f'BMC uncertainty {I_BQ_std}')
+                # print(f'CBQ with N={N}', CBQ_value)
+                # print(f'CBQ uncertainty {I_BQ_std}')
                 # print(f"=============")
                 # pause = True
                 # ============= Debug code =============
 
-            # Save jitting time.
-            # _, _ = GP(rng_key, I_MC_mean_array, None, alpha_all, T_test_line, eps=1e-1, kernel_fn=my_RBF)
+            time0 = time.time()
+            KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, None, Theta, Theta_test,
+                                eps=0., kernel_fn=my_RBF)
+            time_KMS = time.time() - time0
 
+            time0 = time.time()
             rng_key, _ = jax.random.split(rng_key)
-            t0 = time.time()
-            KMS_mean, KMS_std = GP(rng_key, I_MC_mean_array, None, alpha_all, T_test_line,
-                                   eps=0., kernel_fn=my_RBF)
-            time_KMS = time.time() - t0
-            time_KMS_array = time_KMS_array.at[j].set(time_KMS)
+            BQ_mean = jnp.zeros(T_test) * 0.0
+            BQ_std = jnp.zeros(T_test) * 0.0
+            for t in range(T_test):
+                BQ_mean_temp, BQ_std_temp = Bayesian_Monte_Carlo_RBF(rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
+                                                           mu_x_theta_test[t, :], var_x_theta_test[t, :, :])
+                BQ_mean = BQ_mean.at[t].set(BQ_mean_temp)
+                BQ_std = BQ_std.at[t].set(BQ_std_temp)
+            time_BQ = time.time() - time0
 
+            time0 = time.time()
             rng_key, _ = jax.random.split(rng_key)
-            t0 = time.time()
             if args.kernel_theta == "RBF":
-                BMC_mean, BMC_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, alpha_all, T_test_line,
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
                                        eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
             elif args.kernel_theta == "Matern":
-                BMC_mean, BMC_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, alpha_all, T_test_line,
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
                                        eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
             else:
                 raise NotImplementedError(f"Unknown kernel {args.kernel_theta}")
-            time_BMC = time.time() - t0 + (tt1 - tt0) * T
-            time_BMC_array = time_BMC_array.at[j].set(time_BMC)
+            time_CBQ = time.time() - time0 + (tt1 - tt0) * T
 
-            _, _ = baselines.polynomial(alpha_all, X, g_X, T_test_line)
-            t0 = time.time()
-            LSMC_mean, LSMC_std = baselines.polynomial(alpha_all, X, g_X, T_test_line)
-            time_LSMC = time.time() - t0
-            time_LSMC_array = time_LSMC_array.at[j].set(time_LSMC)
+            time0 = time.time()
+            LSMC_mean, LSMC_std = baselines.polynomial(args, Theta, X, f_X, Theta_test)
+            time_LSMC = time.time() - time0
 
-            log_py_x_fn = partial(posterior_log_llk, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
-            _, _ = baselines.importance_sampling_sensitivity(log_py_x_fn, alpha_all,
-                                                             X, g_X, T_test_line)
-            t0 = time.time()
-            IS_mean, IS_std = baselines.importance_sampling_sensitivity(log_py_x_fn, alpha_all,
-                                                                        X, g_X, T_test_line)
-            time_IS = time.time() - t0
-            time_IS_array = time_IS_array.at[j].set(time_IS)
+            time0 = time.time()
+            log_px_theta_fn = partial(posterior_log_llk, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
+            IS_mean, IS_std = baselines.importance_sampling(log_px_theta_fn, Theta_test, Theta, X, f_X)
+            time_IS = time.time() - time0
 
-            rmse_BMC = jnp.sqrt(jnp.mean((BMC_mean - ground_truth) ** 2))
+            rmse_CBQ = jnp.sqrt(jnp.mean((CBQ_mean - ground_truth) ** 2))
+            rmse_BQ = jnp.sqrt(jnp.mean((BQ_mean - ground_truth) ** 2))
             rmse_KMS = jnp.sqrt(jnp.mean((KMS_mean - ground_truth) ** 2))
             rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_mean - ground_truth) ** 2))
             rmse_IS = jnp.sqrt(jnp.mean((IS_mean - ground_truth) ** 2))
 
-            rmse_BMC_array = rmse_BMC_array.at[j].set(rmse_BMC)
-            rmse_KMS_array = rmse_KMS_array.at[j].set(rmse_KMS)
-            rmse_LSMC_array = rmse_LSMC_array.at[j].set(rmse_LSMC)
-            rmse_IS_array = rmse_IS_array.at[j].set(rmse_IS)
+            calibration = sensitivity_utils.calibrate(ground_truth, CBQ_mean, jnp.diag(CBQ_std))
 
-            calibration = sensitivity_utils.calibrate(ground_truth, BMC_mean, jnp.diag(BMC_std))
-            sensitivity_utils.save(args, T, N, rmse_BMC, rmse_KMS, rmse_LSMC, rmse_IS,
-                                   time_BMC, time_KMS, time_LSMC, time_IS, calibration)
+            # time_CBQ = None
+            # time_BQ = None
+            # time_LSMC = None
+            # time_KMS = None
+            # time_IS = None
+            sensitivity_utils.save(args, T, N, rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS,
+                                   time_CBQ, time_BQ, time_KMS, time_LSMC, time_IS, calibration)
 
-            # ============= Debug code =============
-            methods = ["BMC", "KMS", "LSMC", "IS"]
-            rmse_values = [rmse_BMC, rmse_KMS, rmse_LSMC, rmse_IS]
+            methods = ["CBQ", "BQ", "KMS", "LSMC", "IS"]
+            rmse_values = [rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS]
+            time_values = [time_CBQ, time_BQ, time_KMS, time_LSMC, time_IS]
 
             print("\n\n=======================================")
             print(f"T = {T} and N = {N}")
             print("=======================================")
-            print(" ".join([f"{method:<10}" for method in methods]))
-            print(" ".join([f"{value:<10.6f}" for value in rmse_values]))
+            print("Methods:    " + " ".join([f"{method:<10}" for method in methods]))
+            print("RMSE:       " + " ".join([f"{value:<10.6f}" for value in rmse_values]))
+            print("Time (s):   " + " ".join([f"{value:<10.6f}" for value in time_values]))
             print("=======================================\n\n")
-
-            # ============= Debug code =============
-            # time_values = [time_BMC, time_KMS, time_LSMC, time_IS]
-            # 
-            # print("\n\n=======================================")
-            # print(f"T = {T} and N = {N}")
-            # print("=======================================")
-            # print(" ".join([f"{method:<10}" for method in methods]))
-            # print(" ".join([f"{value:<10.6f}" for value in time_values]))
-            # print("=======================================\n\n")
-            # ============= Debug code =============
     return
 
 
@@ -649,6 +566,7 @@ def get_config():
     parser.add_argument('--qmc', action='store_true', default=False)
     parser.add_argument('--kernel_x', type=str)
     parser.add_argument('--kernel_theta', type=str)
+    parser.add_argument('--baseline_use_variance', action='store_true', default=False)
     args = parser.parse_args()
     return args
 

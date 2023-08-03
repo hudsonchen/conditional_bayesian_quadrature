@@ -381,7 +381,7 @@ def main(args):
                 # pause = True
                 # ============= Debug code =============
 
-            LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test)
+            LSMC_mean_1, LSMC_std_1 = baselines.polynomial(args, Theta1, X1, f1_X, Theta1_test)
             BMC_mean_1, BMC_std_1 = GP(I1_BQ_mean_array, I1_BQ_std_array, Theta1, Theta1_test, eps=I1_BQ_std_array.mean())
             KMS_mean_1, KMS_std_1 = GP(f1_mc_mean_array, None, Theta1, Theta1_test, eps=0.0)
 
@@ -419,7 +419,7 @@ def main(args):
                 # pause = True
                 # ============= Debug code =============
 
-            LSMC_mean_2, LSMC_std_2 = baselines.polynomial(Theta2, X2, f2_X, Theta2_test)
+            LSMC_mean_2, LSMC_std_2 = baselines.polynomial(args, Theta2, X2, f2_X, Theta2_test)
             BMC_mean_2, BMC_std_2 = GP(I2_BQ_mean_array, I2_BQ_std_array, Theta2, Theta2_test, eps=I2_BQ_std_array.mean())
             KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, Theta2, Theta2_test, eps=0.0)
 
