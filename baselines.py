@@ -4,10 +4,9 @@ import jax
 from utils import finance_utils
 
 
-def polynomial(args, theta, X, f_X, theta_test, poly=3):
+def polynomial(theta, X, f_X, theta_test, baseline_use_variance, poly=3):
     """
     Polynomial Regression
-    :param args
     :param poly: int
     :param theta_test: T_Test*D
     :param theta: T*D
@@ -19,12 +18,11 @@ def polynomial(args, theta, X, f_X, theta_test, poly=3):
     theta_poly = theta[:, :, None] ** powers
     theta_poly = theta_poly.reshape([theta.shape[0], -1])
 
-    if not args.baseline_use_variance:
+    if not baseline_use_variance:
         eps = 1e-6
         D = (1 + poly) * theta.shape[1]
         theta = jnp.linalg.inv(theta_poly.T @ theta_poly + eps * jnp.eye(D)) @ theta_poly.T @ f_X.mean(1)
     else:
-        # this code is copied from PRML book
         eps = 1e-6
         MC_std = f_X.std(1)
         D = (1 + poly) * theta.shape[1]
