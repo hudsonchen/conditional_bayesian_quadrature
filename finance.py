@@ -449,16 +449,12 @@ def option_pricing(args):
             # ======================================== KMS ========================================
             I_MC_mean = loss.mean(1)
             I_MC_std = loss.std(1)
+            time0 = time.time()
             if args.baseline_use_variance:
-                time0 = time.time()
-                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean, I_MC_std, St, St_test,
-                                eps=0., kernel_fn=my_RBF)
-                time_KMS = time.time() - time0
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean, I_MC_std, St, St_test, eps=0., kernel_fn=my_RBF)
             else:
-                time0 = time.time()
-                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean, None, St, St_test,
-                                    eps=0., kernel_fn=my_RBF)
-                time_KMS = time.time() - time0
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean, None, St, St_test, eps=0., kernel_fn=my_RBF)
+            time_KMS = time.time() - time0
             # ======================================== KMS ========================================
 
             # ======================================== IS ========================================

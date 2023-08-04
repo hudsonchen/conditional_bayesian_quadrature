@@ -41,6 +41,20 @@ plt.rc('text', usetex=False)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 
+def get_config():
+    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
+    # Args settings
+    parser.add_argument('--dim', type=int)
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--save_path', type=str, default='./')
+    parser.add_argument('--data_path', type=str, default='./data')
+    parser.add_argument('--g_fn', type=str, default=None)
+    parser.add_argument('--qmc', action='store_true', default=False)
+    parser.add_argument('--kernel_x', type=str)
+    parser.add_argument('--kernel_theta', type=str)
+    parser.add_argument('--baseline_use_variance', action='store_true', default=False)
+    args = parser.parse_args()
+    return args
 
 def generate_data(rng_key, D, N, noise):
     """
@@ -637,22 +651,6 @@ def main(args):
             print("Time (s):   " + " ".join([f"{value:<10.6f}" for value in time_values]))
             print("========================================\n\n")
     return
-
-
-def get_config():
-    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
-    # Args settings
-    parser.add_argument('--dim', type=int)
-    parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--save_path', type=str, default='./')
-    parser.add_argument('--data_path', type=str, default='./data')
-    parser.add_argument('--g_fn', type=str, default=None)
-    parser.add_argument('--qmc', action='store_true', default=False)
-    parser.add_argument('--kernel_x', type=str)
-    parser.add_argument('--kernel_theta', type=str)
-    parser.add_argument('--baseline_use_variance', action='store_true', default=False)
-    args = parser.parse_args()
-    return args
 
 
 def create_dir(args):

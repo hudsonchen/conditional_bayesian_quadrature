@@ -39,6 +39,17 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath, amsfonts}')
 plt.tight_layout()
 
 
+def get_config():
+    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
+    # Args settings
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--save_path', type=str, default='./')
+    parser.add_argument('--data_path', type=str, default='./data')
+    parser.add_argument('--baseline_use_variance', action='store_true', default=False)
+    args = parser.parse_args()
+    return args
+
+
 def f1(theta, x):
     """
     :param theta: (T, 1)
@@ -59,7 +70,7 @@ def f2(theta, x):
     """
     :param theta: (T, 1)
     :param x: (T, N, 9)
-    :return: (N, T)
+    :return: (T, N)
     """
     lamba_ = 1e4
     # lambda * (Theta_5 * Theta_6 * Theta_7 + Theta_8 * Theta_9 * Theta_10) - (Theta_1 + Theta_2 * Theta_3 * Theta_4)
@@ -98,14 +109,22 @@ def conditional_distribution(joint_mean, joint_covariance, theta, dimensions_x, 
     return mean_x_given_theta.T, cov_x_given_theta
 
 
-def Bayesian_Monte_Carlo_Matern(rng_key, u, x, gx, mu_x_theta, sigma_x_theta):
+def Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u, x, fx):
+    scale = 1000
+    fx_standardized = fx / scale
+    vmap_func = jax.vmap(Bayesian_Monte_Carlo_Matern, in_axes=(None, 0, 0, 0))
+    I_BQ_mean, I_BQ_std = vmap_func(rng_key, u, x, fx_standardized)
+    return I_BQ_mean * scale, I_BQ_std
+
+
+def Bayesian_Monte_Carlo_Matern(rng_key, u, x, fx):
     """
     :param u: (N, D)
     :param sigma_x_theta: (D, D)
     :param mu_x_theta: (D, )
     :param rng_key:
     :param x: (N, D)
-    :param gx: (N, )
+    :param fx: (N, )
     :return:
     """
     N, D = x.shape[0], x.shape[1]
@@ -114,34 +133,34 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, x, gx, mu_x_theta, sigma_x_theta):
     K_no_scale = jnp.zeros([N, N])
     phi_no_scale = jnp.zeros([N, 1])
 
-    l_array = jnp.array([1.0] * 3 + [1.0] + [1.0] * 5)
+    l_array = jnp.array([1.0] * 9)
     for i in range(D):
         l = l_array[i]
         u_i = u[:, i][:, None]
         K_no_scale += my_Matern(u_i, u_i, l)
         phi_no_scale += kme_Matern_Gaussian(l, u_i)
 
-    A = gx.T @ K_no_scale @ gx / N
+    A = fx.T @ K_no_scale @ fx / N
     K = A * K_no_scale
     phi = A * phi_no_scale
 
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
     varphi = phi.mean()
 
-    BMC_mean = phi.T @ K_inv @ gx
-    BMC_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
+    CBQ_mean = phi.T @ K_inv @ fx
+    CBQ_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
 
-    BMC_mean = BMC_mean.squeeze()
-    BMC_std = BMC_std.squeeze()
+    CBQ_mean = CBQ_mean.squeeze()
+    CBQ_std = CBQ_std.squeeze()
     pause = True
-    return BMC_mean, BMC_std
+    return CBQ_mean, CBQ_std
 
 
 def GP(psi_x_theta_mean, psi_x_theta_std, Theta, Theta_test, eps):
     """
-    :param psi_x_theta_mean: (n_alpha, )
-    :param psi_x_theta_std: (n_alpha, )
-    :param Theta: (n_alpha, D)
+    :param psi_x_theta_mean: (T, )
+    :param psi_x_theta_std: (T, )
+    :param Theta: (T, D)
     :param Theta_test: (T_test, D)
     :return:
     """
@@ -150,54 +169,27 @@ def GP(psi_x_theta_mean, psi_x_theta_std, Theta, Theta_test, eps):
     scale = 1.
     psi_x_theta_mean_standardized = psi_x_theta_mean / scale
 
-    if psi_x_theta_std is None:
-        sigma_array = jnp.array([1.0, 0.1, 0.01, 0.001])
-        A_array = jnp.array([10.0, 100.0, 300.0, 1000.0])
-        nll_array = jnp.zeros([len(l_array), len(A_array), len(sigma_array)])
-    else:
-        sigma_array = jnp.array([0.0])
-        A_array = 0 * l_array
-        nll_array = jnp.zeros([len(l_array), 1])
+    A_array = 0 * l_array
+    nll_array = jnp.zeros([len(l_array), 1])
 
-    if psi_x_theta_std is None:
-        for i, l in enumerate(l_array):
-            for j, A in enumerate(A_array):
-                for k, sigma in enumerate(sigma_array):
-                    K = A * my_Matern(Theta, Theta, l) + jnp.eye(T) * sigma
-                    K_inv = jnp.linalg.inv(K)
-                    nll = -(-0.5 * psi_x_theta_mean_standardized.T @ K_inv @ psi_x_theta_mean_standardized - 0.5 * jnp.log(
-                        jnp.linalg.det(K) + 1e-6)) / T
-                    nll_array = nll_array.at[i, j].set(nll.squeeze())
-        min_index_flat = jnp.argmin(nll_array)
-        i1, i2, i3 = jnp.unravel_index(min_index_flat, nll_array.shape)
-        l = l_array[i1]
-        A = A_array[i2]
-        sigma = sigma_array[i3]
-    else:
-        for i, l in enumerate(l_array):
-            K_no_scale = my_Matern(Theta, Theta, l)
-            A = psi_x_theta_mean_standardized.T @ K_no_scale @ psi_x_theta_mean_standardized / T
-            A_array = A_array.at[i].set(A.squeeze())
-            K = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
-            K_inv = jnp.linalg.inv(K)
-            nll = -(-0.5 * psi_x_theta_mean_standardized.T @ K_inv @ psi_x_theta_mean_standardized - 0.5 * jnp.log(
-                jnp.linalg.det(K) + 1e-6)) / T
-            nll_array = nll_array.at[i].set(nll.squeeze())
+    for i, l in enumerate(l_array):
+        K_no_scale = my_Matern(Theta, Theta, l)
+        A = psi_x_theta_mean_standardized.T @ K_no_scale @ psi_x_theta_mean_standardized / T
+        A_array = A_array.at[i].set(A.squeeze())
+        K = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
+        K_inv = jnp.linalg.inv(K)
+        nll = -(-0.5 * psi_x_theta_mean_standardized.T @ K_inv @ psi_x_theta_mean_standardized - 0.5 * jnp.log(
+            jnp.linalg.det(K) + 1e-6)) / T
+        nll_array = nll_array.at[i].set(nll.squeeze())
 
-        l = l_array[jnp.argmin(nll_array)]
-        A = A_array[jnp.argmin(nll_array)]
+    l = l_array[jnp.argmin(nll_array)]
+    A = A_array[jnp.argmin(nll_array)]
 
-    if psi_x_theta_std is None:
-        K_train_train = A * my_Matern(Theta, Theta, l) + jnp.eye(T) * sigma
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(Theta_test, Theta, l)
-        K_test_test = A * my_Matern(Theta_test, Theta_test, l) + jnp.eye(Theta_test.shape[0]) * sigma
-    else:
-        # A = 1
-        K_train_train = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(Theta_test, Theta, l)
-        K_test_test = A * my_Matern(Theta_test, Theta_test, l) + eps * jnp.eye(Theta_test.shape[0])
+    K_train_train = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
+    K_train_train_inv = jnp.linalg.inv(K_train_train)
+    K_test_train = A * my_Matern(Theta_test, Theta, l)
+    K_test_test = A * my_Matern(Theta_test, Theta_test, l) + eps * jnp.eye(Theta_test.shape[0])
+
     mu_x_theta = K_test_train @ K_train_train_inv @ psi_x_theta_mean_standardized * scale
     var_x_theta = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_x_theta = jnp.abs(var_x_theta)
@@ -247,7 +239,7 @@ def main(args):
     f2_cond_dist_fn = partial(conditional_distribution, joint_mean=ThetaX_mean, joint_covariance=ThetaX_sigma,
                               dimensions_theta=[13], dimensions_x=[3, 10, 11, 12, 14, 15, 16, 17, 18])
 
-    # ============= Code to generate test points Begins =============
+    # ============= Code to generate test points =============
     T_test = 100
     large_sample_size = 10000
     rng_key, _ = jax.random.split(rng_key)
@@ -261,6 +253,8 @@ def main(args):
     u1_test = jnp.zeros([T_test, large_sample_size, 9]) + 0.0
     X2_test = jnp.zeros([T_test, large_sample_size, 9]) + 0.0
     u2_test = jnp.zeros([T_test, large_sample_size, 9]) + 0.0
+
+    # Use 
     for i in tqdm(range(T_test)):
         rng_key, _ = jax.random.split(rng_key)
         u1_temp = jax.random.multivariate_normal(rng_key,
@@ -289,12 +283,12 @@ def main(args):
     # ============= Code to generate test points Ends =============
 
     # T_array = jnp.array([10, 20, 30])
-    T_array = jnp.array([10, 30, 50, 100])
+    T_array = jnp.array([10, 50, 100])
     # T_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #·
     # N_array = jnp.array([10, 30])
     # N_array = jnp.array([10, 30, 50, 100])
-    N_array = jnp.arange(10, 200, 10)
+    N_array = jnp.arange(50, 200, 10)
 
     for T in T_array:
         rng_key, _ = jax.random.split(rng_key)
@@ -340,107 +334,124 @@ def main(args):
             f1_X = f1(Theta1, X1)
             f2_X = f2(Theta2, X2)
 
-            I1_BQ_mean_array = jnp.zeros([T]) + 0.0
-            I1_BQ_std_array = jnp.zeros([T]) + 0.0
-            f1_mc_mean_array = jnp.zeros([T]) + 0.0
-            I2_BQ_mean_array = jnp.zeros([T]) + 0.0
-            I2_BQ_std_array = jnp.zeros([T]) + 0.0
-            f2_mc_mean_array = jnp.zeros([T]) + 0.0
+            # ==================== Code for f1 Starts ====================
+            # ==================== Debug code ====================
+            # for i in range(T):
+            #     rng_key, _ = jax.random.split(rng_key)
+            #     X1_i = X1[i, :, :]
+            #     f1_X_i = f1_X[i, :]
+            #     u1_i = u1[i, :, :]
+            #     scale = 1000.0
+            #     f1_X_i_standardized = f1_X_i / scale
+            #     I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u1_i, X1_i, f1_X_i_standardized)
+            #     I1_BQ_mean = I1_BQ_mean * scale
+            #     f1_mc_mean = f1_X_i.mean()
+            #     I1_BQ_std *= 10
 
-            # ============= Code for f1 Starts =============
-            for i in range(T):
-                rng_key, _ = jax.random.split(rng_key)
-                X1_i = X1[i, :, :]
-                f1_X_i = f1_X[i, :]
-                u1_i = u1[i, :, :]
-                # scale = f1_X_i.mean()
-                scale = 1000.0
-                f1_X_i_standardized = f1_X_i / scale
-                I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u1_i, X1_i, f1_X_i_standardized,
-                                                                      f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma)
-                I1_BQ_mean = I1_BQ_mean * scale
-                f1_mc_mean = f1_X_i.mean()
-                I1_BQ_std *= 10
+            #     I1_BQ_mean_array = I1_BQ_mean_array.at[i].set(I1_BQ_mean)
+            #     I1_BQ_std_array = I1_BQ_std_array.at[i].set(I1_BQ_std)
+            #     I1_MC_mean_array = I1_MC_mean_array.at[i].set(f1_mc_mean)
 
-                I1_BQ_mean_array = I1_BQ_mean_array.at[i].set(I1_BQ_mean)
-                I1_BQ_std_array = I1_BQ_std_array.at[i].set(I1_BQ_std)
-                f1_mc_mean_array = f1_mc_mean_array.at[i].set(f1_mc_mean)
+            #     
+            #     rng_key, _ = jax.random.split(rng_key)
+            #     X_temp_large = jax.random.multivariate_normal(rng_key, f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma,
+            #                                                   shape=(large_sample_size,))
+            #     f1_X_large = f1(Theta1[i, :][None, :], X_temp_large[None, :])
+            #     f1_mc_mean_large = f1_X_large.mean()
+            #     print====================
+            #     print('Large sample MC', f1_mc_mean_large)
+            #     print(f'MC with {N} number of X', f1_mc_mean)
+            #     print(f'CBQ with {N} number of X', I1_BQ_mean)
+            #     print(f'CBQ uncertainty {I1_BQ_std}')
+            #     print(f====================
+            #     pause = True
+            #     ==================== Debug code ====================
 
-                # # ============= Debug code =============
-                # rng_key, _ = jax.random.split(rng_key)
-                # X_temp_large = jax.random.multivariate_normal(rng_key, f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma,
-                #                                               shape=(large_sample_size,))
-                # f1_X_large = f1(Theta1[i, :][None, :], X_temp_large[None, :])
-                # f1_mc_mean_large = f1_X_large.mean()
-                # print("=============")
-                # print('Large sample MC', f1_mc_mean_large)
-                # print(f'MC with {N} number of X', f1_mc_mean)
-                # print(f'BMC with {N} number of X', I1_BQ_mean)
-                # print(f'BMC uncertainty {I1_BQ_std}')
-                # print(f"=============")
-                # pause = True
-                # ============= Debug code =============
 
-            LSMC_mean_1, LSMC_std_1 = baselines.polynomial(args, Theta1, X1, f1_X, Theta1_test)
-            BMC_mean_1, BMC_std_1 = GP(I1_BQ_mean_array, I1_BQ_std_array, Theta1, Theta1_test, eps=I1_BQ_std_array.mean())
-            KMS_mean_1, KMS_std_1 = GP(f1_mc_mean_array, None, Theta1, Theta1_test, eps=0.0)
+            I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u1, X1, f1_X)
+            CBQ_mean_1, CBQ_std_1 = GP(I1_BQ_mean, I1_BQ_std, Theta1, Theta1_test, eps=I1_BQ_std.mean())
 
-            # ============= Code for f2 Starts =============
-            for i in range(T):
-                rng_key, _ = jax.random.split(rng_key)
-                X2_i = X2[i, :, :]
-                f2_X_i = f2_X[i, :]
-                u2_i = u2[i, :, :]
-                # scale = f2_X_i.mean()
-                scale = 1000.0
-                f2_X_i_standardized = f2_X_i / scale
-                I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, X2_i, f2_X_i_standardized,
-                                                                      f2_p_X_Theta_mean[i, :], f2_p_X_Theta_sigma)
-                I2_BQ_mean = I2_BQ_mean * scale
-                I2_BQ_std *= 10
-                f2_mc_mean = f2_X_i.mean()
+            if args.baseline_use_variance:
+                LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test, baseline_use_variance=True)
+            else:
+                LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test, baseline_use_variance=False)
 
-                I2_BQ_mean_array = I2_BQ_mean_array.at[i].set(I2_BQ_mean)
-                I2_BQ_std_array = I2_BQ_std_array.at[i].set(I2_BQ_std)
-                f2_mc_mean_array = f2_mc_mean_array.at[i].set(f2_mc_mean)
+            I1_MC_mean = f1_X.mean(1)
+            I1_MC_std = f1_X.std(1)
+            if args.baseline_use_variance:
+                KMS_mean_1, KMS_std_1 = baselines.kernel_mean_shrinkage(rng_key, I1_MC_mean, I1_MC_std, Theta1, Theta1_test, eps=0., kernel_fn=my_RBF)
+            else:
+                KMS_mean_1, KMS_std_1 = baselines.kernel_mean_shrinkage(rng_key, I1_MC_mean, None, Theta1, Theta1_test, eps=0., kernel_fn=my_RBF)
 
-                # # ============= Debug code =============
-                # rng_key, _ = jax.random.split(rng_key)
-                # X_temp_large = jax.random.multivariate_normal(rng_key, f2_p_X_Theta_mean[i, :], f2_p_X_Theta_sigma,
-                #                                               shape=(large_sample_size,))
-                # f2_X_large = f2(Theta2[i, :][None, :], X_temp_large[None, :])
-                # f2_mc_mean_large = f2_X_large.mean()
-                # print("=============")
-                # print('Large sample MC', f2_mc_mean_large)
-                # print(f'MC with {N} number of X', f2_mc_mean)
-                # print(f'BMC with {N} number of X', I2_BQ_mean)
-                # print(f'BMC uncertainty {I2_BQ_std}')
-                # print(f"=============")
-                # pause = True
-                # ============= Debug code =============
+            # ==================== Code for f1 Starts ====================
 
-            LSMC_mean_2, LSMC_std_2 = baselines.polynomial(args, Theta2, X2, f2_X, Theta2_test)
-            BMC_mean_2, BMC_std_2 = GP(I2_BQ_mean_array, I2_BQ_std_array, Theta2, Theta2_test, eps=I2_BQ_std_array.mean())
-            KMS_mean_2, KMS_std_2 = GP(f2_mc_mean_array, None, Theta2, Theta2_test, eps=0.0)
+            # ==================== Code for f2 Starts ====================
+            # ==================== Debug code ====================
+            # for i in range(T):
+            #     rng_key, _ = jax.random.split(rng_key)
+            #     X2_i = X2[i, :, :]
+            #     f2_X_i = f2_X[i, :]
+            #     u2_i = u2[i, :, :]
+            #     scale = 1000.0
+            #     f2_X_i_standardized = f2_X_i / scale
+            #     I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, X2_i, f2_X_i_standardized)
+            #     I2_BQ_mean = I2_BQ_mean * scale
+            #     f2_mc_mean = f2_X_i.mean()
+            #     I2_BQ_std *= 10
 
-            # ============= Code for f2 Ends =============
+            #     I2_BQ_mean_array = I2_BQ_mean_array.at[i].set(I2_BQ_mean)
+            #     I2_BQ_std_array = I2_BQ_std_array.at[i].set(I2_BQ_std)
+            #     I2_MC_mean_array = I2_MC_mean_array.at[i].set(f2_mc_mean)
 
-            calibration_1 = decision_utils.calibrate(ground_truth_1, BMC_mean_1, jnp.diag(BMC_std_1))
-            calibration_2 = decision_utils.calibrate(ground_truth_2, BMC_mean_2, jnp.diag(BMC_std_2))
+            #     
+            #     rng_key, _ = jax.random.split(rng_key)
+            #     X_temp_large = jax.random.multivariate_normal(rng_key, f2_p_X_Theta_mean[i, :], f2_p_X_Theta_sigma,
+            #                                                   shape=(large_sample_size,))
+            #     f2_X_large = f2(Theta1[i, :][None, :], X_temp_large[None, :])
+            #     f2_mc_mean_large = f2_X_large.mean()
+            #     print====================
+            #     print('Large sample MC', f2_mc_mean_large)
+            #     print(f'MC with {N} number of X', f2_mc_mean)
+            #     print(f'CBQ with {N} number of X', I2_BQ_mean)
+            #     print(f'CBQ uncertainty {I2_BQ_std}')
+            #     print(f====================
+            #     pause = True
+            #     ==================== Debug code ====================
+
+
+            I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u2, X2, f2_X)
+            CBQ_mean_2, CBQ_std_2 = GP(I2_BQ_mean, I2_BQ_std, Theta2, Theta2_test, eps=I2_BQ_std.mean())
+
+            if args.baseline_use_variance:
+                LSMC_mean_2, LSMC_std_2 = baselines.polynomial(Theta2, X2, f2_X, Theta2_test, baseline_use_variance=True)
+            else:
+                LSMC_mean_2, LSMC_std_2 = baselines.polynomial(Theta2, X2, f2_X, Theta2_test, baseline_use_variance=False)
+
+            I2_MC_mean = f2_X.mean(1)
+            I2_MC_std = f2_X.std(1)
+            if args.baseline_use_variance:
+                KMS_mean_2, KMS_std_2 = baselines.kernel_mean_shrinkage(rng_key, I2_MC_mean, I2_MC_std, Theta2, Theta2_test, eps=0., kernel_fn=my_RBF)
+            else:
+                KMS_mean_2, KMS_std_2 = baselines.kernel_mean_shrinkage(rng_key, I2_MC_mean, None, Theta2, Theta2_test, eps=0., kernel_fn=my_RBF)
+
+            # ==================== Code for f2 Starts ====================
+
+            calibration_1 = decision_utils.calibrate(ground_truth_1, CBQ_mean_1, jnp.diag(CBQ_std_1))
+            calibration_2 = decision_utils.calibrate(ground_truth_2, CBQ_mean_2, jnp.diag(CBQ_std_2))
 
             true_value = jnp.maximum(ground_truth_1, ground_truth_2)
-            BMC_value = jnp.maximum(BMC_mean_1, BMC_mean_2)
+            CBQ_value = jnp.maximum(CBQ_mean_1, CBQ_mean_2)
             KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2)
             LSMC_value = jnp.maximum(LSMC_mean_1, LSMC_mean_2)
 
-            rmse_BMC = jnp.sqrt(jnp.mean((BMC_value - true_value) ** 2))
+            rmse_CBQ = jnp.sqrt(jnp.mean((CBQ_value - true_value) ** 2))
             rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
             rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
 
-            decision_utils.save(args, T, N, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
+            decision_utils.save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
 
-            methods = ["BMC", "KMS", "LSMC", "IS"]
-            rmse_values = [rmse_BMC, rmse_KMS, rmse_LSMC, np.nan]
+            methods = ["CBQ", "KMS", "LSMC", "IS"]
+            rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, np.nan]
 
             print("\n\n=======================================")
             print(f"T = {T} and N = {N}")
@@ -449,46 +460,31 @@ def main(args):
             print(" ".join([f"{value:<6.5f}" for value in rmse_values]))
             print("=======================================\n\n")
 
-            # ============= Debug code =============
+            # ==================== Debug code ====================
             # plt.figure()
             # Theta1_test_ = Theta1_test.squeeze()
             # ind = Theta1_test_.argsort()
             # plt.plot(Theta1_test_[ind], ground_truth_1[ind], label='Ground truth')
-            # plt.plot(Theta1_test_[ind], BMC_mean_1[ind], label='BMC')
+            # plt.plot(Theta1_test_[ind], CBQ_mean_1[ind], label='CBQ')
             # plt.plot(Theta1_test_[ind], KMS_mean_1[ind], label='KMS')
-            # plt.scatter(Theta1.squeeze(), I1_BQ_mean_array.squeeze())
+            # plt.scatter(Theta1.squeeze(), I1_BQ_mean.squeeze())
             # plt.plot(Theta1_test_[ind], LSMC_mean_1[ind], label='LSMC')
             # plt.legend()
-            # plt.show()
-            #
+            # plt.savefig(f"{args.save_path}/debug1.png")
+            
             # plt.figure()
             # Theta2_test_ = Theta2_test.squeeze()
             # ind = Theta2_test_.argsort()
             # plt.plot(Theta2_test_[ind], ground_truth_2[ind], label='Ground truth')
-            # plt.plot(Theta2_test_[ind], BMC_mean_2[ind], label='BMC')
+            # plt.plot(Theta2_test_[ind], CBQ_mean_2[ind], label='CBQ')
             # plt.plot(Theta2_test_[ind], KMS_mean_2[ind], label='KMS')
-            # plt.scatter(Theta2.squeeze(), I2_BQ_mean_array.squeeze())
+            # plt.scatter(Theta2.squeeze(), I2_BQ_mean.squeeze())
             # plt.plot(Theta2_test_[ind], LSMC_mean_2[ind], label='LSMC')
             # plt.legend()
-            # plt.show()
+            # plt.savefig(f"{args.save_path}/debug2.png")
+            # pause = True
+            # ==================== Debug code ====================
 
-            # print(f"=============")
-            # print(f"RMSE of BMC with {T} number of Theta and {N} number of X", rmse_BMC)
-            # print(f"RMSE of KMS with {T} number of Theta and {N} number of X", rmse_KMS)
-            # print(f"RMSE of LSMC with {T} number of Theta and {N} number of X", rmse_LSMC)
-            # print(f"=============")
-            pause = True
-            # ============= Debug code =============
-
-
-def get_config():
-    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
-    # Args settings
-    parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--save_path', type=str, default='./')
-    parser.add_argument('--data_path', type=str, default='./data')
-    args = parser.parse_args()
-    return args
 
 
 def create_dir(args):

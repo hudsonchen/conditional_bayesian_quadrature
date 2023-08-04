@@ -39,6 +39,18 @@ else:
     pass
 
 
+def get_config():
+    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
+
+    # Args settings
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--save_path', type=str, default='./')
+    parser.add_argument('--data_path', type=str, default='./data')
+    parser.add_argument('--mode', type=str, default='peak_number')
+    args = parser.parse_args()
+    return args
+
+
 def Monte_Carlo(fx):
     return fx.mean(0)
 
@@ -385,18 +397,6 @@ def create_dir(args):
     args.save_path += f"seed_{args.seed}__mode_{args.mode}"
     os.makedirs(args.save_path, exist_ok=True)
     os.makedirs(args.save_path + '/figures/', exist_ok=True)
-    return args
-
-
-def get_config():
-    parser = argparse.ArgumentParser(description='Conditional Bayesian Quadrature for Bayesian sensitivity analysis')
-
-    # Args settings
-    parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--save_path', type=str, default='./')
-    parser.add_argument('--data_path', type=str, default='./data')
-    parser.add_argument('--mode', type=str, default='peak_number')
-    args = parser.parse_args()
     return args
 
 
