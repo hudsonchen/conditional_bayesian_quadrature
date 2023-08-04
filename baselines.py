@@ -163,7 +163,7 @@ def importance_sampling_sensitivity(log_pX_theta_fn, Theta_test, Theta, X, f_X):
 def importance_sampling_single_finance(tree, pX_theta_fn, theta_test):
     theta, Xi, f_Xi = tree
     Xi_standardized, Xi_mean, Xi_scale = finance_utils.standardize(Xi)
-    pX_theta_standardized_fn = partial(pX_theta_fn, sigma=0.3, T=2, t=1, x_scale=Xi_scale, x_mean=Xi_mean)
+    pX_theta_standardized_fn = partial(pX_theta_fn, sigma=0.3, T_finance=2, t_finance=1, x_scale=Xi_scale, x_mean=Xi_mean)
     pX_theta_test = pX_theta_standardized_fn(Xi_standardized, theta_test)
     pX_theta_i = pX_theta_standardized_fn(Xi_standardized, theta)
     weight = pX_theta_test / pX_theta_i

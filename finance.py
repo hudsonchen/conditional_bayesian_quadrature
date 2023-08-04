@@ -57,15 +57,15 @@ def get_config():
 
 
 @jax.jit
-def grad_y_log_px_theta(y, theta, y_mean, y_scale, sigma, T, t):
-    # dtheta log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - y)
-    y = y * y_scale + y_mean
-    part1 = (jnp.log(y) + sigma ** 2 * (T - t) / 2 - jnp.log(theta)) / y / (sigma ** 2 * (T - t))
-    return (-1. / y - part1) * y_scale
+def grad_x_log_px_theta(x, theta, x_mean, x_scale, sigma, T_finance, t_finance):
+    # dtheta log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T_finance - t_finance) and sigma = \sigma^2 (T_finance - x)
+    x = x * x_scale + x_mean
+    part1 = (jnp.log(x) + sigma ** 2 * (T_finance - t_finance) / 2 - jnp.log(theta)) / x / (sigma ** 2 * (T_finance - t_finance))
+    return (-1. / x - part1) * x_scale
 
 
 @jax.jit
-def px_theta_fn(x, theta, x_scale, x_mean, sigma, T, t):
+def px_theta_fn(x, theta, x_scale, x_mean, sigma, T_finance, t_finance):
     """
     :param x: N * 1
     :param x: scalar
@@ -75,25 +75,25 @@ def px_theta_fn(x, theta, x_scale, x_mean, sigma, T, t):
     # p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
     x_tilde = x * x_scale + x_mean
     z = jnp.log(x_tilde / theta)
-    n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
+    n = (z + sigma ** 2 * (T_finance - t_finance) / 2) / sigma / jnp.sqrt(T_finance - t_finance)
     p_n = jax.scipy.stats.norm.pdf(n)
-    p_z = p_n / (sigma * jnp.sqrt(T - t))
+    p_z = p_n / (sigma * jnp.sqrt(T_finance - t_finance))
     p_x_tilde = p_z / x_tilde
     p_x = p_x_tilde / x_scale
     return p_x
 
 
 # @jax.jit
-def log_px_theta_fn(y, theta, y_scale, sigma, T, t):
-    # log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
-    y_tilde = y * y_scale
-    z = jnp.log(y_tilde / theta)
-    n = (z + sigma ** 2 * (T - t) / 2) / sigma / jnp.sqrt(T - t)
+def log_px_theta_fn(x, theta, x_scale, sigma, T_finance, t_finance):
+    # log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T_finance - t_finance) and sigma = \sigma^2 (T_finance - t_finance)
+    x_tilde = x * x_scale
+    z = jnp.log(x_tilde / theta)
+    n = (z + sigma ** 2 * (T_finance - t_finance) / 2) / sigma / jnp.sqrt(T_finance - t_finance)
     p_n = jax.scipy.stats.norm.pdf(n)
-    p_z = p_n / (sigma * jnp.sqrt(T - t))
-    p_y_tilde = p_z / y_tilde
-    p_y = p_y_tilde / y_scale
-    return jnp.log(p_y).sum()
+    p_z = p_n / (sigma * jnp.sqrt(T_finance - t_finance))
+    p_x_tilde = p_z / x_tilde
+    p_x = p_x_tilde / x_scale
+    return jnp.log(p_x).sum()
 
 
 @jax.jit
@@ -139,26 +139,26 @@ def stein_Laplace(x, y, l, d_log_px, d_log_py):
 
 
 @partial(jax.jit, static_argnames=['Kx'])
-def nllk_func(l, c, A, y, gy, d_log_py, Kx, eps):
-    n = y.shape[0]
-    K = A * Kx(y, y, l, d_log_py, d_log_py) + c + A * jnp.eye(n)
+def nllk_func(l, c, A, x, fx, d_log_px, Kx, eps):
+    n = x.shape[0]
+    K = A * Kx(x, x, l, d_log_px, d_log_px) + c + A * jnp.eye(n)
     K_inv = jnp.linalg.inv(K + eps * jnp.eye(n))
-    nll = -(-0.5 * gy.T @ K_inv @ gy - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
+    nll = -(-0.5 * fx.T @ K_inv @ fx - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / n
     return nll[0][0]
 
 
 @partial(jax.jit, static_argnames=['optimizer', 'Kx'])
-def step(l, c, A, opt_state, optimizer, y, gy, d_log_py, Kx, eps):
-    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A, y, gy, d_log_py, Kx, eps)
+def step(l, c, A, opt_state, optimizer, x, fx, d_log_px, Kx, eps):
+    nllk_value, grads = jax.value_and_grad(nllk_func, argnums=(0, 1, 2))(l, c, A, x, fx, d_log_px, Kx, eps)
     updates, opt_state = optimizer.update(grads, opt_state, (l, c, A))
     l, c, A = optax.apply_updates((l, c, A), updates)
     return l, c, A, opt_state, nllk_value
 
 
-def train(theta, x, x_scale, gx, d_log_px, dx_log_px_fn, rng_key, Kx):
+def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     """
     :param x:
-    :param gx:
+    :param fx:
     :param d_log_px:
     :param dx_log_px_fn:
     :param rng_key:
@@ -198,7 +198,7 @@ def train(theta, x, x_scale, gx, d_log_px, dx_log_px_fn, rng_key, Kx):
     # nll_debug_list = []
     for _ in range(10):
         rng_key, _ = jax.random.split(rng_key)
-        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, x, gx, d_log_px, Kx, eps)
+        l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, optimizer, x, fx, d_log_px, Kx, eps)
         # # Debug code
         # if jnp.isnan(nllk_value):
         #     # l = jnp.exp(log_l)
@@ -234,6 +234,34 @@ def train(theta, x, x_scale, gx, d_log_px, dx_log_px_fn, rng_key, Kx):
     return l, c, A
 
 
+@partial(jax.jit, static_argnames=['Kx'])
+def bayesian_monte_carlo_no_stein_inner(theta, Xi, fXi, Kx, lx, eps, sigma, T_finance, t_finance):
+    Xi = Xi[:, None]
+    N = Xi.shape[0]
+    K = Kx(Xi, Xi, lx, None, None) + eps * jnp.eye(N)
+    K_inv = jnp.linalg.inv(K)
+    a = -sigma ** 2 * (T_finance - t_finance) / 2 + jnp.log(theta)
+    b = jnp.sqrt(sigma ** 2 * (T_finance - t_finance))
+    phi = kme_log_normal_RBF(Xi, lx, a, b)
+    varphi = kme_double_log_normal_RBF(lx, a, b)
+    mu = phi.T @ K_inv @ fXi
+    std = jnp.sqrt(varphi - phi.T @ K_inv @ phi)
+    return mu.squeeze(), std.squeeze()
+
+
+def bayesian_monte_carlo_no_stein_vectorized(rng_key, Theta, X, fX, Kx):
+    sigma = 0.3
+    T_finance = 2
+    t_finance = 1
+    eps = 1e-6
+    lx = 0.1
+
+    vmap_func = jax.vmap(bayesian_monte_carlo_no_stein_inner, in_axes=(0, 0, 0, None, None, None, None, None, None))
+    I_BQ_mean, I_BQ_std = vmap_func(Theta, X, fX, Kx, lx, eps, sigma, T_finance, t_finance)
+
+    return I_BQ_mean, I_BQ_std
+
+
 # @partial(jax.jit, static_argnums=(0,))
 def bayesian_monte_carlo_no_stein(rng_key, Theta, X, fX, Kx):
     sigma = 0.3
@@ -267,7 +295,7 @@ def bayesian_monte_carlo_no_stein(rng_key, Theta, X, fX, Kx):
         # ============= Debug code =============
         # print('True value', price(Theta[i], 10000, rng_key)[1].mean())
         # print(f'MC with {N} number of Y', fX.mean())
-        # print(f'BMC with {N} number of Y', mu_standardized.squeeze())
+        # print(f'CBQ with {N} number of Y', mu_standardized.squeeze())
         # print(f"=================")
         # pause = True
         # ============= Debug code =============
@@ -295,13 +323,13 @@ def bayesian_monte_carlo_stein(rng_key, Theta, X, fX, Kx):
         Xi_standardized, Xi_mean, Xi_scale = finance_utils.standardize(Xi)
         fXi = fX[i, :][:, None]
 
-        grad_y_log_px_theta_fn = partial(grad_y_log_px_theta, sigma=0.3, T=2, t=1, y_mean=Xi_mean, y_scale=Xi_scale)
-        dy_log_px_theta = grad_y_log_px_theta_fn(Xi_standardized, theta)
+        grad_x_log_px_theta_fn = partial(grad_x_log_px_theta, sigma=0.3, T_finance=2, t_finance=1, x_mean=Xi_mean, x_scale=Xi_scale)
+        dx_log_px_theta = grad_x_log_px_theta_fn(Xi_standardized, theta)
         if i == 0:
-            ly, c, A = train(theta, Xi_standardized, Xi_scale, fXi,
-                                dy_log_px_theta, grad_y_log_px_theta_fn, rng_key, Kx)
+            lx, c, A = train(theta, Xi_standardized, Xi_scale, fXi,
+                                dx_log_px_theta, grad_x_log_px_theta_fn, rng_key, Kx)
 
-        K = A * Kx(Xi_standardized, Xi_standardized, ly, dy_log_px_theta, dy_log_px_theta) + c + A * jnp.eye(N)
+        K = A * Kx(Xi_standardized, Xi_standardized, lx, dx_log_px_theta, dx_log_px_theta) + c + A * jnp.eye(N)
         K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
         mu = c * (K_inv @ fXi).sum()
         std = jnp.sqrt(c - K_inv.sum() * c ** 2)
@@ -312,7 +340,7 @@ def bayesian_monte_carlo_stein(rng_key, Theta, X, fX, Kx):
         # # Large sample mu
         # print('True value', price(theta[i], 10000, rng_key)[1].mean())
         # print(f'MC with {N} number of Y', fXi.mean())
-        # print(f'BMC with {N} number of Y', mu)
+        # print(f'CBQ with {N} number of Y', mu)
         # print(f"=================")
         pause = True
     return I_BQ_mean, I_BQ_std
@@ -321,13 +349,12 @@ def bayesian_monte_carlo_stein(rng_key, Theta, X, fX, Kx):
 # @partial(jax.jit, static_argnums=(0,))
 def GP(I_BQ_mean, I_BQ_std, theta, theta_test, Ktheta):
     """
-    :param I_BQ_mean: T * 1
-    :param I_BQ_std: T * 1
+    :param I_BQ_mean: T,
+    :param I_BQ_std: T,
     :param theta: T * 1
     :param theta_test: T_test * 1
     :return:
     """
-    T = I_BQ_mean.shape[0]
     theta_standardized, theta_mean, theta_std = finance_utils.standardize(theta)
     theta_test_standardized = (theta_test - theta_mean) / theta_std
     ltheta = 1.5
@@ -404,8 +431,8 @@ def option_pricing(args):
     rng_key, _ = jax.random.split(rng_key)
 
     T_array = jnp.array([10, 20, 30])
-    N_array = jnp.array([50, 100])
-    # N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    # N_array = jnp.array([50, 100])
+    N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_test = jnp.linspace(20., 120., test_num)[:, None]
@@ -419,6 +446,7 @@ def option_pricing(args):
             St = jnp.linspace(20, 120, T)[:, None]
             ST, loss = price(St, N.item(), rng_key)
 
+            # ======================================== KMS ========================================
             I_MC_mean = loss.mean(1)
             I_MC_std = loss.std(1)
             if args.baseline_use_variance:
@@ -431,39 +459,47 @@ def option_pricing(args):
                 KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean, None, St, St_test,
                                     eps=0., kernel_fn=my_RBF)
                 time_KMS = time.time() - time0
+            # ======================================== KMS ========================================
 
-            _, _ = baselines.importance_sampling_finance(px_theta_fn, St_test, St, ST, loss)
+            # ======================================== IS ========================================
             t0 = time.time()
             IS_mean, IS_std = baselines.importance_sampling_finance(px_theta_fn, St_test, St, ST, loss)
             time_IS = time.time() - t0
+            # ======================================== IS ========================================
 
+            # ======================================== LSMC ========================================
             t0 = time.time()
             if args.baseline_use_variance:
                 LSMC_mean, LSMC_std = baselines.polynomial(St, ST, loss, St_test, baseline_use_variance=True)
             else:
                 LSMC_mean, LSMC_std = baselines.polynomial(St, ST, loss, St_test, baseline_use_variance=False)
             time_LSMC = time.time() - t0
+            # ======================================== LSMC ========================================
 
+            # ======================================== CBQ ========================================
+            t0 = time.time()
             if 'stein' not in args.kernel_x:
-                I_BQ_mean, I_BQ_std = bayesian_monte_carlo_no_stein(rng_key, St, ST, loss, log_normal_RBF)
+                # I_BQ_mean, I_BQ_std = bayesian_monte_carlo_no_stein(rng_key, St, ST, loss, log_normal_RBF)
+                I_BQ_mean, I_BQ_std = bayesian_monte_carlo_no_stein_vectorized(rng_key, St, ST, loss, log_normal_RBF)
             elif 'stein' in args.kernel_x:
                 I_BQ_mean, I_BQ_std  = bayesian_monte_carlo_stein(rng_key, St, ST, loss, stein_Matern)
             else:
                 raise NotImplementedError(args.kernel_x)
-    
             t1 = time.time()
+
             I_BQ_std = np.nan_to_num(I_BQ_std, nan=0.3)
             _, _ = GP(I_BQ_mean, I_BQ_std, St, St_test, my_RBF)
             t2 = time.time()
-            BMC_mean, BMC_std = GP(I_BQ_mean, I_BQ_std, St, St_test, my_RBF)
+            CBQ_mean, CBQ_std = GP(I_BQ_mean, I_BQ_std, St, St_test, my_RBF)
             t3 = time.time()
-            time_cbq = t3 - t2 + t1 - t0
+            time_CBQ = t3 - t2 + t1 - t0
+            # ======================================== CBQ ========================================
 
             ground_truth = jnp.load(f"{args.save_path}/finance_EfX_theta.npy")
-            calibration = finance_utils.calibrate(ground_truth, BMC_mean, jnp.diag(BMC_std))
+            calibration = finance_utils.calibrate(ground_truth, CBQ_mean, jnp.diag(CBQ_std))
 
-            finance_utils.save(T, N, BMC_mean, BMC_std, KMS_mean, IS_mean, LSMC_mean,
-                           time_cbq, time_IS, time_KMS, time_LSMC, calibration, args.save_path)
+            finance_utils.save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
+                               time_CBQ, time_IS, time_KMS, time_LSMC, calibration, args.save_path)
 
     return
 

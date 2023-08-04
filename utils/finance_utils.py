@@ -191,12 +191,14 @@ def save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
 
     methods = ["CBQ", "KMS", "LSMC", "IS"]
     rmse_values = [rmse_dict['CBQ'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
+    time_values = [time_dict['CBQ'], time_dict['KMS'], time_dict['LSMC'], time_dict['IS']]
 
     print("\n\n=======================================")
     print(f"T = {T} and N = {N}")
     print("=======================================")
-    print(" ".join([f"{method:<10}" for method in methods]))
-    print(" ".join([f"{value:<10.6f}" for value in rmse_values]))
+    print("Methods:    " + " ".join([f"{method:<10}" for method in methods]))
+    print("RMSE:       " + " ".join([f"{value:<10.6f}" for value in rmse_values]))
+    print("Time (s):   " + " ".join([f"{value:<10.6f}" for value in time_values]))
     print("=======================================\n\n")
 
     # ============= Debug code =============
