@@ -5,6 +5,15 @@ from scipy.stats import norm
 from sobol_seq import i4_sobol_generate
 
 
+def compute_rmse(ground_truth, CBQ_mean, BQ_mean, KMS_mean, LSMC_mean, IS_mean):
+    rmse_CBQ = jnp.sqrt(jnp.mean((CBQ_mean - ground_truth) ** 2))
+    rmse_BQ = jnp.sqrt(jnp.sqrt(jnp.mean((BQ_mean - ground_truth) ** 2)))
+    rmse_KMS = jnp.sqrt(jnp.mean((KMS_mean - ground_truth) ** 2))
+    rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_mean - ground_truth) ** 2))
+    rmse_IS = jnp.sqrt(jnp.mean((IS_mean - ground_truth) ** 2))
+    return rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS
+
+
 def save(args, T, N, rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS,
          time_CBQ, time_BQ, time_KMS, time_LSMC, time_IS, calibration):
     rmse_dict = {}

@@ -286,10 +286,10 @@ def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta):
     return I_BQ_mean, I_BQ_std
 
 
-def Bayesian_Monte_Carlo_RBF_vectorized(rng_key, X, f_X, mu_X_theta, var_X_theta):
+def Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(rng_key, X, f_X, mu_X_theta, var_X_theta):
     """
-    :param var_X_theta: (M, D, D)
-    :param mu_X_theta: (M, D)
+    :param var_X_theta: (T_test, D, D)
+    :param mu_X_theta: (T_test, D)
     :param rng_key:
     :param X: (N, D)
     :param f_X: (N, )
@@ -302,6 +302,44 @@ def Bayesian_Monte_Carlo_RBF_vectorized(rng_key, X, f_X, mu_X_theta, var_X_theta
     # Use jax.vmap to vectorize over the first dimension of mu_X_theta and var_X_theta
     vectorized_function = jax.vmap(single_instance)
     return vectorized_function(mu_X_theta, var_X_theta)
+
+
+def Bayesian_Monte_Carlo_RBF_vectorized_on_T(rng_key, X, f_X, mu_X_theta, var_X_theta):
+    """
+    :param var_X_theta: (T, D, D)
+    :param mu_X_theta: (T, D)
+    :param rng_key:
+    :param X: (T, N, D)
+    :param f_X: (T, N)
+    :return:
+    """
+    # Define a function that takes only the parameters you want to vectorize over
+    def single_instance(X_single, f_X_single, mu_X_theta_single, var_X_theta_single):
+        return Bayesian_Monte_Carlo_RBF(rng_key, X_single, f_X_single, mu_X_theta_single, var_X_theta_single)
+
+    # Use jax.vmap to vectorize over the first dimension of mu_X_theta and var_X_theta
+    vectorized_function = jax.vmap(single_instance)
+    return vectorized_function(X, f_X, mu_X_theta, var_X_theta)
+
+
+def Bayesian_Monte_Carlo_Matern_vectorized_on_T(rng_key, u, X, f_X, mu_X_theta, var_X_theta):
+    """    
+    We only implement this for D = 2.
+    :param u: (T, N, D)
+    :param var_X_theta: (T, D, D)
+    :param mu_X_theta: (T, D)
+    :param rng_key:
+    :param X: (T, N, D)
+    :param f_X: (T, N)
+    :return:
+    """
+    # Define a function that takes only the parameters you want to vectorize over
+    def single_instance(u_single, X_single, f_X_single, mu_X_theta_single, var_X_theta_single):
+        return Bayesian_Monte_Carlo_Matern(rng_key, u_single, X_single, f_X_single, mu_X_theta_single, var_X_theta_single)
+
+    # Use jax.vmap to vectorize over the first dimension of mu_X_theta and var_X_theta
+    vectorized_function = jax.vmap(single_instance)
+    return vectorized_function(u, X, f_X, mu_X_theta, var_X_theta)
 
 
 def Bayesian_Monte_Carlo_Matern(rng_key, u, X, f_X, mu_X_theta, var_X_theta):
@@ -435,6 +473,7 @@ def main(args):
             Theta = jax.random.uniform(rng_key, shape=(T, D), minval=-1.0, maxval=1.0)
 
         for j, N in enumerate(tqdm(N_array)):
+            # ======================================== Precompute f(X), X, Theta ========================================
             I_BQ_mean_array = jnp.zeros(T)
             I_BQ_std_array = jnp.zeros(T)
             I_MC_mean_array = jnp.zeros(T)
@@ -444,7 +483,9 @@ def main(args):
             X = jnp.zeros([T, N, D]) + 0.0
             # This is f(X), size T * N
             f_X = jnp.zeros([T, N]) + 0.0
+            # This is u, size T * N * D, used for CBQ with Matern kernel
             u_all = jnp.zeros([T, N, D]) + 0.0
+            # This is score, size T * N * D, used for CBQ with Stein kernel
             score_all = jnp.zeros([T, N, D]) + 0.0
 
             prior_cov = jnp.array([[prior_cov_base] * D]) + Theta
@@ -466,46 +507,73 @@ def main(args):
                 u_all = u_all.at[i, :, :].set(u)
                 X = X.at[i, :, :].set(X_i)
                 f_X = f_X.at[i, :].set(g(X_i))
+            # ======================================== Precompute f(X), X, Theta ========================================
 
-            for i in range(T):
-                X_i = X[i, :, :]
-                f_X_i = f_X[i, :]
-                u_i = u_all[i, :, :]
-                score_i = score_all[i, :, :]
-                mu_X_theta_i = mu_x_theta_all[i, :]
-                var_X_theta_i = var_x_theta_all[i, :, :]
+            # ======================================== Debug code ========================================
+            # for i in range(T):
+            #     X_i = X[i, :, :]
+            #     f_X_i = f_X[i, :]
+            #     u_i = u_all[i, :, :]
+            #     score_i = score_all[i, :, :]
+            #     mu_X_theta_i = mu_x_theta_all[i, :]
+            #     var_X_theta_i = var_x_theta_all[i, :, :]
 
-                _, _ = Bayesian_Monte_Carlo_RBF(rng_key, X_i, f_X_i, mu_X_theta_i, var_X_theta_i)
-                tt0 = time.time()
-                if args.kernel_x == "RBF":
-                    I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_RBF(rng_key, X_i, f_X_i, mu_X_theta_i, var_X_theta_i)
-                elif args.kernel_x == "Matern":
-                    if D > 2:
-                        raise NotImplementedError("Matern kernel is only implemented for D=2")
-                    I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, X_i, f_X_i, mu_X_theta_i,
-                                                                      var_X_theta_i)
-                else:
-                    raise NotImplementedError("Kernel not implemented")
-                tt1 = time.time()
+            #     if args.kernel_x == "RBF":
+            #         I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_RBF(rng_key, X_i, f_X_i, mu_X_theta_i, var_X_theta_i)
+            #     elif args.kernel_x == "Matern":
+            #         if D > 2:
+            #             raise NotImplementedError("Matern kernel is only implemented for D=2")
+            #         I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u_i, X_i, f_X_i, mu_X_theta_i,
+            #                                                           var_X_theta_i)
+            #     else:
+            #         raise NotImplementedError("Kernel not implemented")
 
-                I_BQ_mean_array = I_BQ_mean_array.at[i].set(I_BQ_mean)
-                I_BQ_std_array = I_BQ_std_array.at[i].set(I_BQ_std if not jnp.isnan(I_BQ_std) else 0.01)
+            #     I_BQ_mean_array = I_BQ_mean_array.at[i].set(I_BQ_mean)
+            #     I_BQ_std_array = I_BQ_std_array.at[i].set(I_BQ_std if not jnp.isnan(I_BQ_std) else 0.01)
 
-                I_MC_mean_array = I_MC_mean_array.at[i].set(f_X_i.mean())
-                I_MC_std_array = I_MC_std_array.at[i].set(f_X_i.std())
+            #     I_MC_mean_array = I_MC_mean_array.at[i].set(f_X_i.mean())
+            #     I_MC_std_array = I_MC_std_array.at[i].set(f_X_i.std())
 
-                # ============= Debug code =============
-                # true_value = g_ground_truth_fn(mu_X_theta_i, var_X_theta_i)
-                # CBQ_value = I_BQ_mean
-                # print("=============")
-                # print('True value', true_value)
-                # print(f'MC with N={N}', MC_value)
-                # print(f'CBQ with N={N}', CBQ_value)
-                # print(f'CBQ uncertainty {I_BQ_std}')
-                # print(f"=============")
-                # pause = True
-                # ============= Debug code =============
+            #     true_value = g_ground_truth_fn(mu_X_theta_i, var_X_theta_i)
+            #     CBQ_value = I_BQ_mean
+            #     print("=============")
+            #     print('True value', true_value)
+            #     print(f'MC with N={N}', MC_value)
+            #     print(f'CBQ with N={N}', CBQ_value)
+            #     print(f'CBQ uncertainty {I_BQ_std}')
+            #     print(f"=============")
+            #     pause = True
+            #     ======================================== Debug code ========================================
 
+            # ======================================== CBQ ========================================
+            time0 = time.time()
+            if args.kernel_x == "RBF":
+                I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_RBF_vectorized_on_T(rng_key, X, f_X, mu_x_theta_all, var_x_theta_all)
+            elif args.kernel_x == "Matern":
+                if D > 2:
+                    raise NotImplementedError("Matern kernel is only implemented for D=2")
+                I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_Matern_vectorized_on_T(rng_key, u, X, f_X, mu_x_theta_all, var_x_theta_all)
+            else:
+                raise NotImplementedError("Kernel not implemented")
+            time_CBQ = time.time() - time0 
+
+            rng_key, _ = jax.random.split(rng_key)
+            _, _ = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
+            time0 = time.time()
+            if args.kernel_theta == "RBF":
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
+                                       eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
+            elif args.kernel_theta == "Matern":
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
+                                       eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
+            else:
+                raise NotImplementedError(f"Unknown kernel {args.kernel_theta}")
+            time_CBQ += time.time() - time0
+            # ======================================== CBQ ========================================
+
+            # ======================================== KMS ========================================
+            I_MC_mean_array = f_X.mean(1)
+            I_MC_std_array = f_X.std(1)
             if args.baseline_use_variance:
                 time0 = time.time()
                 KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, I_MC_std_array, Theta, Theta_test,
@@ -516,27 +584,17 @@ def main(args):
                 KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, None, Theta, Theta_test,
                                     eps=0., kernel_fn=my_RBF)
                 time_KMS = time.time() - time0
+            # ======================================== KMS ========================================
 
+            # ======================================== BQ ========================================
             time0 = time.time()
             rng_key, _ = jax.random.split(rng_key)
-            BQ_mean, BQ_std = Bayesian_Monte_Carlo_RBF_vectorized(rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
+            BQ_mean, BQ_std = Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
                                             mu_x_theta_test, var_x_theta_test)
             time_BQ = time.time() - time0
+            # ======================================== BQ ========================================
 
-            time0 = time.time()
-            rng_key, _ = jax.random.split(rng_key)
-            _, _ = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
-                                       eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
-            if args.kernel_theta == "RBF":
-                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
-                                       eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
-            elif args.kernel_theta == "Matern":
-                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
-                                       eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
-            else:
-                raise NotImplementedError(f"Unknown kernel {args.kernel_theta}")
-            time_CBQ = time.time() - time0 + (tt1 - tt0) * T
-
+            # ======================================== LSMC ========================================
             if args.baseline_use_variance:
                 time0 = time.time()
                 LSMC_mean, LSMC_std = baselines.polynomial(Theta, X, f_X, Theta_test, baseline_use_variance=True)
@@ -545,7 +603,9 @@ def main(args):
                 time0 = time.time()
                 LSMC_mean, LSMC_std = baselines.polynomial(Theta, X, f_X, Theta_test, baseline_use_variance=False)
                 time_LSMC = time.time() - time0
+            # ======================================== LSMC ========================================
 
+            # ======================================== IS ========================================
             time0 = time.time()
             # This is unvectorized version of importance sampling
             # log_px_theta_fn = partial(posterior_log_llk, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
@@ -555,13 +615,11 @@ def main(args):
             log_px_theta_fn_vectorized = partial(posterior_log_llk_vectorized, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
             IS_mean, IS_std = baselines.importance_sampling_sensitivity(log_px_theta_fn_vectorized, Theta_test, Theta, X, f_X)
             time_IS = time.time() - time0
+            # ======================================== IS ========================================
 
-            rmse_CBQ = jnp.sqrt(jnp.mean((CBQ_mean - ground_truth) ** 2))
-            rmse_BQ = jnp.sqrt(jnp.mean((BQ_mean - ground_truth) ** 2))
-            rmse_KMS = jnp.sqrt(jnp.mean((KMS_mean - ground_truth) ** 2))
-            rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_mean - ground_truth) ** 2))
-            rmse_IS = jnp.sqrt(jnp.mean((IS_mean - ground_truth) ** 2))
-
+            
+            rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS = sensitivity_utils.compute_rmse(ground_truth, CBQ_mean, BQ_mean, KMS_mean, LSMC_mean, IS_mean)
+                                                                                     
             calibration = sensitivity_utils.calibrate(ground_truth, CBQ_mean, jnp.diag(CBQ_std))
 
             sensitivity_utils.save(args, T, N, rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS,
@@ -571,13 +629,13 @@ def main(args):
             rmse_values = [rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS]
             time_values = [time_CBQ, time_BQ, time_KMS, time_LSMC, time_IS]
 
-            print("\n\n=======================================")
+            print("\n\n========================================")
             print(f"T = {T} and N = {N}")
-            print("=======================================")
+            print("========================================")
             print("Methods:    " + " ".join([f"{method:<10}" for method in methods]))
             print("RMSE:       " + " ".join([f"{value:<10.6f}" for value in rmse_values]))
             print("Time (s):   " + " ".join([f"{value:<10.6f}" for value in time_values]))
-            print("=======================================\n\n")
+            print("========================================\n\n")
     return
 
 
@@ -601,12 +659,7 @@ def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
     args.save_path += f'results/sensitivity_conjugate/'
-    if args.qmc:
-        args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.g_fn}__Kx_{args.kernel_x}" \
-                          f"__Ktheta_{args.kernel_theta}__qmc"
-    else:
-        args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.g_fn}__Kx_{args.kernel_x}" \
-                          f"__Ktheta_{args.kernel_theta}"
+    args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.g_fn}__Kx_{args.kernel_x}__Ktheta_{args.kernel_theta}__qmc_{args.qmc}__usevar_{args.baseline_use_variance}"
     os.makedirs(args.save_path, exist_ok=True)
     return args
 
