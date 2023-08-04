@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import time
 from jax.scipy.stats import norm
 import matplotlib.pyplot as plt
-
+import pickle
 
 def Geometric_Brownian(n, dt, rng_key, sigma=0.3, S0=1):
     rng_key, _ = jax.random.split(rng_key)
@@ -109,19 +109,19 @@ def price_visualize(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1):
     return ST, psi_ST_1 - psi_ST_2
 
 
-def calibrate(ground_truth, BMC_mean, BMC_std):
+def calibrate(ground_truth, CBQ_mean, CBQ_std):
     """
-    Calibrate the BMC mean and std
+    Calibrate the CBQ mean and std
     :param ground_truth: (N, )
-    :param BMC_mean: (N, )
-    :param BMC_std: (N, )
+    :param CBQ_mean: (N, )
+    :param CBQ_std: (N, )
     :return:
     """
     confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):
         z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
-        prob = jnp.less(jnp.abs(ground_truth - BMC_mean), z_score * BMC_std)
+        prob = jnp.less(jnp.abs(ground_truth - CBQ_mean), z_score * CBQ_std)
         prediction_interval = prediction_interval.at[i].set(prob.mean())
 
     plt.figure()
@@ -148,3 +148,92 @@ def standardize(Z):
     std = Z.std(0)
     standardized = (Z - mean) / std
     return standardized, mean, std
+
+
+def save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
+        time_cbq, time_IS, time_KMS, time_LSMC, calibration, save_path):
+    true_EgX_theta = jnp.load(f"{save_path}/finance_EfX_theta.npy")
+
+    # ========== Debug code ==========
+    # plt.figure()
+    # plt.plot(St_test.squeeze(), true_EgX_theta, color='red', label='true')
+    # plt.scatter(St.squeeze(), I_BQ_mean.squeeze())
+    # plt.plot(St_test.squeeze(), mu_y_theta_test_cbq.squeeze(), color='blue', label='CBQ')
+    # plt.plot(St_test.squeeze(), mu_y_theta_test_IS.squeeze(), color='green', label='IS')
+    # plt.plot(St_test.squeeze(), mu_y_theta_test_LSMC.squeeze(), color='orange', label='LSMC')
+    # plt.plot(St_test.squeeze(), KMS_mean, color='purple', label='KMS')
+    # plt.legend()
+    # plt.title(f"GP_finance_T_{T}_N_{N}")
+    # plt.savefig(f"{args.save_path}/figures/finance_T_{T}_N_{N}.pdf")
+    # plt.show()
+    # plt.close()
+    # ========== Debug code ==========
+
+    L_CBQ = jnp.maximum(CBQ_mean, 0).mean()
+    L_IS = jnp.maximum(IS_mean, 0).mean()
+    L_LSMC = jnp.maximum(LSMC_mean, 0).mean()
+    L_KMS = jnp.maximum(KMS_mean, 0).mean()
+    L_true = jnp.maximum(true_EgX_theta, 0).mean()
+
+    rmse_dict = {}
+    rmse_dict['CBQ'] = (L_true - L_CBQ) ** 2
+    rmse_dict['IS'] = (L_true - L_IS) ** 2
+    rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
+    rmse_dict['KMS'] = (L_true - L_KMS) ** 2
+    with open(f"{save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
+        pickle.dump(rmse_dict, f)
+
+    time_dict = {'CBQ': time_cbq, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
+    with open(f"{save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
+        pickle.dump(time_dict, f)
+
+    jnp.save(f"{save_path}/calibration_T_{T}_N_{N}", calibration)
+
+    methods = ["CBQ", "KMS", "LSMC", "IS"]
+    rmse_values = [rmse_dict['CBQ'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
+
+    print("\n\n=======================================")
+    print(f"T = {T} and N = {N}")
+    print("=======================================")
+    print(" ".join([f"{method:<10}" for method in methods]))
+    print(" ".join([f"{value:<10.6f}" for value in rmse_values]))
+    print("=======================================\n\n")
+
+    # ============= Debug code =============
+    # time_values = [time_CBQ, time_KMS, time_LSMC, time_IS]
+    # 
+    # print("\n\n=======================================")
+    # print(f"T = {T} and N = {N}")
+    # print("=======================================")
+    # print(" ".join([f"{method:<10}" for method in methods]))
+    # print(" ".join([f"{value:<10.6f}" for value in time_values]))
+    # print("=======================================\n\n")
+    # ============= Debug code =============
+
+    return
+
+def save_large(args, T, N, KMS_mean, LSMC_mean, IS_mean, time_KMS, time_LSMC, time_IS):
+    true_EgX_theta = jnp.load(f"{args.save_path}/finance_EgX_theta.npy")
+
+    # Saving this would ethetaplode the memory on cluster
+    # jnp.save(f"{args.save_path}/LSMC_mean_T_{T}_N_{N}.npy", LSMC_mean.squeeze())
+    # jnp.save(f"{args.save_path}/KMS_mean_T_{T}_N_{N}.npy", KMS_mean)
+
+    L_LSMC = jnp.maximum(LSMC_mean, 0).mean()
+    L_KMS = jnp.maximum(KMS_mean, 0).mean()
+    L_IS = jnp.maximum(IS_mean, 0).mean()
+    L_true = jnp.maximum(true_EgX_theta, 0).mean()
+
+    rmse_dict = {}
+    rmse_dict['CBQ'] = None
+    rmse_dict['IS'] = (L_true - L_IS) ** 2
+    rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
+    rmse_dict['KMS'] = (L_true - L_KMS) ** 2
+    with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
+        pickle.dump(rmse_dict, f)
+
+    time_dict = {'CBQ': None, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
+    with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
+        pickle.dump(time_dict, f)
+    pause = True
+    return

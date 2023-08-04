@@ -415,9 +415,9 @@ def GP(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
     mu_X_theta_test = K_test_train @ K_train_train_inv @ I_mean
     var_X_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_X_theta_test = jnp.abs(var_X_theta_test)
-    std_y_x = jnp.sqrt(var_X_theta_test)
+    std_X_theta_test = jnp.sqrt(var_X_theta_test)
     pause = True
-    return mu_X_theta_test, std_y_x
+    return mu_X_theta_test, std_X_theta_test
 
 
 def main(args):

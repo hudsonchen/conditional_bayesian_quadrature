@@ -283,6 +283,24 @@ def kme_double_RBF_Gaussian(mu, Sigma, l):
     part2 = jnp.linalg.det(jnp.eye(D) + Sigma @ jnp.linalg.inv(Lambda + Sigma))
     return part1 ** (-0.5) * part2 ** (-0.5)
 
+@jax.jit
+def log_normal_RBF(x, y, l, d_log_px, d_log_py):
+    return my_RBF(jnp.log(x), jnp.log(y), l)
+
+
+@jax.jit
+def kme_log_normal_RBF(y, l, a, b):
+    part1 = jnp.exp(-(a ** 2 + jnp.log(y) ** 2) / (2 * (b ** 2 + l ** 2)))
+    part2 = jnp.power(y, a / (b ** 2 + l ** 2))
+    part3 = b * jnp.sqrt(b ** (-2) + l ** (-2))
+    return part1 * part2 / part3
+
+
+@jax.jit
+def kme_double_log_normal_RBF(l, a, b):
+    dummy = b ** 2 * jnp.sqrt(b ** (-2) + l ** (-2)) * jnp.sqrt(b ** (-2) + 1. / (b ** 2 + l ** 2))
+    return 1. / dummy
+
 # def kme_Matern_Gamma(alpha, beta, l, y):
 #     """
 #     :param alpha: scalar
