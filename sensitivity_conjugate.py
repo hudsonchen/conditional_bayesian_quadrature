@@ -448,7 +448,7 @@ def main(args):
     else:
         raise ValueError('g_fn must be g1 or g2 or g3 or g4!')
 
-    T_array = jnp.array([50])
+    T_array = jnp.array([10, 50, 100])
     # N_array = jnp.array([10, 50, 100])
     N_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
