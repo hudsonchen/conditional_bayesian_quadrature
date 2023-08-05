@@ -49,19 +49,19 @@ def time_step(beta, gamma, population, St, It, Rt, dt, rng_key):
     return St, It, Rt
 
 
-def generate_data(beta, gamma, T, dt, population, rng_key):
+def generate_data(beta, gamma, Time, dt, population, rng_key):
     """
     :param beta: float, infection rate
     :param gamma: float, recovery rate
     :param rng_key:
-    :param T: Time length
+    :param Time: Time length
     :return: array T*3, the first is number of Susceptible,
     the second is Infected, the third is Recoverdd
     """
     It, Rt = 50., 0.
     St = population - It - Rt
 
-    iter_ = int(T / dt)
+    iter_ = int(Time / dt)
 
     S_array = jnp.zeros([iter_])
     I_array = jnp.zeros([iter_])
@@ -93,15 +93,15 @@ def generate_data(beta, gamma, T, dt, population, rng_key):
     return D['I']
 
 
-def save(args, T, N, theta_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LSMC_mean, IS_mean,
-         ground_truth_array, theta_array, BMC_time, KMS_time, LSMC_time, IS_time, calibration):
+def save(args, T, N, theta_test, CBQ_mean_array, CBQ_mean, CBQ_std, KMS_mean, LSMC_mean, IS_mean,
+         ground_truth_array, theta_array, CBQ_time, KMS_time, LSMC_time, IS_time, calibration):
     KMS_mean = KMS_mean.squeeze()
-    time_dict = {'BMC': BMC_time, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
+    time_dict = {'CBQ': CBQ_time, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
     with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(time_dict, f)
 
     rmse_dict = {}
-    rmse_dict['BMC'] = jnp.sqrt(((ground_truth_array - BMC_mean) ** 2).mean())
+    rmse_dict['CBQ'] = jnp.sqrt(((ground_truth_array - CBQ_mean) ** 2).mean())
     rmse_dict['IS'] = jnp.sqrt(((ground_truth_array - IS_mean) ** 2).mean())
     rmse_dict['LSMC'] = jnp.sqrt(((ground_truth_array - LSMC_mean) ** 2).mean())
     rmse_dict['KMS'] = jnp.sqrt(((ground_truth_array - KMS_mean) ** 2).mean())
@@ -110,8 +110,8 @@ def save(args, T, N, theta_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LS
 
     jnp.save(f"{args.save_path}/calibration_T_{T}_N_{N}", calibration)
 
-    methods = ["BMC", "KMS", "LSMC", "IS"]
-    rmse_values = [rmse_dict['BMC'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
+    methods = ["CBQ", "KMS", "LSMC", "IS"]
+    rmse_values = [rmse_dict['CBQ'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
 
     print("\n\n=======================================")
     print(f"T = {T} and N = {N}")
@@ -121,7 +121,7 @@ def save(args, T, N, theta_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LS
     print("=======================================\n\n")
     
     # ========== Debug code ==========
-    # time_values = [time_dict['BMC'], time_dict['KMS'], time_dict['LSMC'], time_dict['IS']]
+    # time_values = [time_dict['CBQ'], time_dict['KMS'], time_dict['LSMC'], time_dict['IS']]
 
     # print("\n\n=======================================")
     # print(f"T = {T} and N = {N}")
@@ -132,13 +132,13 @@ def save(args, T, N, theta_test, BMC_mean_array, BMC_mean, BMC_std, KMS_mean, LS
     # print(f"=============")
 
     plt.figure()
-    plt.plot(theta_test, BMC_mean, color='blue', label='BMC')
+    plt.plot(theta_test, CBQ_mean, color='blue', label='CBQ')
     plt.plot(theta_test, KMS_mean, color='red', label='KMS')
     plt.plot(theta_test, LSMC_mean, color='green', label='LSMC')
     plt.plot(theta_test, IS_mean, color='orange', label='IS')
     plt.plot(theta_test, ground_truth_array, color='black', label='True')
-    plt.scatter(theta_array, BMC_mean_array, color='orange')
-    plt.fill_between(theta_test, BMC_mean - BMC_std, BMC_mean + BMC_std, alpha=0.2, color='blue')
+    plt.scatter(theta_array, CBQ_mean_array, color='orange')
+    plt.fill_between(theta_test, CBQ_mean - CBQ_std, CBQ_mean + CBQ_std, alpha=0.2, color='blue')
     plt.legend()
     plt.title(f"T={T}, N={N}")
     plt.savefig(f"{args.save_path}/figures/SIR_T_{T}_N_{N}.pdf")
@@ -164,19 +164,19 @@ def save_large(args, T, N, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, KMS
     return
 
 
-def calibrate(ground_truth, BMC_mean, BMC_std):
+def calibrate(ground_truth, CBQ_mean, CBQ_std):
     """
-    Calibrate the BMC mean and std
+    Calibrate the CBQ mean and std
     :param ground_truth: (N, )
-    :param BMC_mean: (N, )
-    :param BMC_std: (N, )
+    :param CBQ_mean: (N, )
+    :param CBQ_std: (N, )
     :return:
     """
     confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):
         z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
-        prob = jnp.less(jnp.abs(ground_truth - BMC_mean), z_score * BMC_std)
+        prob = jnp.less(jnp.abs(ground_truth - CBQ_mean), z_score * CBQ_std)
         prediction_interval = prediction_interval.at[i].set(prob.mean())
 
     plt.figure()

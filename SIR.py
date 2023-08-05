@@ -245,7 +245,7 @@ def SIR(args, rng_key):
     SamplesNum = 10000
 
     generate_data_fn = partial(SIR_utils.generate_data, gamma=gamma_real, population=population,
-                               T=Time, dt=dt, rng_key=rng_key)
+                               Time=Time, dt=dt, rng_key=rng_key)
     generate_data_vmap = jax.vmap(generate_data_fn)
 
     f = peak_infected_number
@@ -271,7 +271,7 @@ def SIR(args, rng_key):
             I_MC_std_array = jnp.zeros([T])
 
             X_array_all = jnp.zeros([T, N])
-            f_X_array_all = jnp.zeros([T, N])
+            f_X_array = jnp.zeros([T, N])
 
             for j in tqdm(range(T)):
                 theta = theta_array[j]
@@ -287,7 +287,7 @@ def SIR(args, rng_key):
                 log_prior_fn = partial(log_prior, theta=theta, rate=rate, rng_key=rng_key)
                 grad_log_prior_fn = jax.grad(log_prior_fn)
 
-                f_X_array = jnp.zeros([N])
+                f_X_array_temp = jnp.zeros([N])
                 d_log_X_array = jnp.zeros([N, 1])
 
                 for i in range(N):
@@ -296,14 +296,14 @@ def SIR(args, rng_key):
                     D = SIR_utils.generate_data(X, gamma_real, Time, dt, population, rng_key)
                     f_X = f(D)
                     d_log_X = grad_log_prior_fn(X)
-                    f_X_array = f_X_array.at[i].set(f_X)
+                    f_X_array_temp = f_X_array_temp.at[i].set(f_X)
                     d_log_X_array = d_log_X_array.at[i, :].set(d_log_X)
 
                 X_array_all = X_array_all.at[j, :].set(X_array)
-                f_X_array_all = f_X_array_all.at[j, :].set(f_X_array)
+                f_X_array = f_X_array.at[j, :].set(f_X_array_temp)
 
-                I_MC = Monte_Carlo(f_X_array)
-                f_X_array_scale, f_X_array_standardized = SIR_utils.scale(f_X_array)
+                I_MC = Monte_Carlo(f_X_array_temp)
+                f_X_array_scale, f_X_array_standardized = SIR_utils.scale(f_X_array_temp)
 
                 rng_key, _ = jax.random.split(rng_key)
                 X_array_standardized, X_array_mean, X_array_std = SIR_utils.standardize(X_array)
@@ -350,20 +350,10 @@ def SIR(args, rng_key):
 
             # Importance sampling
             log_px_theta_fn = partial(log_prior, rate=rate, rng_key=rng_key)
-            _, _ = baselines.importance_sampling_SIR(log_px_theta_fn, theta_test[:, None], theta_array[:, None],
-                                                     X_array_all, f_X_array_all)
             t0 = time.time()
             IS_mean, _ = baselines.importance_sampling_SIR(log_px_theta_fn, theta_test[:, None], theta_array[:, None],
                                                            X_array_all, f_X_array_all)
             IS_time = time.time() - t0
-
-            # Kernel mean shrinkage estimator
-            _, _ = GP(I_MC_mean_array[:, None], None,
-                      theta_array[:, None], theta_test[:, None], ground_truth_array)
-            t0 = time.time()
-            KMS_mean, KMS_std = GP(I_MC_mean_array[:, None], None,
-                                   theta_array[:, None], theta_test[:, None], ground_truth_array)
-            KMS_time = time.time() - t0
 
             # Least squared Monte Carlo
             _, _ = baselines.polynomial(theta_array[:, None], X_array_all[:, None],
@@ -372,6 +362,13 @@ def SIR(args, rng_key):
             LSMC_mean, _ = baselines.polynomial(theta_array[:, None], X_array_all[:, None],
                                                     f_X_array_all, theta_test[:, None])
             LSMC_time = time.time() - t0
+
+            time0 = time.time()
+            if args.baseline_use_variance:
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, I_MC_std_array, theta_array[:, None], theta_test[:, None], eps=0., kernel_fn=my_RBF)
+            else:
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, None, theta_array[:, None], theta_test[:, None], eps=0., kernel_fn=my_RBF)
+            time_KMS = time.time() - time0
 
             calibration = SIR_utils.calibrate(ground_truth_array, I_BQ_mean, I_BQ_std)
 

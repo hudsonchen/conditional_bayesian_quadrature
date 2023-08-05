@@ -367,23 +367,28 @@ def main(args):
             #     pause = True
             #     ==================== Debug code ====================
 
-
+            # ======================================== CBQ ========================================
             I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u1, X1, f1_X)
             CBQ_mean_1, CBQ_std_1 = GP(I1_BQ_mean, I1_BQ_std, Theta1, Theta1_test, eps=I1_BQ_std.mean())
+            # ======================================== CBQ ========================================
 
+            # ======================================== LSMC ========================================
             if args.baseline_use_variance:
                 LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test, baseline_use_variance=True)
             else:
                 LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test, baseline_use_variance=False)
+            # ======================================== LSMC ========================================
 
+            # ======================================== KMS ========================================
             I1_MC_mean = f1_X.mean(1)
             I1_MC_std = f1_X.std(1)
             if args.baseline_use_variance:
                 KMS_mean_1, KMS_std_1 = baselines.kernel_mean_shrinkage(rng_key, I1_MC_mean, I1_MC_std, Theta1, Theta1_test, eps=0., kernel_fn=my_RBF)
             else:
                 KMS_mean_1, KMS_std_1 = baselines.kernel_mean_shrinkage(rng_key, I1_MC_mean, None, Theta1, Theta1_test, eps=0., kernel_fn=my_RBF)
+            # ======================================== KMS ========================================
 
-            # ==================== Code for f1 Starts ====================
+            # ==================== Code for f1 Ends ====================
 
             # ==================== Code for f2 Starts ====================
             # ==================== Debug code ====================
@@ -418,23 +423,28 @@ def main(args):
             #     pause = True
             #     ==================== Debug code ====================
 
-
+            # ======================================== CBQ ========================================
             I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u2, X2, f2_X)
             CBQ_mean_2, CBQ_std_2 = GP(I2_BQ_mean, I2_BQ_std, Theta2, Theta2_test, eps=I2_BQ_std.mean())
+            # ======================================== CBQ ========================================
 
+            # ======================================== LSMC ========================================
             if args.baseline_use_variance:
                 LSMC_mean_2, LSMC_std_2 = baselines.polynomial(Theta2, X2, f2_X, Theta2_test, baseline_use_variance=True)
             else:
                 LSMC_mean_2, LSMC_std_2 = baselines.polynomial(Theta2, X2, f2_X, Theta2_test, baseline_use_variance=False)
+            # ======================================== LSMC ========================================
 
+            # ======================================== KMS ========================================
             I2_MC_mean = f2_X.mean(1)
             I2_MC_std = f2_X.std(1)
             if args.baseline_use_variance:
                 KMS_mean_2, KMS_std_2 = baselines.kernel_mean_shrinkage(rng_key, I2_MC_mean, I2_MC_std, Theta2, Theta2_test, eps=0., kernel_fn=my_RBF)
             else:
                 KMS_mean_2, KMS_std_2 = baselines.kernel_mean_shrinkage(rng_key, I2_MC_mean, None, Theta2, Theta2_test, eps=0., kernel_fn=my_RBF)
+            # ======================================== KMS ========================================
 
-            # ==================== Code for f2 Starts ====================
+            # ==================== Code for f2 Ends ====================
 
             calibration_1 = decision_utils.calibrate(ground_truth_1, CBQ_mean_1, jnp.diag(CBQ_std_1))
             calibration_2 = decision_utils.calibrate(ground_truth_2, CBQ_mean_2, jnp.diag(CBQ_std_2))
