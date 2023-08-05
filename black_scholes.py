@@ -11,7 +11,7 @@ from functools import partial
 from tqdm import tqdm
 import baselines
 from kernels import *
-from utils import finance_utils
+from utils import black_scholes_utils
 import os
 import pwd
 import shutil
@@ -321,7 +321,7 @@ def bayesian_monte_carlo_stein(rng_key, Theta, X, fX, Kx):
     for i in range(T):
         theta = Theta[i]
         Xi = X[i, :][:, None]
-        Xi_standardized, Xi_mean, Xi_scale = finance_utils.standardize(Xi)
+        Xi_standardized, Xi_mean, Xi_scale = black_scholes_utils.standardize(Xi)
         fXi = fX[i, :][:, None]
 
         grad_x_log_px_theta_fn = partial(grad_x_log_px_theta, sigma=0.3, T_finance=2, t_finance=1, x_mean=Xi_mean, x_scale=Xi_scale)
@@ -338,12 +338,14 @@ def bayesian_monte_carlo_stein(rng_key, Theta, X, fX, Kx):
         I_BQ_std = I_BQ_std.at[i].set(std.squeeze())
         I_BQ_mean = I_BQ_mean.at[i].set(mu.squeeze())
 
+        # ======================================== Debug code ========================================
         # # Large sample mu
         # print('True value', price(theta[i], 10000, rng_key)[1].mean())
         # print(f'MC with {N} number of Y', fXi.mean())
         # print(f'CBQ with {N} number of Y', mu)
         # print(f"=================")
-        pause = True
+        # pause = True
+        # ======================================== Debug code ========================================
     return I_BQ_mean, I_BQ_std
     
 
@@ -356,7 +358,7 @@ def GP(I_BQ_mean, I_BQ_std, theta, theta_test, Ktheta):
     :param theta_test: T_test * 1
     :return:
     """
-    theta_standardized, theta_mean, theta_std = finance_utils.standardize(theta)
+    theta_standardized, theta_mean, theta_std = black_scholes_utils.standardize(theta)
     theta_test_standardized = (theta_test - theta_mean) / theta_std
     ltheta = 1.5
 
@@ -493,9 +495,9 @@ def option_pricing(args):
             # ======================================== CBQ ========================================
 
             ground_truth = jnp.load(f"{args.save_path}/finance_EfX_theta.npy")
-            calibration = finance_utils.calibrate(ground_truth, CBQ_mean, jnp.diag(CBQ_std))
+            calibration = black_scholes_utils.calibrate(ground_truth, CBQ_mean, jnp.diag(CBQ_std))
 
-            finance_utils.save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
+            black_scholes_utils.save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
                                time_CBQ, time_IS, time_KMS, time_LSMC, calibration, args.save_path)
 
     return
@@ -514,11 +516,11 @@ def main(args):
         dt = T / n
         plt.figure()
         for i in range(10):
-            St = finance_utils.Geometric_Brownian(n, dt, rng_key)
+            St = black_scholes_utils.Geometric_Brownian(n, dt, rng_key)
             plt.plot(St)
         # plt.show()
     elif debug_BSM:
-        finance_utils.BSM_butterfly_analytic()
+        black_scholes_utils.BSM_butterfly_analytic()
     else:
         pass
     option_pricing(args)

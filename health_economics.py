@@ -8,7 +8,7 @@ from functools import partial
 from tqdm import tqdm
 import baselines
 from kernels import *
-from utils import decision_utils
+from utils import health_economics_utils
 import os
 import pwd
 import shutil
@@ -443,8 +443,8 @@ def main(args):
 
             # ======================================== Code for f2 Ends ========================================
 
-            calibration_1 = decision_utils.calibrate(ground_truth_1, CBQ_mean_1, jnp.diag(CBQ_std_1))
-            calibration_2 = decision_utils.calibrate(ground_truth_2, CBQ_mean_2, jnp.diag(CBQ_std_2))
+            calibration_1 = health_economics_utils.calibrate(ground_truth_1, CBQ_mean_1, jnp.diag(CBQ_std_1))
+            calibration_2 = health_economics_utils.calibrate(ground_truth_2, CBQ_mean_2, jnp.diag(CBQ_std_2))
 
             true_value = jnp.maximum(ground_truth_1, ground_truth_2)
             CBQ_value = jnp.maximum(CBQ_mean_1, CBQ_mean_2)
@@ -455,7 +455,7 @@ def main(args):
             rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
             rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
 
-            decision_utils.save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
+            health_economics_utils.save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
 
             methods = ["CBQ", "KMS", "LSMC", "IS"]
             rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, np.nan]
