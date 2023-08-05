@@ -29,4 +29,4 @@ date
 which pip
 which python
 
-python /home/ucabzc9/Scratch/CBQ/sensitivity_conjugate.py $JOB_PARAMS
+python /home/ucabzc9/Scratch/CBQ/bayes_sensitivity.py $JOB_PARAMS
