@@ -103,17 +103,16 @@ def conditional_distribution(joint_mean, joint_covariance, theta, dimensions_x, 
     cov_XTheta = joint_covariance[jnp.ix_(dimensions_x, dimensions_theta)]
     cov_ThetaX = joint_covariance[jnp.ix_(dimensions_theta, dimensions_x)]
 
-    theta_t = theta.T
-    mean_x_given_theta = mean_x + cov_XTheta @ jnp.linalg.inv(cov_ThetaTheta) @ (theta_t - mean_theta)
+    mean_x_given_theta = mean_x + cov_XTheta @ jnp.linalg.inv(cov_ThetaTheta) @ (theta.T - mean_theta)
     cov_x_given_theta = cov_XX - cov_XTheta @ jnp.linalg.inv(cov_ThetaTheta) @ cov_ThetaX
     return mean_x_given_theta.T, cov_x_given_theta
 
 
-def Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u, x, fx):
+def Bayesian_Monte_Carlo_Matern_vectorized(rng_key, U, X, fX):
     scale = 1000
-    fx_standardized = fx / scale
+    fX_standardized = fX / scale
     vmap_func = jax.vmap(Bayesian_Monte_Carlo_Matern, in_axes=(None, 0, 0, 0))
-    I_BQ_mean, I_BQ_std = vmap_func(rng_key, u, x, fx_standardized)
+    I_BQ_mean, I_BQ_std = vmap_func(rng_key, U, X, fX_standardized)
     return I_BQ_mean * scale, I_BQ_std
 
 
@@ -289,43 +288,37 @@ def main(args):
 
     for T in T_array:
         rng_key, _ = jax.random.split(rng_key)
-        # Theta shape is (T, 2)
-        # Theta = jax.random.multivariate_normal(rng_key, Theta_mean, Theta_sigma, shape=(T,))
-        # Theta1 = Theta[:, 0][:, None]
-        # Theta2 = Theta[:, 1][:, None]
-
         Theta1 = jnp.linspace(Theta1_test.min(), Theta1_test.max(), T)[:, None]
         Theta2 = jnp.linspace(Theta2_test.min(), Theta2_test.max(), T)[:, None]
 
         for N in tqdm(N_array):
-            f1_p_X_Theta_mean, f1_p_X_Theta_sigma = f1_cond_dist_fn(theta=Theta1)
-            f2_p_X_Theta_mean, f2_p_X_Theta_sigma = f2_cond_dist_fn(theta=Theta2)
+            f1_p_X_Theta_mean, f1_p_X_Theta_std = f1_cond_dist_fn(theta=Theta1)
+            f2_p_X_Theta_mean, f2_p_X_Theta_std = f2_cond_dist_fn(theta=Theta2)
             # X1, X2 shape is (T, N, 9)
             X1 = jnp.zeros([T, N, 9]) + 0.0
-            u1 = jnp.zeros([T, N, 9]) + 0.0
+            U1 = jnp.zeros([T, N, 9]) + 0.0
             X2 = jnp.zeros([T, N, 9]) + 0.0
-            u2 = jnp.zeros([T, N, 9]) + 0.0
+            U2 = jnp.zeros([T, N, 9]) + 0.0
             for i in range(T):
                 rng_key, _ = jax.random.split(rng_key)
                 u1_temp = jax.random.multivariate_normal(rng_key,
                                                          mean=jnp.zeros_like(f1_p_X_Theta_mean[i, :]),
-                                                         cov=jnp.eye(f1_p_X_Theta_sigma.shape[0]),
+                                                         cov=jnp.eye(f1_p_X_Theta_std.shape[0]),
                                                          shape=(N,))
-                L1 = jnp.linalg.cholesky(f1_p_X_Theta_sigma)
+                L1 = jnp.linalg.cholesky(f1_p_X_Theta_std)
                 X1_temp = f1_p_X_Theta_mean[i, :] + jnp.matmul(L1, u1_temp.T).T
-                # X1_temp = jax.random.multivariate_normal(rng_key, f1_p_X_Theta_mean[i, :], f1_p_X_Theta_sigma, shape=(N,))
                 X1 = X1.at[i, :, :].set(X1_temp)
-                u1 = u1.at[i, :, :].set(u1_temp)
+                U1 = U1.at[i, :, :].set(u1_temp)
 
                 rng_key, _ = jax.random.split(rng_key)
                 u2_temp = jax.random.multivariate_normal(rng_key,
                                                          mean=jnp.zeros_like(f2_p_X_Theta_mean[i, :]),
-                                                         cov=jnp.eye(f2_p_X_Theta_sigma.shape[0]),
+                                                         cov=jnp.eye(f2_p_X_Theta_std.shape[0]),
                                                          shape=(N,))
-                L2 = jnp.linalg.cholesky(f2_p_X_Theta_sigma)
+                L2 = jnp.linalg.cholesky(f2_p_X_Theta_std)
                 X2_temp = f2_p_X_Theta_mean[i, :] + jnp.matmul(L2, u2_temp.T).T
                 X2 = X2.at[i, :, :].set(X2_temp)
-                u2 = u2.at[i, :, :].set(u2_temp)
+                U2 = U2.at[i, :, :].set(u2_temp)
 
             # f_X shape is (T, N)
             f1_X = f1(Theta1, X1)
@@ -365,7 +358,7 @@ def main(args):
             #     ======================================== Debug code ========================================
 
             # ======================================== CBQ ========================================
-            I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u1, X1, f1_X)
+            I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, U1, X1, f1_X)
             CBQ_mean_1, CBQ_std_1 = GP(I1_BQ_mean, I1_BQ_std, Theta1, Theta1_test, eps=I1_BQ_std.mean())
             # ======================================== CBQ ========================================
 
@@ -421,7 +414,7 @@ def main(args):
             #     ======================================== Debug code ========================================
 
             # ======================================== CBQ ========================================
-            I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u2, X2, f2_X)
+            I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, U2, X2, f2_X)
             CBQ_mean_2, CBQ_std_2 = GP(I2_BQ_mean, I2_BQ_std, Theta2, Theta2_test, eps=I2_BQ_std.mean())
             # ======================================== CBQ ========================================
 

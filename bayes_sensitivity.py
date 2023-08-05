@@ -573,6 +573,7 @@ def main(args):
 
             rng_key, _ = jax.random.split(rng_key)
             _, _ = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
+            
             time0 = time.time()
             if args.kernel_theta == "RBF":
                 CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
