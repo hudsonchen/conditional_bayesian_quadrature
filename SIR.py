@@ -47,12 +47,9 @@ def get_config():
     parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
     parser.add_argument('--mode', type=str, default='peak_number')
+    parser.add_argument('--baseline_use_variance', action='store_true', default=False)
     args = parser.parse_args()
     return args
-
-
-def Monte_Carlo(fx):
-    return fx.mean(0)
 
 
 # @partial(jax.jit, static_argnums=(4,))
@@ -190,11 +187,11 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, ground_truth):
         for i, l in enumerate(l_array):
             K_no_scale = my_Matern(X_standardized, X_standardized, l)
             A = Mu_standardized.T @ K_no_scale @ Mu_standardized / T
-            A_array = A_array.at[i].set(A[0][0])
+            A_array = A_array.at[i].set(A)
             K = A * K_no_scale
             K_inv = jnp.linalg.inv(K + jnp.diag(sigma ** 2))
             nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / T
-            nll_array = nll_array.at[i].set(nll[0][0])
+            nll_array = nll_array.at[i].set(nll)
         l = l_array[nll_array.argmin()]
         A = A_array[nll_array.argmin()]
 
@@ -212,14 +209,14 @@ def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, ground_truth):
 
     mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
     std_y_x_prime_original = std_y_x_prime * Mu_std
-    # ========== Debug code ==========
+    # ==================== Debug code ====================
     # plt.figure()
     # plt.plot(x_prime.squeeze(), ground_truth, color='black')
     # plt.plot(x_prime.squeeze(), mu_y_x_prime_original.squeeze(), color='red')
     # plt.scatter(X.squeeze(), psi_y_x_mean.squeeze(), color='blue')
     # plt.show()
     # pause = True
-    # ========== Debug code ==========
+    # ==================== Debug code ====================
     return mu_y_x_prime_original, std_y_x_prime_original
 
 
@@ -230,14 +227,14 @@ def peak_infected_number(infections):
 def SIR(args, rng_key):
     N_array = jnp.array([10, 20, 30])
     # N_array = jnp.arange(5, 45, 5)
-    T_array = jnp.array([10])
+    T_array = jnp.array([15])
     # T_array = jnp.arange(5, 45, 5)
-    # T_test = 10
-    T_test = 10
+    # T_test = 100
+    T_test = 3
 
     population = float(1e5)
     X_real, gamma_real = 0.25, 0.05
-    theta_test = jnp.linspace(0.1, 0.8, T_test)
+    Theta_test = jnp.linspace(0.1, 0.8, T_test)
     rate = 10.0
     scale = 1. / rate
     Time = 150
@@ -253,7 +250,7 @@ def SIR(args, rng_key):
     # Generate ground truth with large number of samples
     ground_truth_array = jnp.zeros([T_test])
     for i in tqdm(range(T_test)):
-        theta = theta_test[i]
+        theta = Theta_test[i]
         a = 1 + rate * theta
         rng_key, _ = jax.random.split(rng_key)
         X_samples = jax.random.gamma(rng_key, a, shape=(SamplesNum,))
@@ -262,19 +259,17 @@ def SIR(args, rng_key):
         ground_truth_array = ground_truth_array.at[i].set(f(temp).mean())
 
     for T in T_array:
-        theta_array = jnp.linspace(0.1, 0.8, T)
+        Theta_array = jnp.linspace(0.1, 0.8, T)
 
         for N in N_array:
             I_BQ_mean_array = jnp.zeros([T])
             I_BQ_std_array = jnp.zeros([T])
-            I_MC_mean_array = jnp.zeros([T])
-            I_MC_std_array = jnp.zeros([T])
 
-            X_array_all = jnp.zeros([T, N])
+            X_array = jnp.zeros([T, N])
             f_X_array = jnp.zeros([T, N])
 
             for j in tqdm(range(T)):
-                theta = theta_array[j]
+                theta = Theta_array[j]
                 a = 1 + rate * theta
 
                 rng_key, _ = jax.random.split(rng_key)
@@ -282,99 +277,91 @@ def SIR(args, rng_key):
                 samples = samples * scale
                 rng_key, _ = jax.random.split(rng_key)
                 indices = jax.random.permutation(rng_key, jnp.arange(SamplesNum))[:N]
-                X_array = samples[indices]
+                X = samples[indices]
 
                 log_prior_fn = partial(log_prior, theta=theta, rate=rate, rng_key=rng_key)
                 grad_log_prior_fn = jax.grad(log_prior_fn)
 
-                f_X_array_temp = jnp.zeros([N])
-                d_log_X_array = jnp.zeros([N, 1])
+                f_X = jnp.zeros([N])
+                d_log_X = jnp.zeros([N, 1])
 
                 for i in range(N):
-                    X = X_array[i]
+                    x = X[i]
                     rng_key, _ = jax.random.split(rng_key)
-                    D = SIR_utils.generate_data(X, gamma_real, Time, dt, population, rng_key)
-                    f_X = f(D)
-                    d_log_X = grad_log_prior_fn(X)
-                    f_X_array_temp = f_X_array_temp.at[i].set(f_X)
-                    d_log_X_array = d_log_X_array.at[i, :].set(d_log_X)
+                    D = SIR_utils.generate_data(x, gamma_real, Time, dt, population, rng_key)
+                    f_x = f(D)
+                    d_log_x = grad_log_prior_fn(x)
+                    f_X = f_X.at[i].set(f_x)
+                    d_log_X = d_log_X.at[i, :].set(d_log_x)
 
-                X_array_all = X_array_all.at[j, :].set(X_array)
-                f_X_array = f_X_array.at[j, :].set(f_X_array_temp)
+                X_array = X_array.at[j, :].set(X)
+                f_X_array = f_X_array.at[j, :].set(f_X)
 
-                I_MC = Monte_Carlo(f_X_array_temp)
-                f_X_array_scale, f_X_array_standardized = SIR_utils.scale(f_X_array_temp)
+                f_X_scale, f_X_standardized = SIR_utils.scale(f_X)
 
                 rng_key, _ = jax.random.split(rng_key)
-                X_array_standardized, X_array_mean, X_array_std = SIR_utils.standardize(X_array)
+                X_standardized, X_mean, X_std = SIR_utils.standardize(X)
 
-                _, _ = Bayesian_Monte_Carlo(rng_key, X_array_standardized[:, None],
-                                            f_X_array_standardized,
-                                            d_log_X_array * X_array_std, stein_Matern)
+                _, _ = Bayesian_Monte_Carlo(rng_key, X_standardized[:, None], f_X_standardized, d_log_X * X_std, stein_Matern)
                 tt0 = time.time()
-                I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo(rng_key, X_array_standardized[:, None],
-                                                          f_X_array_standardized,
-                                                          d_log_X_array * X_array_std, stein_Matern)
+                I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo(rng_key, X_standardized[:, None], f_X_standardized, d_log_X * X_std, stein_Matern)
                 tt1 = time.time()
 
-                I_BQ_mean = I_BQ_mean * f_X_array_scale
-                I_BQ_std = I_BQ_std * f_X_array_scale
-                if I_BQ_mean > 2 * I_MC:
-                    I_BQ_mean = I_MC
+                I_BQ_mean = I_BQ_mean * f_X_scale
+                if I_BQ_mean > 2 * f_X.mean(0):
+                    I_BQ_mean = f_X.mean(0)
                 I_BQ_mean_array = I_BQ_mean_array.at[j].set(I_BQ_mean)
                 I_BQ_std_array = I_BQ_std_array.at[j].set(I_BQ_std)
-                I_MC_mean_array = I_MC_mean_array.at[j].set(I_MC)
 
-                # ========== Debug code ==========
+                # ==================== Debug code ====================
                 # large_samples = generate_data_vmap(samples)
                 # f_X_MC_large_sample = f(large_samples).mean()
                 # print(f'True value (MC with {SamplesNum} samples)', f_X_MC_large_sample)
                 # print(f'MC with {N} number of Y', I_MC)
-                # print(f'BMC with {N} number of Y', I_BQ_mean)
+                # print(f'CBQ with {N} number of Y', I_BQ_mean)
                 # print(f"=================")
                 # pause = True
-                # ========== Debug code ===========
+                # ==================== Debug code ====================
 
             I_BQ_std_array = jnp.nan_to_num(I_BQ_std_array, nan=0.)
             I_BQ_std_array = jnp.ones_like(I_BQ_std_array) * jnp.mean(I_BQ_std_array)
 
-            _, _ = GP(I_BQ_mean_array[:, None], I_BQ_std_array[:, None],
-                      theta_array[:, None], theta_test[:, None], ground_truth_array)
+            _, _ = GP(I_BQ_mean_array, I_BQ_std_array, Theta_array[:, None], Theta_test[:, None], ground_truth_array)
             t0 = time.time()
-            I_BQ_mean, I_BQ_std = GP(I_BQ_mean_array[:, None], I_BQ_std_array[:, None],
-                                   theta_array[:, None], theta_test[:, None], ground_truth_array)
-            BMC_time = time.time() - t0 + (tt1 - tt0) * T
+            I_BQ_mean, I_BQ_std = GP(I_BQ_mean_array, I_BQ_std_array, Theta_array[:, None], Theta_test[:, None], ground_truth_array)
+            time_CBQ = time.time() - t0 + (tt1 - tt0) * T
 
-            I_BQ_mean = I_BQ_mean.squeeze()
-            I_BQ_std = jnp.diag(I_BQ_std.squeeze())
 
-            # Importance sampling
+            # ======================================== Importance sampling ========================================
             log_px_theta_fn = partial(log_prior, rate=rate, rng_key=rng_key)
             t0 = time.time()
-            IS_mean, _ = baselines.importance_sampling_SIR(log_px_theta_fn, theta_test[:, None], theta_array[:, None],
-                                                           X_array_all, f_X_array_all)
-            IS_time = time.time() - t0
+            IS_mean, _ = baselines.importance_sampling_SIR(log_px_theta_fn, Theta_test[:, None], Theta_array[:, None], X_array, f_X_array)
+            time_IS = time.time() - t0
 
-            # Least squared Monte Carlo
-            _, _ = baselines.polynomial(theta_array[:, None], X_array_all[:, None],
-                                            f_X_array_all, theta_test[:, None])
+            # ======================================== LSMC ========================================
             t0 = time.time()
-            LSMC_mean, _ = baselines.polynomial(theta_array[:, None], X_array_all[:, None],
-                                                    f_X_array_all, theta_test[:, None])
-            LSMC_time = time.time() - t0
-
-            time0 = time.time()
             if args.baseline_use_variance:
-                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, I_MC_std_array, theta_array[:, None], theta_test[:, None], eps=0., kernel_fn=my_RBF)
+                LSMC_mean, LSMC_std = baselines.polynomial(Theta_array[:, None], X_array[:, None], f_X_array, Theta_test[:, None], baseline_use_variance=True)
             else:
-                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, None, theta_array[:, None], theta_test[:, None], eps=0., kernel_fn=my_RBF)
-            time_KMS = time.time() - time0
+                LSMC_mean, LSMC_std = baselines.polynomial(Theta_array[:, None], X_array[:, None], f_X_array, Theta_test[:, None], baseline_use_variance=False)
+            # ======================================== LSMC ========================================
+            time_LSMC = time.time() - t0
+
+            # ======================================== KMS ========================================
+            t0 = time.time()
+            I_MC_mean_array = f_X_array.mean(1)
+            I_MC_std_array = f_X_array.std(1)
+            if args.baseline_use_variance:
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, I_MC_std_array, Theta_array[:, None], Theta_test[:, None], eps=0., kernel_fn=my_RBF)
+            else:
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, None, Theta_array[:, None], Theta_test[:, None], eps=0., kernel_fn=my_RBF)
+            time_KMS = time.time() - t0
+            # ======================================== KMS ========================================
 
             calibration = SIR_utils.calibrate(ground_truth_array, I_BQ_mean, I_BQ_std)
 
-            SIR_utils.save(args, T, N, theta_test, I_BQ_mean_array, I_BQ_mean, I_BQ_std, KMS_mean,
-                           LSMC_mean, IS_mean, ground_truth_array, theta_array, BMC_time, KMS_time, LSMC_time, IS_time,
-                           calibration)
+            SIR_utils.save(args, T, N, Theta_test, I_BQ_mean_array, I_BQ_mean, I_BQ_std, KMS_mean,
+                           LSMC_mean, IS_mean, ground_truth_array, Theta_array, time_CBQ, time_KMS, time_LSMC, time_IS, calibration)
 
     return
 
