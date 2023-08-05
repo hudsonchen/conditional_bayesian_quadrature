@@ -175,6 +175,7 @@ def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     A_init = A = 1.0 / jnp.sqrt(n)
     opt_state = optimizer.init((l_init, c_init, A_init))
 
+    # ======================================== Debug code ========================================
     # @jax.jit
     # def nllk_func(l, c, A):
     #     # l = jnp.exp(log_l)
@@ -191,7 +192,6 @@ def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     #     l, c, A = optax.applx_updates((l, c, A), updates)
     #     return l, c, A, opt_state, nllk_value
 
-    # # Debug code
     # l_debug_list = []
     # c_debug_list = []
     # A_debug_list = []
@@ -209,7 +209,7 @@ def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
         # c_debug_list.append(c)
         # A_debug_list.append(A)
         # nll_debug_list.append(nllk_value)
-    # Debug code
+
     # fig = plt.figure(figsize=(15, 6))
     # ax_1, ax_2, ax_3, ax_4 = fig.subplots(1, 4)
     # ax_1.plot(l_debug_list)
@@ -230,6 +230,7 @@ def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     # plt.scatter(x * x_scale, gx)
     # plt.plot(x_debug * x_scale, gx_debug)
     # plt.show()
+    # ======================================== Debug code ========================================
     pause = True
     return l, c, A
 
@@ -292,13 +293,13 @@ def bayesian_monte_carlo_no_stein(rng_key, Theta, X, fX, Kx):
         I_BQ_std = I_BQ_std.at[i].set(std.squeeze())
         I_BQ_mean = I_BQ_mean.at[i].set(mu.squeeze())
 
-        # ============= Debug code =============
+        # ======================================== Debug code ========================================
         # print('True value', price(Theta[i], 10000, rng_key)[1].mean())
         # print(f'MC with {N} number of Y', fX.mean())
         # print(f'CBQ with {N} number of Y', mu_standardized.squeeze())
-        # print(f"=================")
+        # print(f"========================================")
         # pause = True
-        # ============= Debug code =============
+        # ======================================== Debug code ========================================
     return I_BQ_mean, I_BQ_std
 
 

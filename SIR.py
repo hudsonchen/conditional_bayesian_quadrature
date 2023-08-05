@@ -87,6 +87,7 @@ def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
     l_init = l = 1.5
     A_init = A = 1.0 / jnp.sqrt(x.shape[0])
 
+    # ======================================== Debug code ========================================
     # @jax.jit
     # def nllk_func(l, c, A):
     #     l, c, A = l, c, A
@@ -103,19 +104,16 @@ def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
     #     l, c, A = optax.apply_updates((l, c, A), updates)
     #     return l, c, A, opt_state, nllk_value
 
-    # ========== Debug code ==========
     # l_debug_list = []
     # c_debug_list = []
     # A_debug_list = []
     # nll_debug_list = []
-    # ========== Debug code ==========
 
     # for _ in range(0):
     #     rng_key, _ = jax.random.split(rng_key)
     #     l, c, A, opt_state, nllk_value = step(l, c, A, opt_state, rng_key)
     #     if jnp.isnan(nllk_value):
     #         break
-    # ========== Debug code ==========
     #     l_debug_list.append(l)
     #     c_debug_list.append(c)
     #     A_debug_list.append(A)
@@ -127,13 +125,14 @@ def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
     # ax_3.plot(A_debug_list)
     # ax_4.plot(nll_debug_list)
     # plt.show()
-    # ========== Debug code ==========
+    # ======================================== Debug code ========================================
 
     K = A * kernel_x(x_standardized, x_standardized, l, d_log_px, d_log_px) + c + A * jnp.eye(x.shape[0])
     K_inv = jnp.linalg.inv(K)
     I_BQ_mean = c * (K_inv @ fx_standardized).sum()
     I_BQ_std = jnp.sqrt(c - K_inv.sum() * c * c)
     I_BQ_mean = I_BQ_mean * fx_scale
+    I_BQ_mean = jnp.where(I_BQ_mean > 2 * fx.mean(0), fx.mean(0), I_BQ_mean)
     pause = True
     return I_BQ_mean, I_BQ_std
 
@@ -145,7 +144,7 @@ def prior(X, theta, rate, rng_key):
     return pdf
 
 
-# @jax.jit
+@jax.jit
 def log_prior(X, theta, rate, rng_key):
     scale = 1. / rate
     logpdf = -jnp.log(scale) + jax.scipy.stats.gamma.logpdf(X / scale, a=1 + rate * theta)
@@ -214,7 +213,7 @@ def peak_infected_number(infections):
 def SIR(args, rng_key):
     N_array = jnp.array([10, 20, 30])
     # N_array = jnp.arange(5, 45, 5)
-    T_array = jnp.array([10])
+    T_array = jnp.array([3])
     # T_array = jnp.arange(5, 45, 5)
     # T_test = 100
     T_test = 3
@@ -317,15 +316,15 @@ def SIR(args, rng_key):
 
             _, _ = GP(I_BQ_mean_array, I_BQ_std_array, Theta_array[:, None], Theta_test[:, None], ground_truth_array)
             t0 = time.time()
-            I_BQ_mean, I_BQ_std = GP(I_BQ_mean_array, I_BQ_std_array, Theta_array[:, None], Theta_test[:, None], ground_truth_array)
-            I_BQ_std = jnp.diag(I_BQ_std)
+            I_CBQ_mean, I_CBQ_std = GP(I_BQ_mean_array, I_BQ_std_array, Theta_array[:, None], Theta_test[:, None], ground_truth_array)
+            I_CBQ_std = jnp.diag(I_CBQ_std)
             time_CBQ = time.time() - t0
             # ======================================== CBQ ========================================
 
             # ======================================== Importance sampling ========================================
             log_px_theta_fn = partial(log_prior, rate=rate, rng_key=rng_key)
             t0 = time.time()
-            IS_mean, _ = baselines.importance_sampling_SIR(log_px_theta_fn, Theta_test[:, None], Theta_array[:, None], X_array, f_X_array)
+            IS_mean, IS_std = baselines.importance_sampling_SIR(log_px_theta_fn, Theta_test, Theta_array, X_array, f_X_array)
             time_IS = time.time() - t0
             # ======================================== Importance sampling ========================================
 
@@ -349,10 +348,9 @@ def SIR(args, rng_key):
             time_KMS = time.time() - t0
             # ======================================== KMS ========================================
 
-            calibration = SIR_utils.calibrate(ground_truth_array, I_BQ_mean, I_BQ_std)
+            calibration = SIR_utils.calibrate(ground_truth_array, I_CBQ_mean, I_CBQ_std)
 
-            SIR_utils.save(args, T, N, Theta_test, I_BQ_mean_array, I_BQ_mean, I_BQ_std, KMS_mean,
-                           LSMC_mean, IS_mean, ground_truth_array, Theta_array, time_CBQ, time_KMS, time_LSMC, time_IS, calibration)
+            SIR_utils.save(args, T, N, I_CBQ_mean, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, time_CBQ, time_KMS, time_LSMC, time_IS, calibration)
 
     return
 

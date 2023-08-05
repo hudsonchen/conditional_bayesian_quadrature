@@ -93,8 +93,8 @@ def generate_data(beta, gamma, Time, dt, population, rng_key):
     return D['I']
 
 
-def save(args, T, N, theta_test, CBQ_mean_array, CBQ_mean, CBQ_std, KMS_mean, LSMC_mean, IS_mean,
-         ground_truth_array, theta_array, CBQ_time, KMS_time, LSMC_time, IS_time, calibration):
+def save(args, T, N, CBQ_mean, KMS_mean, LSMC_mean, IS_mean,
+         ground_truth_array, CBQ_time, KMS_time, LSMC_time, IS_time, calibration):
     KMS_mean = KMS_mean.squeeze()
     time_dict = {'CBQ': CBQ_time, 'IS': IS_time, 'LSMC': LSMC_time, 'KMS': KMS_time}
     with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
@@ -113,14 +113,14 @@ def save(args, T, N, theta_test, CBQ_mean_array, CBQ_mean, CBQ_std, KMS_mean, LS
     methods = ["CBQ", "KMS", "LSMC", "IS"]
     rmse_values = [rmse_dict['CBQ'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
 
-    print("\n\n=======================================")
+    print("\n\n========================================")
     print(f"T = {T} and N = {N}")
-    print("=======================================")
+    print("========================================")
     print(" ".join([f"{method:<11}" for method in methods]))
     print(" ".join([f"{value:<6.5f}" for value in rmse_values]))
-    print("=======================================\n\n")
+    print("========================================\n\n")
     
-    # ========== Debug code ==========
+    # ======================================== Debug code ========================================
     # time_values = [time_dict['CBQ'], time_dict['KMS'], time_dict['LSMC'], time_dict['IS']]
 
     # print("\n\n=======================================")
@@ -129,23 +129,22 @@ def save(args, T, N, theta_test, CBQ_mean_array, CBQ_mean, CBQ_std, KMS_mean, LS
     # print(" ".join([f"{method:<10}" for method in methods]))
     # print(" ".join([f"{value:<10.6f}" for value in time_values]))
     # print("=======================================\n\n")
-    # print(f"=============")
 
-    plt.figure()
-    plt.plot(theta_test, CBQ_mean, color='blue', label='CBQ')
-    plt.plot(theta_test, KMS_mean, color='red', label='KMS')
-    plt.plot(theta_test, LSMC_mean, color='green', label='LSMC')
-    plt.plot(theta_test, IS_mean, color='orange', label='IS')
-    plt.plot(theta_test, ground_truth_array, color='black', label='True')
-    plt.scatter(theta_array, CBQ_mean_array, color='orange')
-    plt.fill_between(theta_test, CBQ_mean - CBQ_std, CBQ_mean + CBQ_std, alpha=0.2, color='blue')
-    plt.legend()
-    plt.title(f"T={T}, N={N}")
-    plt.savefig(f"{args.save_path}/figures/SIR_T_{T}_N_{N}.pdf")
-    # plt.show()
-    plt.close()
-    pause = True
-    # ========== Debug code ==========
+    # plt.figure()
+    # plt.plot(theta_test, CBQ_mean, color='blue', label='CBQ')
+    # plt.plot(theta_test, KMS_mean, color='red', label='KMS')
+    # plt.plot(theta_test, LSMC_mean, color='green', label='LSMC')
+    # plt.plot(theta_test, IS_mean, color='orange', label='IS')
+    # plt.plot(theta_test, ground_truth_array, color='black', label='True')
+    # plt.scatter(theta_array, CBQ_mean_array, color='orange')
+    # plt.fill_between(theta_test, CBQ_mean - CBQ_std, CBQ_mean + CBQ_std, alpha=0.2, color='blue')
+    # plt.legend()
+    # plt.title(f"T={T}, N={N}")
+    # plt.savefig(f"{args.save_path}/figures/SIR_T_{T}_N_{N}.pdf")
+    # # plt.show()
+    # plt.close()
+    # pause = True
+    # ======================================== Debug code ========================================
     return
 
 
@@ -191,47 +190,3 @@ def calibrate(ground_truth, CBQ_mean, CBQ_std):
     plt.close()
     # plt.show()
     return prediction_interval
-
-# def ground_truth_peak_infected_number(beta_all, gamma, D_real, T, population, MCMC_fn, N_MCMC, log_posterior,
-#                                       rate, rng_key):
-#     peak_infected_number = jnp.zeros_like(beta_all)
-#     for i, beta in enumerate(tqdm(beta_all)):
-#         rng_key, _ = jax.random.split(rng_key)
-#         log_posterior_fn = partial(log_posterior, beta_mean=0., beta_std=1.0, gamma=gamma, D_real=D_real,
-#                                    population=population, beta_0=beta, rate=rate, rng_key=rng_key)
-#
-#         samples = MCMC_fn(rng_key, beta, N_MCMC, beta, log_posterior_fn, rate)
-#         samples = jnp.unique(samples, axis=0)
-#         rng_key, _ = jax.random.split(rng_key)
-#         samples = jax.random.permutation(rng_key, samples)
-#
-#         dummy = 0
-#         for s in samples:
-#             rng_key, _ = jax.random.split(rng_key)
-#             D = generate_data(s, gamma, T, population, rng_key)
-#             dummy += D['dI'].max()
-#         peak_infected_number = peak_infected_number.at[i].set(dummy / len(samples))
-#     return peak_infected_number
-#
-#
-# def ground_truth_peak_infected_time(beta_all, gamma, D_real, T, population, MCMC_fn, N_MCMC, log_posterior,
-#                                       rate, rng_key):
-#     peak_infected_time = jnp.zeros_like(beta_all)
-#     for i, beta in enumerate(tqdm(beta_all)):
-#         rng_key, _ = jax.random.split(rng_key)
-#         log_posterior_fn = partial(log_posterior, beta_mean=0., beta_std=1.0, gamma=gamma, D_real=D_real,
-#                                    population=population, beta_0=beta, rate=rate, rng_key=rng_key)
-#
-#         samples = MCMC_fn(rng_key, beta, N_MCMC, beta, log_posterior_fn, rate)
-#         samples = jnp.unique(samples, axis=0)
-#         rng_key, _ = jax.random.split(rng_key)
-#         samples = jax.random.permutation(rng_key, samples)
-#
-#         dummy = 0
-#         for s in samples:
-#             rng_key, _ = jax.random.split(rng_key)
-#             D = generate_data(s, gamma, T, population, rng_key)
-#             dummy += D['dI'].argmax()
-#         peak_infected_time = peak_infected_time.at[i].set(dummy / len(samples))
-#     return peak_infected_time
-

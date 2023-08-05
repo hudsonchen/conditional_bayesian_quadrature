@@ -156,44 +156,41 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, x, fx):
     return CBQ_mean, CBQ_std
 
 
-def GP(psi_x_theta_mean, psi_x_theta_std, Theta, Theta_test, eps):
+def GP(I_mean, I_std, Theta, Theta_test, eps):
     """
-    :param psi_x_theta_mean: (T, )
-    :param psi_x_theta_std: (T, )
+    :param I_mean: (T, )
+    :param I_std: (T, )
     :param Theta: (T, D)
     :param Theta_test: (T_test, D)
     :return:
     """
     T, D = Theta.shape[0], Theta.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0])
-    scale = 1.
-    psi_x_theta_mean_standardized = psi_x_theta_mean / scale
 
     A_array = 0 * l_array
     nll_array = jnp.zeros([len(l_array), 1])
 
     for i, l in enumerate(l_array):
         K_no_scale = my_Matern(Theta, Theta, l)
-        A = psi_x_theta_mean_standardized.T @ K_no_scale @ psi_x_theta_mean_standardized / T
+        A = I_mean.T @ K_no_scale @ I_mean / T
         A_array = A_array.at[i].set(A.squeeze())
-        K = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
+        K = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
         K_inv = jnp.linalg.inv(K)
-        nll = -(-0.5 * psi_x_theta_mean_standardized.T @ K_inv @ psi_x_theta_mean_standardized - 0.5 * jnp.log(
-            jnp.linalg.det(K) + 1e-6)) / T
+        nll = -(-0.5 * I_mean.T @ K_inv @ I_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / T
         nll_array = nll_array.at[i].set(nll.squeeze())
 
     l = l_array[jnp.argmin(nll_array)]
     A = A_array[jnp.argmin(nll_array)]
 
-    K_train_train = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(psi_x_theta_std ** 2)
+    K_train_train = A * my_Matern(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
     K_test_train = A * my_Matern(Theta_test, Theta, l)
     K_test_test = A * my_Matern(Theta_test, Theta_test, l) + eps * jnp.eye(Theta_test.shape[0])
 
-    mu_x_theta = K_test_train @ K_train_train_inv @ psi_x_theta_mean_standardized * scale
+    mu_x_theta = K_test_train @ K_train_train_inv @ I_mean
     var_x_theta = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
     var_x_theta = jnp.abs(var_x_theta)
-    std_x_theta = jnp.sqrt(var_x_theta) * scale
+    std_x_theta = jnp.sqrt(var_x_theta)
     pause = True
     return mu_x_theta, std_x_theta
 
@@ -280,7 +277,7 @@ def main(args):
     f2_X_test = f2(Theta2_test, X2_test)
     ground_truth_1 = f1_X_test.mean(1)
     ground_truth_2 = f2_X_test.mean(1)
-    # ==================== Code to generate test points Ends ====================
+    # ======================================== Code to generate test points Ends ========================================
 
     # T_array = jnp.array([10, 20, 30])
     T_array = jnp.array([10, 50, 100])

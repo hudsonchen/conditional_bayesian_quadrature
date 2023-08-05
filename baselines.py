@@ -183,7 +183,7 @@ def importance_sampling_finance(pX_theta_fn, theta_test, theta, X, f_X):
     """
     Vectorized importance sampling for finance
     :param pX_theta_fn:
-    :param theta_test: T_Test*D
+    :param theta_test: T_test*D
     :param theta: T*D
     :param X: T*N*D
     :param f_X: T*N
@@ -198,7 +198,7 @@ def importance_sampling_finance(pX_theta_fn, theta_test, theta, X, f_X):
 def importance_sampling_single_SIR(tree, log_py_theta_fn, theta_test):
     """
     :param log_px_theta_fn:
-    :param tree: consists of thetai: scalar, Xi: (N, ), f_Xi: (N, )
+    :param tree: consists of theta_i: (N, ), Xi: (N, ), f_Xi: (N, )
     :param x_test:
     :return:
     """
@@ -222,13 +222,13 @@ def importance_sampling_SIR(log_py_theta_fn, Theta_test, Theta, X, f_X):
     """
     Vectorized importance sampling for SIR
     :param log_py_theta_fn:
-    :param Theta_test: T_Test*D
-    :param Theta: T*D
-    :param X: T*N*D
-    :param f_X: T*N
+    :param Theta_test: T_test
+    :param Theta: T
+    :param X: T * N
+    :param f_X: T * N
     :return:
     """
-    importance_sampling_fn = partial(importance_sampling_SIR_, log_py_theta_fn, Theta, X, f_X)
+    importance_sampling_fn = partial(importance_sampling_SIR_, log_py_theta_fn, X, Theta, f_X)
     importance_sampling_vmap = jax.vmap(importance_sampling_fn)
     IS_mean = importance_sampling_vmap(Theta_test)
     return IS_mean, 0 * IS_mean
