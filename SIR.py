@@ -52,6 +52,21 @@ def get_config():
     return args
 
 
+def Bayesian_Monte_Carlo_vectorized(rng_key, X, f_X, d_log_pX, kernel_x):
+    """
+    :param rng_key:
+    :param X: T * N
+    :param f_X: T * N 
+    :param d_log_pX: T * N * D
+    :param kernel_x: kernel function
+    :return:
+    """
+    rng_key, _ = jax.random.split(rng_key)
+    vmap_func = jax.vmap(Bayesian_Monte_Carlo, in_axes=(None, 0, 0, 0, None))
+    I_BQ_mean, I_BQ_std = vmap_func(rng_key, X, f_X, d_log_pX, stein_Matern)
+    return I_BQ_mean, I_BQ_std
+
+
 # @partial(jax.jit, static_argnums=(4,))
 def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
     """
@@ -62,13 +77,15 @@ def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
     :param kernel_x: kernel function
     :return:
     """
-    n = x.shape[0]
-    learning_rate = 1e-3
-    optimizer = optax.adam(learning_rate)
+    x_standardized, x_mean, x_std = SIR_utils.standardize(x)
+    x_standardized = x_standardized[:, None]
+    fx_scale, fx_standardized = SIR_utils.scale(fx)
+    d_log_px = d_log_px * x_std
+
     eps = 1e-6
     c_init = c = 1.0
     l_init = l = 1.5
-    A_init = A = 1.0 / jnp.sqrt(n)
+    A_init = A = 1.0 / jnp.sqrt(x.shape[0])
 
     # @jax.jit
     # def nllk_func(l, c, A):
@@ -112,11 +129,11 @@ def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
     # plt.show()
     # ========== Debug code ==========
 
-    l, c, A = l, c, A
-    K = A * kernel_x(x, x, l, d_log_px, d_log_px) + c + A * jnp.eye(n)
+    K = A * kernel_x(x_standardized, x_standardized, l, d_log_px, d_log_px) + c + A * jnp.eye(x.shape[0])
     K_inv = jnp.linalg.inv(K)
-    I_BQ_mean = c * (K_inv @ fx).sum()
+    I_BQ_mean = c * (K_inv @ fx_standardized).sum()
     I_BQ_std = jnp.sqrt(c - K_inv.sum() * c * c)
+    I_BQ_mean = I_BQ_mean * fx_scale
     pause = True
     return I_BQ_mean, I_BQ_std
 
@@ -136,88 +153,58 @@ def log_prior(X, theta, rate, rng_key):
 
 
 # @jax.jit
-def GP(psi_y_x_mean, psi_y_x_std, X, x_prime, ground_truth):
+def GP(I_mean, I_std, Theta, Theta_test, ground_truth):
     """
-    :param psi_y_x_mean: n_alpha*1
-    :param psi_y_x_std: n_alpha*1
-    :param X: n_train*1
-    :param x_prime: n_test*1
+    :param I_mean: T*1
+    :param I_std: T*1
+    :param Theta: T*1
+    :param Theta_test: T_test*1
     :return:
     """
     eps = 1e-6
-    T = psi_y_x_mean.shape[0]
-    Mu_standardized, Mu_mean, Mu_std = SIR_utils.standardize(psi_y_x_mean)
-    X_standardized, X_mean, X_std = SIR_utils.standardize(X)
-    x_prime_standardized = (x_prime - X_mean) / X_std
+    T = I_mean.shape[0]
+    Mu_standardized, Mu_mean, Mu_std = SIR_utils.standardize(I_mean)
+    Theta_standardized, Theta_mean, Theta_std = SIR_utils.standardize(Theta)
+    Theta_test_standardized = (Theta_test - Theta_mean) / Theta_std
 
-    if psi_y_x_std is None:
-        l_array = jnp.array([0.3, 1.0, 3.0])
-        sigma_array = jnp.array([0.1, 0.01, 0.001])
-        nll_array = jnp.zeros([l_array.shape[0], sigma_array.shape[0]]) + 0.0
-        A_array = jnp.zeros([l_array.shape[0], sigma_array.shape[0]]) + 0.0
+    l_array = jnp.array([5.0])
+    nll_array = 0.0 * l_array
+    A_array = 0.0 * l_array
+    sigma = I_std / Mu_std
+    for i, l in enumerate(l_array):
+        K_no_scale = my_Matern(Theta_standardized, Theta_standardized, l)
+        A = Mu_standardized.T @ K_no_scale @ Mu_standardized / T
+        A_array = A_array.at[i].set(A)
+        K = A * K_no_scale
+        K_inv = jnp.linalg.inv(K + jnp.diag(sigma ** 2))
+        nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / T
+        nll_array = nll_array.at[i].set(nll)
+    l = l_array[nll_array.argmin()]
+    A = A_array[nll_array.argmin()]
 
-        for i, l in enumerate(l_array):
-            for j, sigma in enumerate(sigma_array):
-                K_no_scale = my_Matern(X_standardized, X_standardized, l)
-                A = Mu_standardized.T @ K_no_scale @ Mu_standardized / T
-                A_array = A_array.at[i, j].set(A[0][0])
-                K = A * K_no_scale
-                K_inv = jnp.linalg.inv(K + sigma * jnp.eye(T))
-                nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / T
-                nll_array = nll_array.at[i].set(nll[0][0])
-        min_index_flat = jnp.argmin(nll_array)
-        i1, i2 = jnp.unravel_index(min_index_flat, nll_array.shape)
-        l = l_array[i1]
-        sigma = sigma_array[i2]
-        A = A_array[i1, i2]
-
-        K_train_train = A * my_Matern(X_standardized, X_standardized, l) + sigma * jnp.eye(T)
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(x_prime_standardized, X_standardized, l)
-        K_test_test = A * my_Matern(x_prime_standardized, x_prime_standardized, l) + sigma
-        mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
-        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-        std_y_x_prime = jnp.sqrt(var_y_x_prime)
-
+    if T > 10:
+        sigma = jnp.ones_like(Mu_standardized) * 0.1
     else:
-        l_array = jnp.array([5.0])
-        nll_array = 0.0 * l_array
-        A_array = 0.0 * l_array
-        sigma = psi_y_x_std / Mu_std
-        for i, l in enumerate(l_array):
-            K_no_scale = my_Matern(X_standardized, X_standardized, l)
-            A = Mu_standardized.T @ K_no_scale @ Mu_standardized / T
-            A_array = A_array.at[i].set(A)
-            K = A * K_no_scale
-            K_inv = jnp.linalg.inv(K + jnp.diag(sigma ** 2))
-            nll = -(-0.5 * Mu_standardized.T @ K_inv @ Mu_standardized - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / T
-            nll_array = nll_array.at[i].set(nll)
-        l = l_array[nll_array.argmin()]
-        A = A_array[nll_array.argmin()]
+        pass
+    K_train_train = A * my_Matern(Theta_standardized, Theta_standardized, l) + jnp.diag(sigma ** 2)
+    K_train_train_inv = jnp.linalg.inv(K_train_train)
+    K_test_train = A * my_Matern(Theta_test_standardized, Theta_standardized, l)
+    K_test_test = A * my_Matern(Theta_test_standardized, Theta_test_standardized, l) + (sigma ** 2).mean()
+    mu_x_theta_test = K_test_train @ K_train_train_inv @ Mu_standardized
+    var_x_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    std_x_theta_test = jnp.sqrt(var_x_theta_test)
 
-        if T > 10:
-            sigma = jnp.ones_like(Mu_standardized) * 0.1
-        else:
-            pass
-        K_train_train = A * my_Matern(X_standardized, X_standardized, l) + jnp.diag(sigma ** 2)
-        K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * my_Matern(x_prime_standardized, X_standardized, l)
-        K_test_test = A * my_Matern(x_prime_standardized, x_prime_standardized, l) + (sigma ** 2).mean()
-        mu_y_x_prime = K_test_train @ K_train_train_inv @ Mu_standardized
-        var_y_x_prime = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-        std_y_x_prime = jnp.sqrt(var_y_x_prime)
-
-    mu_y_x_prime_original = mu_y_x_prime * Mu_std + Mu_mean
-    std_y_x_prime_original = std_y_x_prime * Mu_std
+    mu_x_theta_test_original = mu_x_theta_test * Mu_std + Mu_mean
+    std_x_theta_test_original = std_x_theta_test * Mu_std
     # ==================== Debug code ====================
     # plt.figure()
-    # plt.plot(x_prime.squeeze(), ground_truth, color='black')
-    # plt.plot(x_prime.squeeze(), mu_y_x_prime_original.squeeze(), color='red')
-    # plt.scatter(X.squeeze(), psi_y_x_mean.squeeze(), color='blue')
+    # plt.plot(Theta_test.squeeze(), ground_truth, color='black')
+    # plt.plot(Theta_test.squeeze(), mu_x_theta_test_original.squeeze(), color='red')
+    # plt.scatter(Theta.squeeze(), I_mean.squeeze(), color='blue')
     # plt.show()
     # pause = True
     # ==================== Debug code ====================
-    return mu_y_x_prime_original, std_y_x_prime_original
+    return mu_x_theta_test_original, std_x_theta_test_original
 
 
 def peak_infected_number(infections):
@@ -227,7 +214,7 @@ def peak_infected_number(infections):
 def SIR(args, rng_key):
     N_array = jnp.array([10, 20, 30])
     # N_array = jnp.arange(5, 45, 5)
-    T_array = jnp.array([15])
+    T_array = jnp.array([10])
     # T_array = jnp.arange(5, 45, 5)
     # T_test = 100
     T_test = 3
@@ -247,7 +234,7 @@ def SIR(args, rng_key):
 
     f = peak_infected_number
 
-    # Generate ground truth with large number of samples
+    # ======================================== Generate ground truth with large number of samples ========================================
     ground_truth_array = jnp.zeros([T_test])
     for i in tqdm(range(T_test)):
         theta = Theta_test[i]
@@ -257,6 +244,7 @@ def SIR(args, rng_key):
         X_samples = X_samples * scale
         temp = generate_data_vmap(X_samples)
         ground_truth_array = ground_truth_array.at[i].set(f(temp).mean())
+    # ======================================== Generate ground truth with large number of samples ========================================
 
     for T in T_array:
         Theta_array = jnp.linspace(0.1, 0.8, T)
@@ -267,6 +255,7 @@ def SIR(args, rng_key):
 
             X_array = jnp.zeros([T, N])
             f_X_array = jnp.zeros([T, N])
+            d_log_pX_array = jnp.zeros([T, N, 1])
 
             for j in tqdm(range(T)):
                 theta = Theta_array[j]
@@ -283,7 +272,7 @@ def SIR(args, rng_key):
                 grad_log_prior_fn = jax.grad(log_prior_fn)
 
                 f_X = jnp.zeros([N])
-                d_log_X = jnp.zeros([N, 1])
+                d_log_pX = jnp.zeros([N, 1])
 
                 for i in range(N):
                     x = X[i]
@@ -292,28 +281,25 @@ def SIR(args, rng_key):
                     f_x = f(D)
                     d_log_x = grad_log_prior_fn(x)
                     f_X = f_X.at[i].set(f_x)
-                    d_log_X = d_log_X.at[i, :].set(d_log_x)
+                    d_log_pX = d_log_pX.at[i, :].set(d_log_x)
 
                 X_array = X_array.at[j, :].set(X)
                 f_X_array = f_X_array.at[j, :].set(f_X)
+                d_log_pX_array = d_log_pX_array.at[j, :, :].set(d_log_pX)
 
-                f_X_scale, f_X_standardized = SIR_utils.scale(f_X)
+                # ======================================== Debug code ========================================
+                # _, _ = Bayesian_Monte_Carlo(rng_key, X, f_X, d_log_pX, stein_Matern)
+                # tt0 = time.time()
+                # I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo(rng_key, X, f_X, d_log_pX, stein_Matern)
+                # tt1 = time.time()
 
-                rng_key, _ = jax.random.split(rng_key)
-                X_standardized, X_mean, X_std = SIR_utils.standardize(X)
+                # I_BQ_mean = I_BQ_mean
+                # if I_BQ_mean > 2 * f_X.mean(0):
+                #     I_BQ_mean = f_X.mean(0)
 
-                _, _ = Bayesian_Monte_Carlo(rng_key, X_standardized[:, None], f_X_standardized, d_log_X * X_std, stein_Matern)
-                tt0 = time.time()
-                I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo(rng_key, X_standardized[:, None], f_X_standardized, d_log_X * X_std, stein_Matern)
-                tt1 = time.time()
+                # I_BQ_mean_array = I_BQ_mean_array.at[j].set(I_BQ_mean)
+                # I_BQ_std_array = I_BQ_std_array.at[j].set(I_BQ_std)
 
-                I_BQ_mean = I_BQ_mean * f_X_scale
-                if I_BQ_mean > 2 * f_X.mean(0):
-                    I_BQ_mean = f_X.mean(0)
-                I_BQ_mean_array = I_BQ_mean_array.at[j].set(I_BQ_mean)
-                I_BQ_std_array = I_BQ_std_array.at[j].set(I_BQ_std)
-
-                # ==================== Debug code ====================
                 # large_samples = generate_data_vmap(samples)
                 # f_X_MC_large_sample = f(large_samples).mean()
                 # print(f'True value (MC with {SamplesNum} samples)', f_X_MC_large_sample)
@@ -321,7 +307,10 @@ def SIR(args, rng_key):
                 # print(f'CBQ with {N} number of Y', I_BQ_mean)
                 # print(f"=================")
                 # pause = True
-                # ==================== Debug code ====================
+                # ======================================== Debug code ========================================
+
+            # ======================================== CBQ ========================================
+            I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_vectorized(rng_key, X_array, f_X_array, d_log_pX_array, stein_Matern)
 
             I_BQ_std_array = jnp.nan_to_num(I_BQ_std_array, nan=0.)
             I_BQ_std_array = jnp.ones_like(I_BQ_std_array) * jnp.mean(I_BQ_std_array)
@@ -329,14 +318,16 @@ def SIR(args, rng_key):
             _, _ = GP(I_BQ_mean_array, I_BQ_std_array, Theta_array[:, None], Theta_test[:, None], ground_truth_array)
             t0 = time.time()
             I_BQ_mean, I_BQ_std = GP(I_BQ_mean_array, I_BQ_std_array, Theta_array[:, None], Theta_test[:, None], ground_truth_array)
-            time_CBQ = time.time() - t0 + (tt1 - tt0) * T
-
+            I_BQ_std = jnp.diag(I_BQ_std)
+            time_CBQ = time.time() - t0
+            # ======================================== CBQ ========================================
 
             # ======================================== Importance sampling ========================================
             log_px_theta_fn = partial(log_prior, rate=rate, rng_key=rng_key)
             t0 = time.time()
             IS_mean, _ = baselines.importance_sampling_SIR(log_px_theta_fn, Theta_test[:, None], Theta_array[:, None], X_array, f_X_array)
             time_IS = time.time() - t0
+            # ======================================== Importance sampling ========================================
 
             # ======================================== LSMC ========================================
             t0 = time.time()

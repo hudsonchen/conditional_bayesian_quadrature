@@ -171,10 +171,7 @@ def calibrate(ground_truth, CBQ_mean, CBQ_std):
     :param CBQ_mean: (N, )
     :param CBQ_std: (N, )
     :return:
-    """
-    I_BQ_mean = I_BQ_mean
-    I_BQ_std = jnp.diag(I_BQ_std)
-    
+    """    
     confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):

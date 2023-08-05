@@ -198,7 +198,7 @@ def importance_sampling_finance(pX_theta_fn, theta_test, theta, X, f_X):
 def importance_sampling_single_SIR(tree, log_py_theta_fn, theta_test):
     """
     :param log_px_theta_fn:
-    :param tree: consists of xi: scalar, Yi: (N, ), gYi: (N, )
+    :param tree: consists of thetai: scalar, Xi: (N, ), f_Xi: (N, )
     :param x_test:
     :return:
     """
@@ -222,10 +222,10 @@ def importance_sampling_SIR(log_py_theta_fn, Theta_test, Theta, X, f_X):
     """
     Vectorized importance sampling for SIR
     :param log_py_theta_fn:
-    :param X_test: T_Test*D
-    :param X: T*D
-    :param Y: T*N*D
-    :param gY: T*N
+    :param Theta_test: T_Test*D
+    :param Theta: T*D
+    :param X: T*N*D
+    :param f_X: T*N
     :return:
     """
     importance_sampling_fn = partial(importance_sampling_SIR_, log_py_theta_fn, Theta, X, f_X)
