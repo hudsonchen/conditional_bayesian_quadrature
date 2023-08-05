@@ -150,8 +150,8 @@ def standardize(Z):
     return standardized, mean, std
 
 
-def save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
-        time_cbq, time_IS, time_KMS, time_LSMC, calibration, save_path):
+def save(T, N, CBQ_mean, CBQ_std, BQ_mean, BQ_std, KMS_mean, IS_mean, LSMC_mean,
+        time_CBQ, time_BQ, time_IS, time_KMS, time_LSMC, calibration, save_path):
     true_EgX_theta = jnp.load(f"{save_path}/finance_EfX_theta.npy")
 
     # ========== Debug code ==========
@@ -170,6 +170,7 @@ def save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
     # ========== Debug code ==========
 
     L_CBQ = jnp.maximum(CBQ_mean, 0).mean()
+    L_BQ = jnp.maximum(BQ_mean, 0).mean()
     L_IS = jnp.maximum(IS_mean, 0).mean()
     L_LSMC = jnp.maximum(LSMC_mean, 0).mean()
     L_KMS = jnp.maximum(KMS_mean, 0).mean()
@@ -177,21 +178,22 @@ def save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
 
     rmse_dict = {}
     rmse_dict['CBQ'] = (L_true - L_CBQ) ** 2
+    rmse_dict['BQ'] = jnp.sqrt((L_true - L_BQ) ** 2)
     rmse_dict['IS'] = (L_true - L_IS) ** 2
     rmse_dict['LSMC'] = (L_true - L_LSMC) ** 2
     rmse_dict['KMS'] = (L_true - L_KMS) ** 2
     with open(f"{save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(rmse_dict, f)
 
-    time_dict = {'CBQ': time_cbq, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
+    time_dict = {'CBQ': time_CBQ, 'BQ': time_BQ, 'IS': time_IS, 'LSMC': time_LSMC, 'KMS': time_KMS}
     with open(f"{save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(time_dict, f)
 
     jnp.save(f"{save_path}/calibration_T_{T}_N_{N}", calibration)
 
-    methods = ["CBQ", "KMS", "LSMC", "IS"]
-    rmse_values = [rmse_dict['CBQ'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
-    time_values = [time_dict['CBQ'], time_dict['KMS'], time_dict['LSMC'], time_dict['IS']]
+    methods = ["CBQ", "BQ", "KMS", "LSMC", "IS"]
+    rmse_values = [rmse_dict['CBQ'], rmse_dict['BQ'], rmse_dict['KMS'], rmse_dict['LSMC'], rmse_dict['IS']]
+    time_values = [time_dict['CBQ'], time_dict['BQ'], time_dict['KMS'], time_dict['LSMC'], time_dict['IS']]
 
     print("\n\n=======================================")
     print(f"T = {T} and N = {N}")

@@ -235,7 +235,7 @@ def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     return l, c, A
 
 
-@partial(jax.jit, static_argnames=['Kx'])
+# @partial(jax.jit, static_argnames=['Kx'])
 def bayesian_monte_carlo_no_stein_inner(theta, Xi, fXi, Kx, lx, eps, sigma, T_finance, t_finance):
     Xi = Xi[:, None]
     N = Xi.shape[0]
@@ -259,8 +259,19 @@ def bayesian_monte_carlo_no_stein_vectorized(rng_key, Theta, X, fX, Kx):
 
     vmap_func = jax.vmap(bayesian_monte_carlo_no_stein_inner, in_axes=(0, 0, 0, None, None, None, None, None, None))
     I_BQ_mean, I_BQ_std = vmap_func(Theta, X, fX, Kx, lx, eps, sigma, T_finance, t_finance)
-
     return I_BQ_mean, I_BQ_std
+
+
+def bayesian_monte_carlo_no_stein_vectorized_on_T_test(rng_key, Theta_test, X, fX, Kx):
+    sigma = 0.3
+    T_finance = 2
+    t_finance = 1
+    eps = 1e-6
+    lx = 0.1
+
+    vmap_func = jax.vmap(bayesian_monte_carlo_no_stein_inner, in_axes=(0, None, None, None, None, None, None, None, None))
+    BQ_test_mean, BQ_test_std = vmap_func(Theta_test, X, fX, Kx, lx, eps, sigma, T_finance, t_finance)
+    return BQ_test_mean, BQ_test_std
 
 
 # @partial(jax.jit, static_argnums=(0,))
@@ -433,9 +444,9 @@ def option_pricing(args):
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
 
-    T_array = jnp.array([10, 20, 30])
-    # N_array = jnp.array([50, 100])
-    N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    T_array = jnp.array([5, 20, 30])
+    N_array = jnp.array([10, 50, 100])
+    # N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_test = jnp.linspace(20., 120., test_num)[:, None]
@@ -475,6 +486,15 @@ def option_pricing(args):
             time_LSMC = time.time() - t0
             # ======================================== LSMC ========================================
 
+            # ======================================== BQ ========================================
+            t0 = time.time()
+            if 'stein' not in args.kernel_x:
+                BQ_mean, BQ_std = bayesian_monte_carlo_no_stein_vectorized_on_T_test(rng_key, St_test, ST.reshape([N * T, ]), loss.reshape([N * T, ]), log_normal_RBF)
+            elif 'stein' in args.kernel_x:
+                BQ_mean, BQ_std = np.nan, np.nan
+            time_BQ = time.time() - t0
+            # ======================================== BQ ========================================
+
             # ======================================== CBQ ========================================
             t0 = time.time()
             if 'stein' not in args.kernel_x:
@@ -497,8 +517,8 @@ def option_pricing(args):
             ground_truth = jnp.load(f"{args.save_path}/finance_EfX_theta.npy")
             calibration = black_scholes_utils.calibrate(ground_truth, CBQ_mean, jnp.diag(CBQ_std))
 
-            black_scholes_utils.save(T, N, CBQ_mean, CBQ_std, KMS_mean, IS_mean, LSMC_mean,
-                               time_CBQ, time_IS, time_KMS, time_LSMC, calibration, args.save_path)
+            black_scholes_utils.save(T, N, CBQ_mean, CBQ_std, BQ_mean, BQ_std, KMS_mean, IS_mean, LSMC_mean, 
+                               time_CBQ, time_BQ, time_IS, time_KMS, time_LSMC, calibration, args.save_path)
 
     return
 

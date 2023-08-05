@@ -35,6 +35,18 @@ def save(args, T, N, rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS,
         pickle.dump(time_dict, f)
 
     jnp.save(f"{args.save_path}/calibration_T_{T}_N_{N}", calibration)
+
+    methods = ["CBQ", "BQ", "KMS", "LSMC", "IS"]
+    rmse_values = [rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS]
+    time_values = [time_CBQ, time_BQ, time_KMS, time_LSMC, time_IS]
+
+    print("\n\n========================================")
+    print(f"T = {T} and N = {N}")
+    print("========================================")
+    print("Methods:    " + " ".join([f"{method:<10}" for method in methods]))
+    print("RMSE:       " + " ".join([f"{value:<10.6f}" for value in rmse_values]))
+    print("Time (s):   " + " ".join([f"{value:<10.6f}" for value in time_values]))
+    print("========================================\n\n")
     return
 
 

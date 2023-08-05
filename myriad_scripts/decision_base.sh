@@ -29,4 +29,4 @@ date
 which pip
 which python
 
-python /home/ucabzc9/Scratch/CBQ/decision.py $JOB_PARAMS
+python /home/ucabzc9/Scratch/CBQ/health_economics.py $JOB_PARAMS
