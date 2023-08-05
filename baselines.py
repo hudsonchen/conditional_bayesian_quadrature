@@ -233,37 +233,3 @@ def importance_sampling_SIR(log_py_theta_fn, Theta_test, Theta, X, f_X):
     IS_mean = importance_sampling_vmap(Theta_test)
     return IS_mean, 0 * IS_mean
 
-
-def importance_sampling_single_decision(tree, px_theta_fn, x_prime):
-    x, Yi, gYi = tree
-    Yi_standardized, Yi_mean, Yi_scale = decision_utils.standardize(Yi)
-    px_theta_standardized_fn = partial(px_theta_fn, sigma=0.3, T=2, t=1, y_scale=Yi_scale, y_mean=Yi_mean)
-    px_theta_prime = px_theta_standardized_fn(Yi_standardized, x_prime)
-    px_theta_i = px_theta_standardized_fn(Yi_standardized, x)
-    weight = px_theta_prime / px_theta_i
-    return (weight * gYi).mean() / weight.mean()
-
-
-def importance_sampling_decision_(px_theta_fn, X, Y, gY, x_prime):
-    x_prime = x_prime[:, None]
-    importance_sampling_single_fn = partial(importance_sampling_single_decision, px_theta_fn=px_theta_fn, x_prime=x_prime)
-    importance_sampling_single_vmap = jax.vmap(importance_sampling_single_fn, in_axes=((0, 0, 0),))
-    tree = (X, Y, gY)
-    dummy = importance_sampling_single_vmap(tree)
-    return dummy.mean()
-
-
-def importance_sampling_decision(px_theta_fn, X_prime, X, Y, gY):
-    """
-    Vectorized importance sampling
-    :param px_theta_fn:
-    :param X_prime: T_Test*D
-    :param X: Nx*D
-    :param Y: Nx*Ny*D
-    :param gY: Nx*Ny
-    :return:
-    """
-    importance_sampling_fn = partial(importance_sampling_decision_, px_theta_fn, X, Y, gY)
-    importance_sampling_vmap = jax.vmap(importance_sampling_fn)
-    IS_mean = importance_sampling_vmap(X_prime)
-    return IS_mean, 0 * IS_mean

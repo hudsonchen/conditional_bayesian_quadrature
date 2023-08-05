@@ -239,7 +239,7 @@ def main(args):
     f2_cond_dist_fn = partial(conditional_distribution, joint_mean=ThetaX_mean, joint_covariance=ThetaX_sigma,
                               dimensions_theta=[13], dimensions_x=[3, 10, 11, 12, 14, 15, 16, 17, 18])
 
-    # ============= Code to generate test points =============
+    # ======================================== Code to generate test points ========================================
     T_test = 100
     large_sample_size = 10000
     rng_key, _ = jax.random.split(rng_key)
@@ -280,7 +280,7 @@ def main(args):
     f2_X_test = f2(Theta2_test, X2_test)
     ground_truth_1 = f1_X_test.mean(1)
     ground_truth_2 = f2_X_test.mean(1)
-    # ============= Code to generate test points Ends =============
+    # ==================== Code to generate test points Ends ====================
 
     # T_array = jnp.array([10, 20, 30])
     T_array = jnp.array([10, 50, 100])
@@ -334,8 +334,8 @@ def main(args):
             f1_X = f1(Theta1, X1)
             f2_X = f2(Theta2, X2)
 
-            # ==================== Code for f1 Starts ====================
-            # ==================== Debug code ====================
+            # ======================================== Code for f1 Starts ========================================
+            # ======================================== Debug code ========================================
             # for i in range(T):
             #     rng_key, _ = jax.random.split(rng_key)
             #     X1_i = X1[i, :, :]
@@ -365,7 +365,7 @@ def main(args):
             #     print(f'CBQ uncertainty {I1_BQ_std}')
             #     print(f====================
             #     pause = True
-            #     ==================== Debug code ====================
+            #     ======================================== Debug code ========================================
 
             # ======================================== CBQ ========================================
             I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u1, X1, f1_X)
@@ -388,10 +388,10 @@ def main(args):
                 KMS_mean_1, KMS_std_1 = baselines.kernel_mean_shrinkage(rng_key, I1_MC_mean, None, Theta1, Theta1_test, eps=0., kernel_fn=my_RBF)
             # ======================================== KMS ========================================
 
-            # ==================== Code for f1 Ends ====================
+            # ======================================== Code for f1 Ends ========================================
 
-            # ==================== Code for f2 Starts ====================
-            # ==================== Debug code ====================
+            # ======================================== Code for f2 Starts ========================================
+            # ======================================== Debug code ========================================
             # for i in range(T):
             #     rng_key, _ = jax.random.split(rng_key)
             #     X2_i = X2[i, :, :]
@@ -421,7 +421,7 @@ def main(args):
             #     print(f'CBQ uncertainty {I2_BQ_std}')
             #     print(f====================
             #     pause = True
-            #     ==================== Debug code ====================
+            #     ======================================== Debug code ========================================
 
             # ======================================== CBQ ========================================
             I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, u2, X2, f2_X)
@@ -444,7 +444,7 @@ def main(args):
                 KMS_mean_2, KMS_std_2 = baselines.kernel_mean_shrinkage(rng_key, I2_MC_mean, None, Theta2, Theta2_test, eps=0., kernel_fn=my_RBF)
             # ======================================== KMS ========================================
 
-            # ==================== Code for f2 Ends ====================
+            # ======================================== Code for f2 Ends ========================================
 
             calibration_1 = decision_utils.calibrate(ground_truth_1, CBQ_mean_1, jnp.diag(CBQ_std_1))
             calibration_2 = decision_utils.calibrate(ground_truth_2, CBQ_mean_2, jnp.diag(CBQ_std_2))
@@ -470,7 +470,7 @@ def main(args):
             print(" ".join([f"{value:<6.5f}" for value in rmse_values]))
             print("=======================================\n\n")
 
-            # ==================== Debug code ====================
+            # ======================================== Debug code ========================================
             # plt.figure()
             # Theta1_test_ = Theta1_test.squeeze()
             # ind = Theta1_test_.argsort()
@@ -493,7 +493,7 @@ def main(args):
             # plt.legend()
             # plt.savefig(f"{args.save_path}/debug2.png")
             # pause = True
-            # ==================== Debug code ====================
+            # ======================================== Debug code ========================================
 
 
 
