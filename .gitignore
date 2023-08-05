@@ -1,6 +1,7 @@
 data/
 notes/
 .ipynb_checkpoints/
+.idea/
 results/
 results_server/
 __pycache__/

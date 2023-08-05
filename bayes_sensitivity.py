@@ -575,29 +575,23 @@ def main(args):
             _, _ = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
             time0 = time.time()
             if args.kernel_theta == "RBF":
-                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
-                                       eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
             elif args.kernel_theta == "Matern":
-                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test,
-                                       eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
             else:
                 raise NotImplementedError(f"Unknown kernel {args.kernel_theta}")
             time_CBQ += time.time() - time0
             # ======================================== CBQ ========================================
 
             # ======================================== KMS ========================================
+            time0 = time.time()
             I_MC_mean_array = f_X.mean(1)
             I_MC_std_array = f_X.std(1)
             if args.baseline_use_variance:
-                time0 = time.time()
-                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, I_MC_std_array, Theta, Theta_test,
-                                eps=0., kernel_fn=my_RBF)
-                time_KMS = time.time() - time0
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, I_MC_std_array, Theta, Theta_test, eps=0., kernel_fn=my_RBF)
             else:
-                time0 = time.time()
-                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, None, Theta, Theta_test,
-                                    eps=0., kernel_fn=my_RBF)
-                time_KMS = time.time() - time0
+                KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean_array, None, Theta, Theta_test, eps=0., kernel_fn=my_RBF)
+            time_KMS = time.time() - time0
             # ======================================== KMS ========================================
 
             # ======================================== BQ ========================================
@@ -609,14 +603,12 @@ def main(args):
             # ======================================== BQ ========================================
 
             # ======================================== LSMC ========================================
+            time0 = time.time()
             if args.baseline_use_variance:
-                time0 = time.time()
                 LSMC_mean, LSMC_std = baselines.polynomial(Theta, X, f_X, Theta_test, baseline_use_variance=True)
-                time_LSMC = time.time() - time0
             else:
-                time0 = time.time()
                 LSMC_mean, LSMC_std = baselines.polynomial(Theta, X, f_X, Theta_test, baseline_use_variance=False)
-                time_LSMC = time.time() - time0
+            time_LSMC = time.time() - time0
             # ======================================== LSMC ========================================
 
             # ======================================== IS ========================================
@@ -631,7 +623,6 @@ def main(args):
             time_IS = time.time() - time0
             # ======================================== IS ========================================
 
-            
             rmse_CBQ, rmse_BQ, rmse_KMS, rmse_LSMC, rmse_IS = sensitivity_utils.compute_rmse(ground_truth, CBQ_mean, BQ_mean, KMS_mean, LSMC_mean, IS_mean)
                                                                                      
             calibration = sensitivity_utils.calibrate(ground_truth, CBQ_mean, jnp.diag(CBQ_std))
