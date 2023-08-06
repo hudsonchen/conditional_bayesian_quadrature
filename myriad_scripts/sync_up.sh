@@ -15,3 +15,4 @@ rsync -ruP ucabzc9@myriad.rc.ucl.ac.uk:/home/ucabzc9/Scratch/CBQ/results/sensiti
 rsync -ruP ucabzc9@myriad.rc.ucl.ac.uk:/home/ucabzc9/Scratch/CBQ/results/finance/ /home/zongchen/fx_bayesian_quaduature/CBQ/results_rebuttal/finance
 rsync -ruP ucabzc9@myriad.rc.ucl.ac.uk:/home/ucabzc9/Scratch/CBQ/results/finance_stein/ /home/zongchen/fx_bayesian_quaduature/CBQ/results_rebuttal/finance_stein
 
+rsync -ruP hudson_ucl:/home/zongchen/fx_bayesian_quaduature/CBQ/rebuttal_figures/ "/Users/hudsonchen/Library/Mobile Documents/com~apple~CloudDocs/research/fx_bayesian_quaduature/CBQ/rebuttal_figures"

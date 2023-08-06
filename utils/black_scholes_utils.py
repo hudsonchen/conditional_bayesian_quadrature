@@ -111,11 +111,15 @@ def price_visualize(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1):
 
 def calibrate(ground_truth, CBQ_mean, CBQ_std):
     """
-    Calibrate the CBQ mean and std
-    :param ground_truth: (N, )
-    :param CBQ_mean: (N, )
-    :param CBQ_std: (N, )
-    :return:
+    Calibration plot for CBQ.
+
+    Args:
+        ground_truth: (T_test, )
+        CBQ_mean: (T_test, )
+        CBQ_std: (T_test, )
+        
+    Returns:
+        prediction_interval: (21, )
     """
     confidence_level = jnp.arange(0.0, 1.01, 0.05)
     prediction_interval = jnp.zeros(len(confidence_level))
@@ -124,16 +128,16 @@ def calibrate(ground_truth, CBQ_mean, CBQ_std):
         prob = jnp.less(jnp.abs(ground_truth - CBQ_mean), z_score * CBQ_std)
         prediction_interval = prediction_interval.at[i].set(prob.mean())
 
-    plt.figure()
-    plt.plot(confidence_level, prediction_interval, label="Model calibration", marker="o")
-    plt.plot([0, 1], [0, 1], linestyle="--", label="Ideal calibration", color="black")
-    plt.xlabel("Confidence")
-    plt.ylabel("Coverage")
-    plt.title("Calibration plot")
-    plt.legend()
-    plt.xlim(0, 1)
-    plt.ylim(0, 1)
-    plt.close()
+    # plt.figure()
+    # plt.plot(confidence_level, prediction_interval, label="Model calibration", marker="o")
+    # plt.plot([0, 1], [0, 1], linestyle="--", label="Ideal calibration", color="black")
+    # plt.xlabel("Confidence")
+    # plt.ylabel("Coverage")
+    # plt.title("Calibration plot")
+    # plt.legend()
+    # plt.xlim(0, 1)
+    # plt.ylim(0, 1)
+    # plt.close()
     # plt.show()
     return prediction_interval
 

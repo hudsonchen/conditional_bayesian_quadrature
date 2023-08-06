@@ -48,7 +48,7 @@ def get_config():
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
-    parser.add_argument('--g_fn', type=str, default=None)
+    parser.add_argument('--fn', type=str, default=None)
     parser.add_argument('--qmc', action='store_true', default=False)
     parser.add_argument('--kernel_x', type=str)
     parser.add_argument('--kernel_theta', type=str)
@@ -60,11 +60,16 @@ def get_config():
 
 def generate_data(rng_key, D, N, noise):
     """
-    :param rng_key:
-    :param D: int
-    :param N: int
-    :param noise: std for Gaussian likelihood
-    :return: Y is N*(D-1), Z is N*1
+    Generates data for the Bayesian linear regression
+
+    Args:
+        rng_key: random number generator
+        D: int
+        N: int
+        noise: float
+    Returns:
+        Y: shape (N, D-1)
+        Z: shape (N, 1)
     """
     rng_key, _ = jax.random.split(rng_key)
     Y = jax.random.uniform(rng_key, shape=(N, D - 1), minval=-1.0, maxval=1.0)
@@ -76,143 +81,42 @@ def generate_data(rng_key, D, N, noise):
     return Y, Z
 
 
-# @jax.jit
-def posterior_full(Y, Z, prior_cov, noise):
-    """
-    :param prior_cov: (N3, D)
-    :param Y: (N_data, D-1)
-    :param Z: (N_data, 1)
-    :param noise: float
-    :return: (N3, D), (N3, D, D)
-    """
-    Y_with_one = jnp.hstack([Y, jnp.ones([Y.shape[0], 1])])
-    D = prior_cov.shape[-1]
-    prior_cov_inv = 1. / prior_cov
-    # (N3, D, D)
-    prior_cov_inv = jnp.einsum('ij,jk->ijk', prior_cov_inv, jnp.eye(D))
-    beta_inv = noise ** 2
-    beta = 1. / beta_inv
-    post_cov = jnp.linalg.inv(prior_cov_inv + beta * Y_with_one.T @ Y_with_one)
-    post_mean = beta * post_cov @ Y_with_one.T @ Z
-    return post_mean.squeeze(), post_cov
-
-
-# @jax.jit
-def normal_logpdf(x, mu, Sigma):
-    """
-    :param x: (N2, D)
-    :param mu: (N3, D)
-    :param Sigma: (N3, D, D)
-    :return: (N2, N3)
-    """
-    N2, D = x.shape
-    N3 = mu.shape[0]
-
-    x_expanded = jnp.expand_dims(x, 1)  # Shape (N2, 1, D)
-    mean_expanded = jnp.expand_dims(mu, 0)  # Shape (1, N3, D)
-
-    diff = x_expanded - mean_expanded  # Shape (N2, N3, D)
-    precision_matrix = jnp.linalg.inv(Sigma)  # Shape (N3, D, D)
-    exponent = -0.5 * jnp.einsum('nij, njk, nik->ni', diff, precision_matrix, diff)  # Shape (N2, N3)
-
-    normalization = -0.5 * (D * jnp.log(2 * jnp.pi) + jnp.log(jnp.linalg.det(Sigma)))  # Shape (N3,)
-    normalization = jnp.expand_dims(normalization, 0)  # Shape (1, N3)
-
-    return normalization + exponent  # Shape (N2, N3)
-
-
-# @jax.jit
-def normal_logpdf_vectorized(x, mu, Sigma):
-    """
-    :param x: (N1, N2, D)
-    :param mu: (N3, D)
-    :param Sigma: (N3, D, D)
-    :return: (N1, N2, N3)
-    """
-    D = x.shape[-1]
-    x_expanded = jnp.expand_dims(x, 2)
-    mean_expanded = jnp.expand_dims(mu, (0, 1))
-    # covariance_expanded = jnp.expand_dims(covariance, 0)
-
-    diff = x_expanded - mean_expanded
-    precision_matrix = jnp.linalg.inv(Sigma)
-    exponent = -0.5 * jnp.einsum('nijk, jkl, nijl->nij', diff, precision_matrix, diff)
-    normalization = -0.5 * (D * jnp.log(2 * jnp.pi) - 0.5 * jnp.log(jnp.linalg.det(Sigma)))
-    return normalization + exponent
-
-
-# @jax.jit
-def posterior_log_llk_vectorized(X, prior_cov_base, Y, Z, theta, noise):
-    """
-    :param X: (N1, N2, D)
-    :param prior_cov_base: scalar
-    :param Y: data
-    :param Z: data
-    :param theta: (N3, D)
-    :param noise: scalar
-    :return:
-    """
-    D = X.shape[-1]
-    # prior_cov is (N3, D)
-    prior_cov = jnp.ones([1, D]) * prior_cov_base + theta
-    # post_mean is (N3, D), post_cov is (N3, D, D)
-    post_mean, post_cov = posterior_full(Y, Z, prior_cov, noise)
-    return normal_logpdf_vectorized(X, post_mean, post_cov)
-
-
-
-# @jax.jit
-def posterior_log_llk(X, prior_cov_base, Y, Z, theta, noise):
-    """
-    :param X: (N2, D)
-    :param prior_cov_base: scalar
-    :param Y: data
-    :param Z: data
-    :param theta: (D, )
-    :param noise: data noise
-    :return:
-    """
-    D = X.shape[-1]
-    # Turn theta into shape (N3, D)
-    theta = theta[None, :]
-    # prior_cov is (N3, D)
-    prior_cov = jnp.ones([1, D]) * prior_cov_base + theta
-    # post_mean is (N3, D), post_cov is (N3, D, D)
-    post_mean, post_cov = posterior_full(Y, Z, prior_cov, noise)
-    return normal_logpdf(X, post_mean, post_cov).squeeze()
-
-
 def score_fn(X, mu, sigma):
     """
-    return \nabla_y log p(X|mu, sigma)
-    :param X: (N, D)
-    :param mu: (D, )
-    :param sigma: (D, D)
-    :return: (N, D)
+    Computes the score \nabla_y log p(X|mu, sigma), for Stein kernel
+
+    Args:
+        X: (N, D)
+        mu: (D, )
+        sigma: (D, D)
+    Returns:
+        score: (N, D)
     """
     return -(X - mu[None, :]) @ jnp.linalg.inv(sigma)
 
 
-def g1(X):
+def f1(X):
     """
-    :param y: y is a N * D array
+    Args:
+        X: (N, D)
     """
     return X.sum(1)
 
 
-def g1_ground_truth(mu, Sigma):
+def f1_ground_truth(mu, Sigma):
     return mu.sum()
 
 
-def g2(X):
+def f2(X):
     """
-    :param y: y is a N * D array
+    Args:
+        X: (N, D)
     """
     D = X.shape[1]
     return 10 * jnp.exp(-0.5 * ((X ** 2).sum(1) / (D ** 1))) + (X ** 2).sum(1)
 
 
-def g2_ground_truth(mu, Sigma):
+def f2_ground_truth(mu, Sigma):
     """
     :param mu: (D, )
     :param Sigma: (D, D)
@@ -225,25 +129,30 @@ def g2_ground_truth(mu, Sigma):
     return 10 * analytical + jnp.diag(Sigma).sum() + mu.T @ mu
 
 
-def g3(X):
+def f3(X):
+    """
+    Args:
+        X: (N, D)
+    """
     return (X ** 2).sum(1)
 
 
-def g3_ground_truth(mu, Sigma):
+def f3_ground_truth(mu, Sigma):
     return jnp.diag(Sigma).sum() + mu.T @ mu
 
 
-def g4(X):
+def f4(X):
     """
-    Only for D = 2
-    :param y: (N, D)
-    :return: (N, )
+    Only works for D = 2
+
+    Args:
+        X: (N, D)
     """
     pred = jnp.array([0.3, 1.0])
     return X @ pred
 
 
-def g4_ground_truth(mu, Sigma):
+def f4_ground_truth(mu, Sigma):
     """
     Only for D = 2
     :param mu: (D, )
@@ -257,13 +166,20 @@ def g4_ground_truth(mu, Sigma):
 # @jax.jit
 def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta, invert_fn=jnp.linalg.inv):
     """
-    :param var_X_theta: (D, D)
-    :param mu_X_theta: (D, )
-    :param rng_key:
-    :param X: (N, D)
-    :param f_X: (N, )
-    :param invert_fn: function that inverts a matrix
-    :return:
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    The kernel_x is RBF, and the hyperparameters are selected by minimizing the negative log-likelihood (NLL).
+    Not vectorized over theta.
+
+    Args:
+        rng_key: random number generator
+        X: shape (N, D)
+        f_X: shape (N, )
+        var_X_theta: (D, D)
+        mu_X_theta: (D, )
+        invert_fn: function that inverts a matrix
+    Returns:
+        I_BQ_mean: float
+        I_BQ_std: float
     """
     N, D = X.shape[0], X.shape[1]
     eps = 1e-6
@@ -299,74 +215,24 @@ def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta, invert_fn
     return I_BQ_mean, I_BQ_std
 
 
-def Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(args, rng_key, X, f_X, mu_X_theta, var_X_theta):
-    """
-    :param var_X_theta: (T_test, D, D)
-    :param mu_X_theta: (T_test, D)
-    :param rng_key:
-    :param X: (N, D)
-    :param f_X: (N, )
-    :return:
-    """
-    if args.nystrom:
-        invert_fn = nystrom_inv
-    else:
-        invert_fn = jnp.linalg.inv
-    def single_instance(mu_single, var_single):
-        return Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_single, var_single, invert_fn)
-
-    vectorized_function = jax.vmap(single_instance)
-    return vectorized_function(mu_X_theta, var_X_theta)
-
-
-def Bayesian_Monte_Carlo_RBF_vectorized_on_T(rng_key, X, f_X, mu_X_theta, var_X_theta):
-    """
-    :param var_X_theta: (T, D, D)
-    :param mu_X_theta: (T, D)
-    :param rng_key:
-    :param X: (T, N, D)
-    :param f_X: (T, N)
-    :return:
-    """
-    # Define a function that takes only the parameters you want to vectorize over
-    def single_instance(X_single, f_X_single, mu_X_theta_single, var_X_theta_single):
-        return Bayesian_Monte_Carlo_RBF(rng_key, X_single, f_X_single, mu_X_theta_single, var_X_theta_single)
-
-    # Use jax.vmap to vectorize over the first dimension of mu_X_theta and var_X_theta
-    vectorized_function = jax.vmap(single_instance)
-    return vectorized_function(X, f_X, mu_X_theta, var_X_theta)
-
-
-def Bayesian_Monte_Carlo_Matern_vectorized_on_T(rng_key, u, X, f_X, mu_X_theta, var_X_theta):
-    """    
-    We only implement this for D = 2.
-    :param u: (T, N, D)
-    :param var_X_theta: (T, D, D)
-    :param mu_X_theta: (T, D)
-    :param rng_key:
-    :param X: (T, N, D)
-    :param f_X: (T, N)
-    :return:
-    """
-    # Define a function that takes only the parameters you want to vectorize over
-    def single_instance(u_single, X_single, f_X_single, mu_X_theta_single, var_X_theta_single):
-        return Bayesian_Monte_Carlo_Matern(rng_key, u_single, X_single, f_X_single, mu_X_theta_single, var_X_theta_single)
-
-    # Use jax.vmap to vectorize over the first dimension of mu_X_theta and var_X_theta
-    vectorized_function = jax.vmap(single_instance)
-    return vectorized_function(u, X, f_X, mu_X_theta, var_X_theta)
-
-
 def Bayesian_Monte_Carlo_Matern(rng_key, u, X, f_X, mu_X_theta, var_X_theta):
     """
-    We only implement this for D = 2.
-    :param u: (N, D)
-    :param var_X_theta: (D, D)
-    :param mu_X_theta: (D, )
-    :param rng_key:
-    :param y: (N, D)
-    :param f_X: (N, )
-    :return:
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    The kernel_x is Matern, and the hyperparameters are selected by minimizing the negative log-likelihood (NLL).
+    Not vectorized over theta.
+    Only works for D = 2.
+
+    Args:
+        rng_key: random number generator
+        u: shape (N, D), used for reparameterization in Matern kernel. Details in the appendix C.
+        X: shape (N, D)
+        f_X: shape (N, )
+        var_X_theta: (D, D)
+        mu_X_theta: (D, )
+
+    Returns:
+        I_BQ_mean: float
+        I_BQ_std: float
     """
     N, D = X.shape[0], X.shape[1]
     eps = 1e-6
@@ -382,28 +248,107 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, X, f_X, mu_X_theta, var_X_theta):
     phi = A * kme_Matern_Gaussian(l, u1) + A * kme_Matern_Gaussian(l, u2)
     varphi = phi.mean()
 
-    CBQ_mean = phi.T @ K_inv @ f_X
-    CBQ_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
+    I_BQ_mean = phi.T @ K_inv @ f_X
+    I_BQ_std = jnp.sqrt(jnp.abs(varphi - phi.T @ K_inv @ phi))
 
-    CBQ_mean = CBQ_mean.squeeze()
-    CBQ_std = CBQ_std.squeeze()
+    I_BQ_mean = I_BQ_mean.squeeze()
+    I_BQ_std = I_BQ_std.squeeze()
     pause = True
-    return CBQ_mean, CBQ_std
+    return I_BQ_mean, I_BQ_std
+
+
+def Bayesian_Monte_Carlo_RBF_vectorized_on_T(rng_key, X, f_X, mu_X_theta, var_X_theta):
+    """
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Vectorized over Theta.
+
+    Args:
+        rng_key: random number generator
+        X: shape (T, N, D)
+        f_X: shape (T, N)
+        var_X_theta: (T, D, D)
+        mu_X_theta: (T, D)
+    Returns:
+        I_BQ_mean: (T, )
+        I_BQ_std: (T, )
+    """
+    def single_instance(X_single, f_X_single, mu_X_theta_single, var_X_theta_single):
+        return Bayesian_Monte_Carlo_RBF(rng_key, X_single, f_X_single, mu_X_theta_single, var_X_theta_single)
+    vectorized_function = jax.vmap(single_instance)
+    return vectorized_function(X, f_X, mu_X_theta, var_X_theta)
+
+
+def Bayesian_Monte_Carlo_Matern_vectorized_on_T(rng_key, u, X, f_X, mu_X_theta, var_X_theta):
+    """
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Vectorized over Theta.
+    Only works for D = 2.
+
+    Args:
+        rng_key: random number generator
+        X: shape (T, N, D)
+        f_X: shape (T, N)
+        var_X_theta: (T, D, D)
+        mu_X_theta: (T, D)
+    Returns:
+        I_BQ_mean: (T, )
+        I_BQ_std: (T, )
+    """
+    def single_instance(u_single, X_single, f_X_single, mu_X_theta_single, var_X_theta_single):
+        return Bayesian_Monte_Carlo_Matern(rng_key, u_single, X_single, f_X_single, mu_X_theta_single, var_X_theta_single)
+    vectorized_function = jax.vmap(single_instance)
+    return vectorized_function(u, X, f_X, mu_X_theta, var_X_theta)
+
+
+def Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(args, rng_key, X, f_X, mu_X_theta_test, var_X_theta_test):
+    """
+    The BQ baseline, also described as putting a GP prior directly on (x, \theta) -> f(x, \theta)
+    Use nystrom to accelerate the computation of matrix inversion.
+    Vectorized over Theta_test.
+
+    Args:
+        args: arguments
+        rng_key: random number generator
+        X: shape (N * T, D)
+        f_X: shape (N * T, )
+        var_X_theta: (T_test, D, D)
+        mu_X_theta: (T_test, D)
+
+    Returns:
+        BQ_mean: float
+        BQ_std: float
+    """
+    if args.nystrom:
+        invert_fn = nystrom_inv
+    else:
+        invert_fn = jnp.linalg.inv
+    def single_instance(mu_single, var_single):
+        return Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_single, var_single, invert_fn)
+
+    vectorized_function = jax.vmap(single_instance)
+    return vectorized_function(mu_X_theta_test, var_X_theta_test)
 
 
 
 # @jax.jit
-def GP(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
+def GP(rng_key, I_mean, I_std, Theta, Theta_test, eps, kernel_fn):
     """
-    :param kernel_fn: Matern or RBF
-    :param eps:
-    :param I_mean: (T, )
-    :param I_std: (T, )
-    :param X: (T, D)
-    :param X_test: (T_test, D)
-    :return:
+    Second stage of CBQ, computes the posterior mean and variance of I(Theta_test).
+    The kernel hyperparameters are selected by minimizing the negative log-likelihood (NLL).
+
+    Args:
+        rng_key: random number generator
+        I_mean: (T, )
+        I_std: (T, )
+        Theta: (T, D)
+        Theta_test: (T_test, D)
+        eps: float
+        kernel_fn: Matern or RBF
+    Returns:
+        mu_Theta_test: (T_test, )
+        std_Theta_test: (T_test, )
     """
-    T, D = X.shape[0], X.shape[1]
+    T, D = Theta.shape[0], Theta.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
 
     sigma_array = jnp.array([0.0])
@@ -411,10 +356,10 @@ def GP(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
     nll_array = jnp.zeros([len(l_array), 1])
 
     for i, l in enumerate(l_array):
-        K_no_scale = kernel_fn(X, X, l)
+        K_no_scale = kernel_fn(Theta, Theta, l)
         A = I_mean.T @ K_no_scale @ I_mean / T
         A_array = A_array.at[i].set(A)
-        K = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
+        K = A * kernel_fn(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
         K_inv = jnp.linalg.inv(K)
         nll = -(-0.5 * I_mean.T @ K_inv @ I_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / T
         nll_array = nll_array.at[i].set(nll)
@@ -422,17 +367,17 @@ def GP(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
     l = l_array[jnp.argmin(nll_array)]
     A = A_array[jnp.argmin(nll_array)]
 
-    K_train_train = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
+    K_train_train = A * kernel_fn(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = A * kernel_fn(X_test, X, l)
-    K_test_test = A * kernel_fn(X_test, X_test, l) + eps * jnp.eye(X_test.shape[0])
+    K_test_train = A * kernel_fn(Theta_test, Theta, l)
+    K_test_test = A * kernel_fn(Theta_test, Theta_test, l) + eps * jnp.eye(Theta_test.shape[0])
 
-    mu_X_theta_test = K_test_train @ K_train_train_inv @ I_mean
-    var_X_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    var_X_theta_test = jnp.abs(var_X_theta_test)
-    std_X_theta_test = jnp.sqrt(var_X_theta_test)
+    mu_Theta_test = K_test_train @ K_train_train_inv @ I_mean
+    var_Theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    var_Theta_test = jnp.abs(var_Theta_test)
+    std_Theta_test = jnp.sqrt(var_Theta_test)
     pause = True
-    return mu_X_theta_test, std_X_theta_test
+    return mu_Theta_test, std_Theta_test
 
 
 def main(args):
@@ -441,27 +386,26 @@ def main(args):
     D = args.dim
     prior_cov_base = 2.0
     noise = 1.0
-    sample_size = 5000
     T_test = 100
     data_number = 5
     # theta is (N, D-1), X is (N, 1)
     rng_key, _ = jax.random.split(rng_key)
     Y, Z = generate_data(rng_key, D, data_number, noise)
 
-    if args.g_fn == 'g1':
-        g = g1
-        g_ground_truth_fn = g1_ground_truth
-    elif args.g_fn == 'g2':
-        g = g2
-        g_ground_truth_fn = g2_ground_truth
-    elif args.g_fn == 'g3':
-        g = g3
-        g_ground_truth_fn = g3_ground_truth
-    elif args.g_fn == 'g4':
-        g = g4
-        g_ground_truth_fn = g4_ground_truth
+    if args.fn == 'f1':
+        f = f1
+        f_ground_truth_fn = f1_ground_truth
+    elif args.fn == 'f2':
+        f = f2
+        f_ground_truth_fn = f2_ground_truth
+    elif args.fn == 'f3':
+        f = f3
+        f_ground_truth_fn = f3_ground_truth
+    elif args.fn == 'f4':
+        f = f4
+        f_ground_truth_fn = f4_ground_truth
     else:
-        raise ValueError('g_fn must be g1 or g2 or g3 or g4!')
+        raise ValueError('must be f1 or f2 or f3 or f4!')
 
     T_array = jnp.array([10, 50, 100])
     # N_array = jnp.array([10, 50, 100])
@@ -472,16 +416,14 @@ def main(args):
     prior_cov_test = jnp.array([[prior_cov_base] * D]) + Theta_test
     ground_truth = jnp.zeros(T_test)
 
-    mu_x_theta_test, var_x_theta_test = posterior_full(Y, Z, prior_cov_test, noise)
-    # post_mean: (T_test, D), post_var: (T_test, D, D)
+    mu_x_theta_test, var_x_theta_test = sensitivity_utils.posterior_full(Y, Z, prior_cov_test, noise)
     for i in range(T_test):
-        ground_truth = ground_truth.at[i].set(g_ground_truth_fn(mu_x_theta_test[i, :], var_x_theta_test[i, :, :]))
+        ground_truth = ground_truth.at[i].set(f_ground_truth_fn(mu_x_theta_test[i, :], var_x_theta_test[i, :, :]))
     jnp.save(f"{args.save_path}/Theta_test.npy", Theta_test)
     jnp.save(f"{args.save_path}/ground_truth.npy", ground_truth)
 
     for T in T_array:
         rng_key, _ = jax.random.split(rng_key)
-        # This is theta, size T * D
         if args.qmc:
             Theta = sensitivity_utils.qmc_uniform(-1.0, 1.0, D, T)
         else:
@@ -498,13 +440,13 @@ def main(args):
             X = jnp.zeros([T, N, D]) + 0.0
             # This is f(X), size T * N
             f_X = jnp.zeros([T, N]) + 0.0
-            # This is u, size T * N * D, used for CBQ with Matern kernel
-            u_all = jnp.zeros([T, N, D]) + 0.0
+            # This is U, size T * N * D, used for CBQ with Matern kernel
+            U = jnp.zeros([T, N, D]) + 0.0
             # This is score, size T * N * D, used for CBQ with Stein kernel
             score_all = jnp.zeros([T, N, D]) + 0.0
 
             prior_cov = jnp.array([[prior_cov_base] * D]) + Theta
-            mu_x_theta_all, var_x_theta_all = posterior_full(Y, Z, prior_cov, noise)
+            mu_x_theta_all, var_x_theta_all = sensitivity_utils.posterior_full(Y, Z, prior_cov, noise)
 
             for i in range(T):
                 rng_key, _ = jax.random.split(rng_key)
@@ -519,9 +461,9 @@ def main(args):
                     X_i = mu_x_theta_all[i, :] + jnp.matmul(L, u.T).T
                     score = score_fn(X_i, mu_x_theta_all[i, :], var_x_theta_all[i, :, :])
                 score_all = score_all.at[i, :, :].set(score)
-                u_all = u_all.at[i, :, :].set(u)
+                U = U.at[i, :, :].set(u)
                 X = X.at[i, :, :].set(X_i)
-                f_X = f_X.at[i, :].set(g(X_i))
+                f_X = f_X.at[i, :].set(f(X_i))
             # ======================================== Precompute f(X), X, Theta ========================================
 
             # ======================================== Debug code ========================================
@@ -549,7 +491,7 @@ def main(args):
             #     I_MC_mean_array = I_MC_mean_array.at[i].set(f_X_i.mean())
             #     I_MC_std_array = I_MC_std_array.at[i].set(f_X_i.std())
 
-            #     true_value = g_ground_truth_fn(mu_X_theta_i, var_X_theta_i)
+            #     true_value = f_ground_truth_fn(mu_X_theta_i, var_X_theta_i)
             #     CBQ_value = I_BQ_mean
             #     print("=============")
             #     print('True value', true_value)
@@ -620,7 +562,7 @@ def main(args):
             # IS_mean, IS_std = baselines.importance_sampling(log_px_theta_fn, Theta_test, Theta, X, f_X)
 
             # This is vectorized version of importance sampling
-            log_px_theta_fn_vectorized = partial(posterior_log_llk_vectorized, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
+            log_px_theta_fn_vectorized = partial(sensitivity_utils.posterior_log_llk_vectorized, Y=Y, Z=Z, noise=noise, prior_cov_base=prior_cov_base)
             IS_mean, IS_std = baselines.importance_sampling_sensitivity(log_px_theta_fn_vectorized, Theta_test, Theta, X, f_X)
             time_IS = time.time() - time0
             # ======================================== IS ========================================
@@ -639,7 +581,7 @@ def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
     args.save_path += f'results/sensitivity_conjugate/'
-    args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.g_fn}__Kx_{args.kernel_x}__Ktheta_{args.kernel_theta}__qmc_{args.qmc}__usevar_{args.baseline_use_variance}"
+    args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.fn}__Kx_{args.kernel_x}__Ktheta_{args.kernel_theta}__qmc_{args.qmc}__usevar_{args.baseline_use_variance}"
     os.makedirs(args.save_path, exist_ok=True)
     return args
 

@@ -4,47 +4,56 @@ import jax
 from utils import black_scholes_utils
 
 
-def polynomial(theta, X, f_X, theta_test, baseline_use_variance, poly=3):
+def polynomial(Theta, X, f_X, Theta_test, baseline_use_variance, poly=3):
     """
-    Polynomial Regression
-    :param poly: int
-    :param theta_test: T_Test*D
-    :param theta: T*D
-    :param X: T*N*D
-    :param f_X: T*N
-    :return:
+    Least Squares Monte Carlo (LSMC)
+
+    Args:
+        theta: shape (T, D)
+        X: shape (T, N, D)
+        f_X: shape (T, N)
+        theta_test: shape (T_test, D)
+        baseline_use_variance: boolean, whether use variance
+        poly: order of polynomial, defaults to 3
+
+    Returns:
+        I_LSMC_mean: shape (T_test, )
+        I_LSMC_std: shape (T_test, )
     """
     powers = jnp.arange(0, poly + 1)
-    theta_poly = theta[:, :, None] ** powers
-    theta_poly = theta_poly.reshape([theta.shape[0], -1])
+    theta_poly = Theta[:, :, None] ** powers
+    theta_poly = theta_poly.reshape([Theta.shape[0], -1])
 
     if not baseline_use_variance:
         eps = 1e-6
-        D = (1 + poly) * theta.shape[1]
-        theta = jnp.linalg.inv(theta_poly.T @ theta_poly + eps * jnp.eye(D)) @ theta_poly.T @ f_X.mean(1)
+        D_all = (1 + poly) * Theta.shape[1]
+        coeff = jnp.linalg.inv(theta_poly.T @ theta_poly + eps * jnp.eye(D_all)) @ theta_poly.T @ f_X.mean(1)
     else:
         eps = 1e-6
         MC_std = f_X.std(1)
-        D = (1 + poly) * theta.shape[1]
-        theta = jnp.linalg.inv(theta_poly.T @ jnp.diag(MC_std) @ theta_poly + eps * jnp.eye(D)) @ (theta_poly.T @ jnp.diag(MC_std) @ f_X.mean(1))
+        D_all = (1 + poly) * Theta.shape[1]
+        coeff = jnp.linalg.inv(theta_poly.T @ jnp.diag(MC_std) @ theta_poly + eps * jnp.eye(D_all)) @ (theta_poly.T @ jnp.diag(MC_std) @ f_X.mean(1))
     
-    theta_test_poly = theta_test[:, :, None] ** powers
-    theta_test_poly = theta_test_poly.reshape([theta_test.shape[0], -1])
-    I_LSMC_mean = theta_test_poly @ theta
-    I_LSMC_std = 0
-    pause = True
-    return I_LSMC_mean, I_LSMC_std
+    theta_test_poly = Theta_test[:, :, None] ** powers
+    theta_test_poly = theta_test_poly.reshape([Theta_test.shape[0], -1])
+    I_LSMC_mean = theta_test_poly @ coeff
+    return I_LSMC_mean, 0 * I_LSMC_mean
 
 
 def importance_sampling(log_px_theta_fn, Theta_test, Theta, X, f_X):
     """
-    Importance Sampling
-    :param log_px_theta_fn: function to evaluate log p(x | theta)
-    :param theta_test: T_Test*D
-    :param theta: T*D
-    :param X: T*N*D
-    :param f_X: T*N
-    :return:
+    Importance Sampling, this function is for general use, not being vectorized.
+
+    Args:
+        log_px_theta_fn (function): log p(x|theta)
+        Theta: shape (T, D)
+        X: shape (T, N, D)
+        f_X: shape (T, N)
+        Theta_test: shape (T_test, D)
+
+    Returns:
+        IS_mean: shape (T_test, )
+        IS_std: shape (T_test, )
     """
     T, N, D = X.shape
     IS_list = []
@@ -60,22 +69,28 @@ def importance_sampling(log_px_theta_fn, Theta_test, Theta, X, f_X):
             weight = jnp.exp(log_py_theta_test - log_py_theta_i)
             dummy_list.append((weight * f_X_i).sum())
         IS_list.append(jnp.array(dummy_list).mean())
-    return jnp.array(IS_list), jnp.array(IS_list) * 0
+    IS_mean = jnp.array(IS_list)
+    return IS_mean, 0 * IS_mean
 
 
 
 # @jax.jit
-def kernel_mean_shrinkage(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
+def kernel_mean_shrinkage(rng_key, I_mean, I_std, Theta, Theta_test, eps, kernel_fn):
     """
-    :param kernel_fn: Matern or RBF
-    :param eps:
-    :param I_mean: (T, )
-    :param I_std: (T, )
-    :param X: (T, D)
-    :param X_test: (T_test, D)
-    :return: mu_x_theta: (T_test, ), std_x_theta: (T_test, )
+    Kernel Mean Shrinkage (KMS)
+    The hyperparameters are selected by minimizing the negative log-likelihood (NLL) on the training set.
+
+    Args:
+        I_mean: shape (T, ), MC mean from stage one
+        I_std: shape (T, ), MC std from stage one
+        Theta: shape (T, D)
+        Theta_test: shape (T_test, D)
+
+    Returns:
+        mu_Theta_test: shape (T_test, )
+        std_Theta_test: shape (T_test, )
     """
-    T, D = X.shape[0], X.shape[1]
+    T, D = Theta.shape[0], Theta.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
 
     if I_std is None:
@@ -91,7 +106,7 @@ def kernel_mean_shrinkage(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
         for i, l in enumerate(l_array):
             for j, A in enumerate(A_array):
                 for k, sigma in enumerate(sigma_array):
-                    K = A * kernel_fn(X, X, l) + jnp.eye(T) * sigma
+                    K = A * kernel_fn(Theta, Theta, l) + jnp.eye(T) * sigma
                     K_inv = jnp.linalg.inv(K)
                     nll = -(-0.5 * I_mean.T @ K_inv @ I_mean - 0.5 * jnp.log(
                         jnp.linalg.det(K) + 1e-6)) / T
@@ -103,10 +118,10 @@ def kernel_mean_shrinkage(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
         sigma = sigma_array[i3]
     else:
         for i, l in enumerate(l_array):
-            K_no_scale = kernel_fn(X, X, l)
+            K_no_scale = kernel_fn(Theta, Theta, l)
             A = I_mean.T @ K_no_scale @ I_mean / T
             A_array = A_array.at[i].set(A)
-            K = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
+            K = A * kernel_fn(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
             K_inv = jnp.linalg.inv(K)
             nll = -(-0.5 * I_mean.T @ K_inv @ I_mean - 0.5 * jnp.log(jnp.linalg.det(K) + 1e-6)) / T
             nll_array = nll_array.at[i].set(nll)
@@ -115,37 +130,43 @@ def kernel_mean_shrinkage(rng_key, I_mean, I_std, X, X_test, eps, kernel_fn):
         A = A_array[jnp.argmin(nll_array)]
 
     if I_std is None:
-        K_train_train = A * kernel_fn(X, X, l) + jnp.eye(T) * sigma
+        K_train_train = A * kernel_fn(Theta, Theta, l) + jnp.eye(T) * sigma
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * kernel_fn(X_test, X, l)
-        K_test_test = A * kernel_fn(X_test, X_test, l) + jnp.eye(X_test.shape[0]) * sigma
+        K_test_train = A * kernel_fn(Theta_test, Theta, l)
+        K_test_test = A * kernel_fn(Theta_test, Theta_test, l) + jnp.eye(Theta_test.shape[0]) * sigma
     else:
-        K_train_train = A * kernel_fn(X, X, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
+        K_train_train = A * kernel_fn(Theta, Theta, l) + eps * jnp.eye(T) + jnp.diag(I_std ** 2)
         K_train_train_inv = jnp.linalg.inv(K_train_train)
-        K_test_train = A * kernel_fn(X_test, X, l)
-        K_test_test = A * kernel_fn(X_test, X_test, l) + eps * jnp.eye(X_test.shape[0])
-    mu_X_theta_test = K_test_train @ K_train_train_inv @ I_mean
-    var_X_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    var_X_theta_test = jnp.abs(var_X_theta_test)
-    std_x_theta = jnp.sqrt(var_X_theta_test)
+        K_test_train = A * kernel_fn(Theta_test, Theta, l)
+        K_test_test = A * kernel_fn(Theta_test, Theta_test, l) + eps * jnp.eye(Theta_test.shape[0])
+    mu_Theta_test = K_test_train @ K_train_train_inv @ I_mean
+    var_Theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    var_Theta_test = jnp.abs(var_Theta_test)
+    std_Theta_test = jnp.sqrt(var_Theta_test)
     pause = True
-    return mu_X_theta_test, std_x_theta
+    return mu_Theta_test, std_Theta_test
 
 
 # @partial(jax.jit, static_argnums=(0,))
 def importance_sampling_sensitivity(log_pX_theta_fn, Theta_test, Theta, X, f_X):
     """
-    :param log_pX_theta_fn:
-    :param theta_test: T_test*D
-    :param theta: T*D
-    :param X: T*N*D
-    :param f_X: T*N
-    :return:
+    Importance Sampling, this function is for bayes sensitivity analysis, fully vectorized.
+
+    Args:
+        log_px_theta_fn (function): log p(x|theta)
+        Theta: shape (T, D)
+        X: shape (T, N, D)
+        f_X: shape (T, N)
+        Theta_test: shape (T_test, D)
+
+    Returns:
+        IS_mean: shape (T_test, )
+        IS_std: shape (T_test, )
     """
     # log_pX_theta_test is (T, N, T_Test)
-    log_pX_theta_test = log_pX_theta_fn(X=X, theta=Theta_test)
+    log_pX_theta_test = log_pX_theta_fn(X=X, Theta=Theta_test)
     # log_pX_theta_i is (T, N, T)
-    log_pX_theta_i = log_pX_theta_fn(X=X, theta=Theta)
+    log_pX_theta_i = log_pX_theta_fn(X=X, Theta=Theta)
 
     # log_pX_theta_test is (T, N, T_Test)
     log_pX_theta_test = log_pX_theta_test.transpose(2, 0, 1)
@@ -179,29 +200,28 @@ def importance_sampling_finance_(pX_theta_fn, theta, X, f_X, theta_test):
     return dummy.mean()
 
 
-def importance_sampling_finance(pX_theta_fn, theta_test, theta, X, f_X):
+def importance_sampling_finance(pX_theta_fn, Theta_test, Theta, X, f_X):
     """
-    Vectorized importance sampling for finance
-    :param pX_theta_fn:
-    :param theta_test: T_test*D
-    :param theta: T*D
-    :param X: T*N*D
-    :param f_X: T*N
-    :return:
+    Importance Sampling, this function is for Black Scholes model, fully vectorized.
+
+    Args:
+        pX_theta_fn (function): p(x|theta)
+        Theta (jnp.array): shape (T, D)
+        X (jnp.array): shape (T, N, D)
+        f_X (jnp.array): shape (T, N)
+        Theta_test (jnp.array): shape (T_test, D)
+
+    Returns:
+        IS_mean: shape (T_test, )
+        IS_std: shape (T_test, )
     """
-    importance_sampling_fn = partial(importance_sampling_finance_, pX_theta_fn, theta, X, f_X)
+    importance_sampling_fn = partial(importance_sampling_finance_, pX_theta_fn, Theta, X, f_X)
     importance_sampling_vmap = jax.vmap(importance_sampling_fn)
-    IS_mean = importance_sampling_vmap(theta_test)
+    IS_mean = importance_sampling_vmap(Theta_test)
     return IS_mean, 0 * IS_mean
 
 
 def importance_sampling_single_SIR(tree, log_py_theta_fn, theta_test):
-    """
-    :param log_px_theta_fn:
-    :param tree: consists of theta_i: (N, ), Xi: (N, ), f_Xi: (N, )
-    :param x_test:
-    :return:
-    """
     theta_i, Xi, f_Xi = tree
     log_py_theta_test = log_py_theta_fn(X=Xi, theta=theta_test)
     log_py_theta_i = log_py_theta_fn(X=Xi, theta=theta_i)
@@ -220,13 +240,18 @@ def importance_sampling_SIR_(log_py_theta_fn, X, Theta, f_X, theta_test):
 
 def importance_sampling_SIR(log_py_theta_fn, Theta_test, Theta, X, f_X):
     """
-    Vectorized importance sampling for SIR
-    :param log_py_theta_fn:
-    :param Theta_test: T_test
-    :param Theta: T
-    :param X: T * N
-    :param f_X: T * N
-    :return:
+    Importance Sampling, this function is for SIR model, fully vectorized.
+
+    Args:
+        log_py_theta_fn (function): log p(x|theta)
+        Theta (jnp.array): shape (T, D)
+        X (jnp.array): shape (T, N, D)
+        f_X (jnp.array): shape (T, N)
+        Theta_test (jnp.array): shape (T_test, D)
+
+    Returns:
+        IS_mean: shape (T_test, )
+        IS_std: shape (T_test, )
     """
     importance_sampling_fn = partial(importance_sampling_SIR_, log_py_theta_fn, X, Theta, f_X)
     importance_sampling_vmap = jax.vmap(importance_sampling_fn)
