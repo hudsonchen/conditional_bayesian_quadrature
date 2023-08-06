@@ -3,6 +3,7 @@ import jax
 from tensorflow_probability.substrates import jax as tfp
 from functools import partial
 from jax.scipy.stats import norm
+import time
 
 
 def stein_Matern(x, y, l, d_log_px, d_log_py):
@@ -315,6 +316,28 @@ def kme_double_log_normal_RBF(l, a, b):
 #                 + (1. - jnp.sqrt(3) / (l ** 2) * y) * ((beta / bprime) ** alpha)
 #     exp_term = jnp.exp(jnp.sqrt(3.) * y / (l ** 2))
 #     return poly_term * exp_term
+
+def nystrom_inv(matrix, eps=1e-6):
+    rng_key = jax.random.PRNGKey(int(time.time()))
+    n = matrix.shape[0]
+    m = int(jnp.sqrt(n))
+    matrix = matrix - eps * jnp.eye(n)
+    matrix_mean = jnp.mean(matrix)
+    matrix = matrix / matrix_mean  # Scale the matrix to avoid numerical issues
+
+    # Randomly select m columns
+    idx = jax.random.choice(rng_key, n, (m, ), replace=False)
+
+    W = matrix[idx, :][:, idx]
+    U, s, V = jnp.linalg.svd(W)
+
+    U_recon = jnp.sqrt(m / n) * matrix[:, idx] @ U @ jnp.diag(1. / s)
+    S_recon = s * (n / m)
+
+    Sigma_inv = (1. / eps) * jnp.eye(n)
+    approx_inv = Sigma_inv - Sigma_inv @ U_recon @ jnp.linalg.inv(jnp.diag(1. / S_recon) + U_recon.T @ Sigma_inv @ U_recon) @ U_recon.T @ Sigma_inv
+    approx_inv = approx_inv / matrix_mean  # Don't forget the scaling!
+    return approx_inv
 
 
 def main():

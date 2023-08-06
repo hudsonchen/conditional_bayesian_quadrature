@@ -53,8 +53,10 @@ def get_config():
     parser.add_argument('--kernel_x', type=str)
     parser.add_argument('--kernel_theta', type=str)
     parser.add_argument('--baseline_use_variance', action='store_true', default=False)
+    parser.add_argument('--nystrom', action='store_true', default=False)
     args = parser.parse_args()
     return args
+
 
 def generate_data(rng_key, D, N, noise):
     """
@@ -252,18 +254,15 @@ def g4_ground_truth(mu, Sigma):
     return mu.T @ pred
 
 
-def Monte_Carlo(gy):
-    return gy.mean(0)
-
-
 # @jax.jit
-def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta):
+def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta, invert_fn=jnp.linalg.inv):
     """
     :param var_X_theta: (D, D)
     :param mu_X_theta: (D, )
     :param rng_key:
     :param X: (N, D)
     :param f_X: (N, )
+    :param invert_fn: function that inverts a matrix
     :return:
     """
     N, D = X.shape[0], X.shape[1]
@@ -278,7 +277,7 @@ def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta):
         A = f_X.T @ K_no_scale @ f_X / N
         A_list.append(A)
         K = A * K_no_scale
-        K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
+        K_inv = invert_fn(K + eps * jnp.eye(N))
         nll = -(-0.5 * f_X.T @ K_inv @ f_X - 0.5 * jnp.log(jnp.linalg.det(K) + eps)) / N
         nll_array = nll_array.at[i].set(nll)
 
@@ -290,7 +289,7 @@ def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta):
         l = 1.
 
     K = A * my_RBF(X, X, l)
-    K_inv = jnp.linalg.inv(K + eps * jnp.eye(N))
+    K_inv = invert_fn(K + eps * jnp.eye(N))
     phi = A * kme_RBF_Gaussian(mu_X_theta, var_X_theta, l, X)
     varphi = A * kme_double_RBF_Gaussian(mu_X_theta, var_X_theta, l)
 
@@ -300,7 +299,7 @@ def Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_X_theta, var_X_theta):
     return I_BQ_mean, I_BQ_std
 
 
-def Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(rng_key, X, f_X, mu_X_theta, var_X_theta):
+def Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(args, rng_key, X, f_X, mu_X_theta, var_X_theta):
     """
     :param var_X_theta: (T_test, D, D)
     :param mu_X_theta: (T_test, D)
@@ -309,11 +308,13 @@ def Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(rng_key, X, f_X, mu_X_theta, v
     :param f_X: (N, )
     :return:
     """
-    # Define a function that takes only the parameters you want to vectorize over
+    if args.nystrom:
+        invert_fn = nystrom_inv
+    else:
+        invert_fn = jnp.linalg.inv
     def single_instance(mu_single, var_single):
-        return Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_single, var_single)
+        return Bayesian_Monte_Carlo_RBF(rng_key, X, f_X, mu_single, var_single, invert_fn)
 
-    # Use jax.vmap to vectorize over the first dimension of mu_X_theta and var_X_theta
     vectorized_function = jax.vmap(single_instance)
     return vectorized_function(mu_X_theta, var_X_theta)
 
@@ -598,7 +599,7 @@ def main(args):
             # ======================================== BQ ========================================
             time0 = time.time()
             rng_key, _ = jax.random.split(rng_key)
-            BQ_mean, BQ_std = Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
+            BQ_mean, BQ_std = Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(args, rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
                                             mu_x_theta_test, var_x_theta_test)
             time_BQ = time.time() - time0
             # ======================================== BQ ========================================

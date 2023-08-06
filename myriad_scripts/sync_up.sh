@@ -12,3 +12,6 @@ rsync -ruP cs-cluster:/home/zongchen/CBQ/results/SIR/ /Users/hudsonchen/research
 # rsync -ruP myriad:/home/ucabzc9/Scratch/CBQ/results/decision/ /Users/hudsonchen/research/fx_bayesian_quaduature/CBQ/results_server/decision/
 
 rsync -ruP ucabzc9@myriad.rc.ucl.ac.uk:/home/ucabzc9/Scratch/CBQ/results/sensitivity_conjugate/ /home/zongchen/fx_bayesian_quaduature/CBQ/results_rebuttal/sensitivity_conjugate
+rsync -ruP ucabzc9@myriad.rc.ucl.ac.uk:/home/ucabzc9/Scratch/CBQ/results/finance/ /home/zongchen/fx_bayesian_quaduature/CBQ/results_rebuttal/finance
+rsync -ruP ucabzc9@myriad.rc.ucl.ac.uk:/home/ucabzc9/Scratch/CBQ/results/finance_stein/ /home/zongchen/fx_bayesian_quaduature/CBQ/results_rebuttal/finance_stein
+
