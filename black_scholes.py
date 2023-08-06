@@ -560,7 +560,7 @@ def create_dir(args):
         args.save_path += f'results/finance_stein/'
     else:
         args.save_path += f'results/finance/'
-    args.save_path += f"__usevar_{args.baseline_use_variance}__seed_{args.seed}"
+    args.save_path += f"usevar_{args.baseline_use_variance}__seed_{args.seed}"
     os.makedirs(args.save_path, exist_ok=True)
     os.makedirs(f"{args.save_path}/figures/", exist_ok=True)
     return args

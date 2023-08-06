@@ -8,6 +8,8 @@ results_rebuttal/
 __pycache__/
 utils/__pycache__
 plotting/
+figures/
+rebuttal_figures/
 ablations/
 .vscode/
 rebuttal_notebooks/
