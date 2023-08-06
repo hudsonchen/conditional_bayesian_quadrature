@@ -1,20 +1,20 @@
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3101
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3102
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3103
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3104
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3105
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3106
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3107
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3108
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 3109
---kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 31010
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 31
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 32
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 33
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 34
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 35
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 36
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 37
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 38
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 39
---kernel_x log_normal_rbf --kernel_theta rbf  --seed 310
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2101
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2102
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2102
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2104
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2105
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2106
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2107
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2108
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 2109
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --seed 21010
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 21
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 22
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 22
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 24
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 25
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 26
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 27
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 28
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 29
+--kernel_x log_normal_rbf --kernel_theta rbf  --seed 210
