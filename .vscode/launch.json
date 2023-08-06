@@ -48,7 +48,7 @@
             "name": "Python: decision",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceRoot}/decision.py",
+            "program": "${workspaceRoot}/health_economics.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": true,

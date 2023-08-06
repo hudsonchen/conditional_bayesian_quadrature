@@ -4,9 +4,9 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 
 
-def save(args, T, N, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2):
+def save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2):
     methods = ["CBQ", "KMS", "LSMC", "IS"]
-    rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, np.nan]
+    rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, jnp.nan]
 
     print("\n\n=======================================")
     print(f"T = {T} and N = {N}")
@@ -16,7 +16,7 @@ def save(args, T, N, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2
     print("=======================================\n\n")
 
     rmse_dict = {}
-    rmse_dict["BMC"] = rmse_BMC
+    rmse_dict["CBQ"] = rmse_CBQ
     rmse_dict["KMS"] = rmse_KMS
     rmse_dict["LSMC"] = rmse_LSMC
     with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
@@ -40,7 +40,7 @@ def standardize(Z):
     return standardized, mean, std
 
 
-def calibrate(ground_truth, BMC_mean, BMC_std):
+def calibrate(ground_truth, CBQ_mean, CBQ_std):
     """
     Calibration plot for CBQ.
 
@@ -56,7 +56,7 @@ def calibrate(ground_truth, BMC_mean, BMC_std):
     prediction_interval = jnp.zeros(len(confidence_level))
     for i, c in enumerate(confidence_level):
         z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
-        prob = jnp.less(jnp.abs(ground_truth - BMC_mean), z_score * BMC_std)
+        prob = jnp.less(jnp.abs(ground_truth - CBQ_mean), z_score * CBQ_std)
         prediction_interval = prediction_interval.at[i].set(prob.mean())
 
     # plt.figure()
