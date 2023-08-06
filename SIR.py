@@ -52,14 +52,21 @@ def get_config():
     return args
 
 
-def Bayesian_Monte_Carlo_vectorized(rng_key, X, f_X, d_log_pX, kernel_x):
+def Bayesian_Monte_Carlo_vectorized(rng_key, X, f_X, d_log_pX):
     """
-    :param rng_key:
-    :param X: T * N
-    :param f_X: T * N 
-    :param d_log_pX: T * N * D
-    :param kernel_x: kernel function
-    :return:
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Use stein kernel.
+    Not vectorized.
+
+    Args:
+        rng_key: random number generator
+        x: shape (T, N, D)
+        fx: shape (T, N)
+        d_log_px: shape (T, N, D)
+
+    Returns:
+        I_BQ_mean: (T, )
+        I_BQ_std: (T, )
     """
     rng_key, _ = jax.random.split(rng_key)
     vmap_func = jax.vmap(Bayesian_Monte_Carlo, in_axes=(None, 0, 0, 0, None))
@@ -70,12 +77,20 @@ def Bayesian_Monte_Carlo_vectorized(rng_key, X, f_X, d_log_pX, kernel_x):
 # @partial(jax.jit, static_argnums=(4,))
 def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
     """
-    :param rng_key:
-    :param x: N * D
-    :param fx: N
-    :param d_log_px: N * D
-    :param kernel_x: kernel function
-    :return:
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Use stein kernel.
+    Not vectorized.
+
+    Args:
+        rng_key: random number generator
+        x: shape (N, D)
+        fx: shape (N, )
+        d_log_px: shape (N, D)
+        kernel_x: kernel function
+
+    Returns:
+        I_BQ_mean: float
+        I_BQ_std: float
     """
     x_standardized, x_mean, x_std = SIR_utils.standardize(x)
     x_standardized = x_standardized[:, None]
@@ -139,6 +154,16 @@ def Bayesian_Monte_Carlo(rng_key, x, fx, d_log_px, kernel_x):
 
 # @jax.jit
 def prior(X, theta, rate, rng_key):
+    """
+    Computes p(x | theta) for importance sampling.
+
+    Args:
+        X: shape (N, 1)
+        theta: scalar 
+
+    Returns:
+        likelihood: shape (N, 1)
+    """
     scale = 1. / rate
     pdf = 1. / scale * jax.scipy.stats.gamma.pdf(X / scale, a=1 + rate * theta)
     return pdf
@@ -146,6 +171,16 @@ def prior(X, theta, rate, rng_key):
 
 @jax.jit
 def log_prior(X, theta, rate, rng_key):
+    """
+    Computes log p(x | theta) for importance sampling.
+
+    Args:
+        X: shape (N, 1)
+        theta: scalar 
+
+    Returns:
+        likelihood: shape (N, 1)
+    """   
     scale = 1. / rate
     logpdf = -jnp.log(scale) + jax.scipy.stats.gamma.logpdf(X / scale, a=1 + rate * theta)
     return logpdf
@@ -154,11 +189,18 @@ def log_prior(X, theta, rate, rng_key):
 # @jax.jit
 def GP(I_mean, I_std, Theta, Theta_test, ground_truth):
     """
-    :param I_mean: T*1
-    :param I_std: T*1
-    :param Theta: T*1
-    :param Theta_test: T_test*1
-    :return:
+    Second stage of CBQ, computes the posterior mean and variance of I(Theta_test).
+
+    Args:
+        rng_key: random number generator
+        I_mean: (T, )
+        I_std: (T, )
+        Theta: (T, D)
+        Theta_test: (T_test, D)
+
+    Returns:
+        mu_Theta_test: (T_test, )
+        std_Theta_test: (T_test, )
     """
     eps = 1e-6
     T = I_mean.shape[0]
@@ -189,21 +231,21 @@ def GP(I_mean, I_std, Theta, Theta_test, ground_truth):
     K_train_train_inv = jnp.linalg.inv(K_train_train)
     K_test_train = A * my_Matern(Theta_test_standardized, Theta_standardized, l)
     K_test_test = A * my_Matern(Theta_test_standardized, Theta_test_standardized, l) + (sigma ** 2).mean()
-    mu_x_theta_test = K_test_train @ K_train_train_inv @ Mu_standardized
-    var_x_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    std_x_theta_test = jnp.sqrt(var_x_theta_test)
+    mu_Theta_test = K_test_train @ K_train_train_inv @ Mu_standardized
+    var_Theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    std_Theta_test = jnp.sqrt(var_Theta_test)
 
-    mu_x_theta_test_original = mu_x_theta_test * Mu_std + Mu_mean
-    std_x_theta_test_original = std_x_theta_test * Mu_std
-    # ==================== Debug code ====================
+    mu_Theta_test_original = mu_Theta_test * Mu_std + Mu_mean
+    std_Theta_test_original = std_Theta_test * Mu_std
+    # ======================================== Debug code ========================================
     # plt.figure()
     # plt.plot(Theta_test.squeeze(), ground_truth, color='black')
-    # plt.plot(Theta_test.squeeze(), mu_x_theta_test_original.squeeze(), color='red')
+    # plt.plot(Theta_test.squeeze(), mu_Theta_test_original.squeeze(), color='red')
     # plt.scatter(Theta.squeeze(), I_mean.squeeze(), color='blue')
     # plt.show()
     # pause = True
-    # ==================== Debug code ====================
-    return mu_x_theta_test_original, std_x_theta_test_original
+    # ======================================== Debug code ========================================
+    return mu_Theta_test_original, std_Theta_test_original
 
 
 def peak_infected_number(infections):
@@ -213,10 +255,10 @@ def peak_infected_number(infections):
 def SIR(args, rng_key):
     N_array = jnp.array([10, 20, 30])
     # N_array = jnp.arange(5, 45, 5)
-    T_array = jnp.array([3])
+    T_array = jnp.array([100])
     # T_array = jnp.arange(5, 45, 5)
     # T_test = 100
-    T_test = 3
+    T_test = 100
 
     population = float(1e5)
     X_real, gamma_real = 0.25, 0.05
@@ -247,8 +289,8 @@ def SIR(args, rng_key):
 
     for T in T_array:
         Theta_array = jnp.linspace(0.1, 0.8, T)
-
         for N in N_array:
+            # ======================================== Collecting samples and function evaluations ========================================
             I_BQ_mean_array = jnp.zeros([T])
             I_BQ_std_array = jnp.zeros([T])
 
@@ -307,6 +349,8 @@ def SIR(args, rng_key):
                 # print(f"=================")
                 # pause = True
                 # ======================================== Debug code ========================================
+
+            # ======================================== Collecting samples and function evaluations Ends ========================================
 
             # ======================================== CBQ ========================================
             I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_vectorized(rng_key, X_array, f_X_array, d_log_pX_array, stein_Matern)

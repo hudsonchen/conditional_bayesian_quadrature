@@ -109,37 +109,55 @@ def price_visualize(St, N, rng_key, K1=50, K2=150, s=-0.2, sigma=0.3, T=2, t=1):
     return ST, psi_ST_1 - psi_ST_2
 
 
-def calibrate(ground_truth, CBQ_mean, CBQ_std):
+@jax.jit
+def px_theta_fn(x, theta, x_scale, x_mean, sigma, T_finance, t_finance):
     """
-    Calibration plot for CBQ.
-
+    Computes p(x | theta) for importance sampling.
+    p(x | theta) is a log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
     Args:
-        ground_truth: (T_test, )
-        CBQ_mean: (T_test, )
-        CBQ_std: (T_test, )
-        
+        x: shape (N, 1)
+        x_scale: float
+        x_mean: float
+        sigma: float
+        T_finance: float
+        t_finance: float    
     Returns:
-        prediction_interval: (21, )
+        likelihood: shape (N, 1)
     """
-    confidence_level = jnp.arange(0.0, 1.01, 0.05)
-    prediction_interval = jnp.zeros(len(confidence_level))
-    for i, c in enumerate(confidence_level):
-        z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
-        prob = jnp.less(jnp.abs(ground_truth - CBQ_mean), z_score * CBQ_std)
-        prediction_interval = prediction_interval.at[i].set(prob.mean())
+    x_tilde = x * x_scale + x_mean
+    z = jnp.log(x_tilde / theta)
+    n = (z + sigma ** 2 * (T_finance - t_finance) / 2) / sigma / jnp.sqrt(T_finance - t_finance)
+    p_n = jax.scipy.stats.norm.pdf(n)
+    p_z = p_n / (sigma * jnp.sqrt(T_finance - t_finance))
+    p_x_tilde = p_z / x_tilde
+    p_x = p_x_tilde / x_scale
+    return p_x
 
-    # plt.figure()
-    # plt.plot(confidence_level, prediction_interval, label="Model calibration", marker="o")
-    # plt.plot([0, 1], [0, 1], linestyle="--", label="Ideal calibration", color="black")
-    # plt.xlabel("Confidence")
-    # plt.ylabel("Coverage")
-    # plt.title("Calibration plot")
-    # plt.legend()
-    # plt.xlim(0, 1)
-    # plt.ylim(0, 1)
-    # plt.close()
-    # plt.show()
-    return prediction_interval
+
+# @jax.jit
+def log_px_theta_fn(x, theta, x_scale, x_mean, sigma, T_finance, t_finance):
+    """
+    Computes log p(x | theta) for importance sampling.
+    p(x | theta) is a log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
+    Args:
+        x: shape (N, 1)
+        x_scale: float
+        x_mean: float
+        sigma: float
+        T_finance: float
+        t_finance: float    
+    Returns:
+        likelihood: shape (N, 1)
+    """   
+    x_tilde = x * x_scale + x_mean
+    z = jnp.log(x_tilde / theta)
+    n = (z + sigma ** 2 * (T_finance - t_finance) / 2) / sigma / jnp.sqrt(T_finance - t_finance)
+    p_n = jax.scipy.stats.norm.pdf(n)
+    p_z = p_n / (sigma * jnp.sqrt(T_finance - t_finance))
+    p_x_tilde = p_z / x_tilde
+    p_x = p_x_tilde / x_scale
+    return jnp.log(p_x).sum()
+
 
 def scale(Z):
     s = Z.std()
@@ -158,7 +176,7 @@ def save(T, N, CBQ_mean, CBQ_std, BQ_mean, BQ_std, KMS_mean, IS_mean, LSMC_mean,
         time_CBQ, time_BQ, time_IS, time_KMS, time_LSMC, calibration, save_path):
     true_EgX_theta = jnp.load(f"{save_path}/finance_EfX_theta.npy")
 
-    # ========== Debug code ==========
+    # ======================================== Debug code ========================================
     # plt.figure()
     # plt.plot(St_test.squeeze(), true_EgX_theta, color='red', label='true')
     # plt.scatter(St.squeeze(), I_BQ_mean.squeeze())
@@ -171,7 +189,7 @@ def save(T, N, CBQ_mean, CBQ_std, BQ_mean, BQ_std, KMS_mean, IS_mean, LSMC_mean,
     # plt.savefig(f"{args.save_path}/figures/finance_T_{T}_N_{N}.pdf")
     # plt.show()
     # plt.close()
-    # ========== Debug code ==========
+    # ======================================== Debug code ========================================
 
     L_CBQ = jnp.maximum(CBQ_mean, 0).mean()
     L_BQ = jnp.maximum(BQ_mean, 0).mean()
@@ -245,3 +263,37 @@ def save_large(args, T, N, KMS_mean, LSMC_mean, IS_mean, time_KMS, time_LSMC, ti
         pickle.dump(time_dict, f)
     pause = True
     return
+
+
+
+def calibrate(ground_truth, CBQ_mean, CBQ_std):
+    """
+    Calibration plot for CBQ.
+
+    Args:
+        ground_truth: (T_test, )
+        CBQ_mean: (T_test, )
+        CBQ_std: (T_test, )
+        
+    Returns:
+        prediction_interval: (21, )
+    """
+    confidence_level = jnp.arange(0.0, 1.01, 0.05)
+    prediction_interval = jnp.zeros(len(confidence_level))
+    for i, c in enumerate(confidence_level):
+        z_score = norm.ppf(1 - (1 - c) / 2)  # Two-tailed z-score for the given confidence level
+        prob = jnp.less(jnp.abs(ground_truth - CBQ_mean), z_score * CBQ_std)
+        prediction_interval = prediction_interval.at[i].set(prob.mean())
+
+    # plt.figure()
+    # plt.plot(confidence_level, prediction_interval, label="Model calibration", marker="o")
+    # plt.plot([0, 1], [0, 1], linestyle="--", label="Ideal calibration", color="black")
+    # plt.xlabel("Confidence")
+    # plt.ylabel("Coverage")
+    # plt.title("Calibration plot")
+    # plt.legend()
+    # plt.xlim(0, 1)
+    # plt.ylim(0, 1)
+    # plt.close()
+    # plt.show()
+    return prediction_interval

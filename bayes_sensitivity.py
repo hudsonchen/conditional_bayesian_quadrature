@@ -430,7 +430,7 @@ def main(args):
             Theta = jax.random.uniform(rng_key, shape=(T, D), minval=-1.0, maxval=1.0)
 
         for j, N in enumerate(tqdm(N_array)):
-            # ======================================== Precompute f(X), X, Theta ========================================
+            # ======================================== Collecting samples and function evaluations ========================================
             I_BQ_mean_array = jnp.zeros(T)
             I_BQ_std_array = jnp.zeros(T)
             I_MC_mean_array = jnp.zeros(T)
@@ -464,7 +464,7 @@ def main(args):
                 U = U.at[i, :, :].set(u)
                 X = X.at[i, :, :].set(X_i)
                 f_X = f_X.at[i, :].set(f(X_i))
-            # ======================================== Precompute f(X), X, Theta ========================================
+            # ======================================== Collecting samples and function evaluations Ends ========================================
 
             # ======================================== Debug code ========================================
             # for i in range(T):

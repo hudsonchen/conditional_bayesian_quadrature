@@ -58,84 +58,20 @@ def get_config():
 
 @jax.jit
 def grad_x_log_px_theta(x, theta, x_mean, x_scale, sigma, T_finance, t_finance):
-    # dtheta log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T_finance - t_finance) and sigma = \sigma^2 (T_finance - x)
+    """
+    Computes the score \nabla_x log p(x | theta), for Stein kernel
+    p(x | theta) is a log normal distribution with mu=-\sigma^2 / 2 * (T_finance - t_finance) and sigma = \sigma^2 (T_finance - x)
+
+    Args:
+        X: (N, D)
+        mu: (D, )
+        sigma: (D, D)
+    Returns:
+        score: (N, D)
+    """
     x = x * x_scale + x_mean
     part1 = (jnp.log(x) + sigma ** 2 * (T_finance - t_finance) / 2 - jnp.log(theta)) / x / (sigma ** 2 * (T_finance - t_finance))
     return (-1. / x - part1) * x_scale
-
-
-@jax.jit
-def px_theta_fn(x, theta, x_scale, x_mean, sigma, T_finance, t_finance):
-    """
-    :param x: N * 1
-    :param x: scalar
-    :param x_scale: scalar
-    :return: scalar
-    """
-    # p(x) for log normal distribution with mu=-\sigma^2 / 2 * (T - t) and sigma = \sigma^2 (T - t)
-    x_tilde = x * x_scale + x_mean
-    z = jnp.log(x_tilde / theta)
-    n = (z + sigma ** 2 * (T_finance - t_finance) / 2) / sigma / jnp.sqrt(T_finance - t_finance)
-    p_n = jax.scipy.stats.norm.pdf(n)
-    p_z = p_n / (sigma * jnp.sqrt(T_finance - t_finance))
-    p_x_tilde = p_z / x_tilde
-    p_x = p_x_tilde / x_scale
-    return p_x
-
-
-# @jax.jit
-def log_px_theta_fn(x, theta, x_scale, sigma, T_finance, t_finance):
-    # log p(theta) for log normal distribution with mu=-\sigma^2 / 2 * (T_finance - t_finance) and sigma = \sigma^2 (T_finance - t_finance)
-    x_tilde = x * x_scale
-    z = jnp.log(x_tilde / theta)
-    n = (z + sigma ** 2 * (T_finance - t_finance) / 2) / sigma / jnp.sqrt(T_finance - t_finance)
-    p_n = jax.scipy.stats.norm.pdf(n)
-    p_z = p_n / (sigma * jnp.sqrt(T_finance - t_finance))
-    p_x_tilde = p_z / x_tilde
-    p_x = p_x_tilde / x_scale
-    return jnp.log(p_x).sum()
-
-
-@jax.jit
-def stein_Matern(x, y, l, d_log_px, d_log_py):
-    """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
-    """
-    K = my_Matern(x, y, l)
-    dx_K = dx_Matern(x, y, l)
-    dy_K = dy_Matern(x, y, l)
-    dxdy_K = dxdy_Matern(x, y, l)
-    part1 = d_log_px @ d_log_py.T * K
-    part2 = (d_log_py[None, :] * dx_K).sum(-1)
-    part3 = (d_log_px[:, None, :] * dy_K).sum(-1)
-    part4 = dxdy_K
-    return part1 + part2 + part3 + part4
-
-
-@jax.jit
-def stein_Laplace(x, y, l, d_log_px, d_log_py):
-    """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
-    """
-    K = my_Laplace(x, y, l)
-    dx_K = dx_Laplace(x, y, l)
-    dy_K = dy_Laplace(x, y, l)
-    dxdy_K = dxdy_Laplace(x, y, l)
-    part1 = d_log_px @ d_log_py.T * K
-    part2 = d_log_py.T * dx_K
-    part3 = d_log_px * dy_K
-    part4 = dxdy_K
-    return part1 + part2 + part3 + part4
 
 
 @partial(jax.jit, static_argnames=['Kx'])
@@ -157,13 +93,25 @@ def step(l, c, A, opt_state, optimizer, x, fx, d_log_px, Kx, eps):
 
 def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     """
-    :param x:
-    :param fx:
-    :param d_log_px:
-    :param dx_log_px_fn:
-    :param rng_key:
-    :return:
+    Use empirical Bayes to train the hyperparameters of the Stein kernel (c, l, A)
+    The most time-costly part of CBQ with Stein kernel.
+
+    Args:
+        theta: scalar
+        x: (N, )
+        x_scale: scalar
+        fx: (N, )
+        d_log_px: (N, )
+        dx_log_px_fn: function to compute d_log_px
+        rng_key: random key
+        Kx: kernel function
+
+    Returns:
+        c: scalar
+        l: scalar
+        A: scalar
     """
+
     rng_key, _ = jax.random.split(rng_key)
     n = x.shape[0]
     learning_rate = 1e-2
@@ -235,8 +183,7 @@ def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     return l, c, A
 
 
-# @partial(jax.jit, static_argnames=['Kx'])
-def bayesian_monte_carlo_no_stein_inner(theta, Xi, fXi, Kx, lx, eps, sigma, T_finance, t_finance):
+def Bayesian_Monte_Carlo_no_stein_inner(theta, Xi, fXi, Kx, lx, eps, sigma, T_finance, t_finance):
     Xi = Xi[:, None]
     N = Xi.shape[0]
     K = Kx(Xi, Xi, lx, None, None) + eps * jnp.eye(N)
@@ -250,32 +197,54 @@ def bayesian_monte_carlo_no_stein_inner(theta, Xi, fXi, Kx, lx, eps, sigma, T_fi
     return mu.squeeze(), std.squeeze()
 
 
-def bayesian_monte_carlo_no_stein_vectorized(rng_key, Theta, X, fX, Kx):
+def Bayesian_Monte_Carlo_no_stein_vectorized(rng_key, Theta, X, fX, Kx):
+    """
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Use log_rbf kernel
+    Vectorized over Theta.
+    
+    Args:
+        rng_key: random number generator
+        X: shape (T, N, D)
+        fX: shape (T, N)
+        Theta: shape (T, D)
+        Kx: kernel function
+        
+    Returns:
+        I_BQ_mean: (T, )
+        I_BQ_std: (T, )
+    """
+        
     sigma = 0.3
     T_finance = 2
     t_finance = 1
     eps = 1e-6
     lx = 0.1
 
-    vmap_func = jax.vmap(bayesian_monte_carlo_no_stein_inner, in_axes=(0, 0, 0, None, None, None, None, None, None))
+    vmap_func = jax.vmap(Bayesian_Monte_Carlo_no_stein_inner, in_axes=(0, 0, 0, None, None, None, None, None, None))
     I_BQ_mean, I_BQ_std = vmap_func(Theta, X, fX, Kx, lx, eps, sigma, T_finance, t_finance)
     return I_BQ_mean, I_BQ_std
 
 
-def bayesian_monte_carlo_no_stein_vectorized_on_T_test(rng_key, Theta_test, X, fX, Kx):
-    sigma = 0.3
-    T_finance = 2
-    t_finance = 1
-    eps = 1e-6
-    lx = 0.1
-
-    vmap_func = jax.vmap(bayesian_monte_carlo_no_stein_inner, in_axes=(0, None, None, None, None, None, None, None, None))
-    BQ_test_mean, BQ_test_std = vmap_func(Theta_test, X, fX, Kx, lx, eps, sigma, T_finance, t_finance)
-    return BQ_test_mean, BQ_test_std
-
-
 # @partial(jax.jit, static_argnums=(0,))
-def bayesian_monte_carlo_no_stein(rng_key, Theta, X, fX, Kx):
+def Bayesian_Monte_Carlo_no_stein(rng_key, Theta, X, fX, Kx):
+    """
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Use log_rbf kernel
+    Not vectorized over Theta.
+    
+    Args:
+        rng_key: random number generator
+        X: shape (T, N, D)
+        fX: shape (T, N)
+        Theta: shape (T, D)
+        Kx: kernel function
+        
+    Returns:
+        I_BQ_mean: (T, )
+        I_BQ_std: (T, )
+    """
+    
     sigma = 0.3
     T_finance = 2
     t_finance = 1
@@ -315,12 +284,21 @@ def bayesian_monte_carlo_no_stein(rng_key, Theta, X, fX, Kx):
 
 
 # @partial(jax.jit, static_argnums=(0,))
-def bayesian_monte_carlo_stein(rng_key, Theta, X, fX, Kx):
+def Bayesian_Monte_Carlo_stein(rng_key, Theta, X, fX, Kx):
     """
-    :param Theta: Theta is of size T
-    :param Y: Y is of size T * N
-    :param fX: fX is g(Y)
-    :return: return the expectation E[g(Y)|theta=theta] of size T
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Use stein kernel
+
+    Args:
+        rng_key: random number generator
+        X: shape (T, N, D)
+        fX: shape (T, N)
+        Theta: shape (T, D)
+        Kx: kernel function
+
+    Returns:
+        I_BQ_mean: (T, )
+        I_BQ_std: (T, )
     """
 
     T = Theta.shape[0]
@@ -360,39 +338,86 @@ def bayesian_monte_carlo_stein(rng_key, Theta, X, fX, Kx):
     return I_BQ_mean, I_BQ_std
     
 
+def Bayesian_Monte_Carlo_no_stein_vectorized_on_T_test(rng_key, Theta_test, X, fX, Kx):
+    """
+    The BQ baseline, also described as putting a GP prior directly on (x, \theta) -> f(x, \theta)
+    Vectorized over Theta_test.
+
+    Args:
+        rng_key: random number generator
+        X: shape (N * T, D)
+        fX: shape (N * T, )
+        Theta_test: shape (T_test, D)
+        Kx: kernel function
+
+    Returns:
+        BQ_mean: float
+        BQ_std: float
+    """
+    sigma = 0.3
+    T_finance = 2
+    t_finance = 1
+    eps = 1e-6
+    lx = 0.1
+
+    vmap_func = jax.vmap(Bayesian_Monte_Carlo_no_stein_inner, in_axes=(0, None, None, None, None, None, None, None, None))
+    BQ_mean, BQ_std = vmap_func(Theta_test, X, fX, Kx, lx, eps, sigma, T_finance, t_finance)
+    return BQ_mean, BQ_std
+
+
 # @partial(jax.jit, static_argnums=(0,))
-def GP(I_BQ_mean, I_BQ_std, theta, theta_test, Ktheta):
+def GP(I_mean, I_std, Theta, Theta_test, Ktheta):
     """
-    :param I_BQ_mean: T,
-    :param I_BQ_std: T,
-    :param theta: T * 1
-    :param theta_test: T_test * 1
-    :return:
+    Second stage of CBQ, computes the posterior mean and variance of I(Theta_test).
+
+    Args:
+        rng_key: random number generator
+        I_mean: (T, )
+        I_std: (T, )
+        Theta: (T, D)
+        Theta_test: (T_test, D)
+        Ktheta: Matern or RBF
+
+    Returns:
+        mu_Theta_test: (T_test, )
+        std_Theta_test: (T_test, )
     """
-    theta_standardized, theta_mean, theta_std = black_scholes_utils.standardize(theta)
-    theta_test_standardized = (theta_test - theta_mean) / theta_std
+    Theta_standardized, theta_mean, theta_std = black_scholes_utils.standardize(Theta)
+    Theta_test_standardized = (Theta_test - theta_mean) / theta_std
     ltheta = 1.5
 
-    noise = I_BQ_mean.mean()
-    K_train_train = Ktheta(theta_standardized, theta_standardized, ltheta) + jnp.diag(I_BQ_std ** 2)
+    noise = I_std.mean()
+    K_train_train = Ktheta(Theta_standardized, Theta_standardized, ltheta) + jnp.diag(I_std ** 2)
     K_train_train_inv = jnp.linalg.inv(K_train_train)
-    K_test_train = Ktheta(theta_test_standardized, theta_standardized, ltheta)
-    K_test_test = Ktheta(theta_test_standardized, theta_test_standardized, ltheta) + noise
-    mu_x_theta_test = K_test_train @ K_train_train_inv @ I_BQ_mean
-    var_x_theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    std_x_theta_test = jnp.sqrt(var_x_theta_test)
+    K_test_train = Ktheta(Theta_test_standardized, Theta_standardized, ltheta)
+    K_test_test = Ktheta(Theta_test_standardized, Theta_test_standardized, ltheta) + noise
+
+    mu_Theta_test = K_test_train @ K_train_train_inv @ I_mean
+    var_Theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    var_Theta_test = jnp.abs(var_Theta_test)
+    std_Theta_test = jnp.sqrt(var_Theta_test)
     pause = True
-    return mu_x_theta_test, std_x_theta_test
+    return mu_Theta_test, std_Theta_test
 
 
 
 @partial(jax.jit, static_argnums=(1,))
 def price(St, N, rng_key):
     """
-    :param St: the price St at time t_finance
-    :return: The function returns the price ST at time T_finance sampled from the conditional
-    distribution p(ST|St), and the loss \psi(ST) - \psi((1+s)ST) due to the shock. Their shape is T * N
+    Computes the price ST at time T_finance.
+    ST is sampled from the conditional distribution p(ST|St).
+    Computes the loss \psi(ST) - \psi((1+s)ST) caused by the shock. 
+    Their shape is T * N
+    
+    Args:
+        St: (T, 1) the price at time t_finance
+        N: number of samples
+        
+    Returns:
+        ST: (T, N, 1)
+        f(ST): (T, N)
     """
+
     K1 = 50
     K2 = 150
     s = -0.2
@@ -411,6 +436,13 @@ def price(St, N, rng_key):
 
 
 def save_true_value(St, args):
+    """
+    Computes the ground truth value.
+    
+    Args:
+        St: (T, 1) the price at time t_finance
+        args: arguments
+    """
     seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
@@ -427,14 +459,14 @@ def save_true_value(St, args):
     value = loss.mean(1)
     jnp.save(f"{args.save_path}/finance_theta.npy", St)
     jnp.save(f"{args.save_path}/finance_EfX_theta.npy", value)
-    plt.figure()
-    plt.plot(St, value)
-    plt.xlabel(r"$theta$")
-    plt.ylabel(r"$\mathbb{E}[f(X) \mid theta]$")
-    plt.title("True value for finance experiment")
-    plt.savefig(f"{args.save_path}/true_distribution.pdf")
-    # plt.show()
-    plt.close()
+    # plt.figure()
+    # plt.plot(St, value)
+    # plt.xlabel(r"$theta$")
+    # plt.ylabel(r"$\mathbb{E}[f(X) \mid theta]$")
+    # plt.title("True value for finance experiment")
+    # plt.savefig(f"{args.save_path}/true_distribution.pdf")
+    # # plt.show()
+    # plt.close()
     return
 
 
@@ -444,7 +476,7 @@ def option_pricing(args):
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
 
-    T_array = jnp.array([5, 20, 30])
+    T_array = jnp.array([10, 20, 30])
     # T_array = jnp.array([30])
     # N_array = jnp.array([50, 100])
     N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
@@ -455,11 +487,13 @@ def option_pricing(args):
 
     for T in T_array:
         for N in tqdm(N_array):
+            # ======================================== Collecting samples and function evaluations ========================================
             rng_key, _ = jax.random.split(rng_key)
             # epsilon = jax.random.normal(rng_key, shape=(T, 1))
             # St = S0 * jnp.exp(sigma * jnp.sqrt(t) * epsilon - 0.5 * (sigma ** 2) * t)
             St = jnp.linspace(20, 120, T)[:, None]
-            ST, loss = price(St, N.item(), rng_key)
+            ST, loss = price(St, N.item(), rng_key)\
+            # ======================================== Collecting samples and function evaluations ========================================
 
             # ======================================== KMS ========================================
             I_MC_mean = loss.mean(1)
@@ -479,7 +513,7 @@ def option_pricing(args):
 
             # ======================================== IS ========================================
             t0 = time.time()
-            IS_mean, IS_std = baselines.importance_sampling_finance(px_theta_fn, St_test, St, ST, loss)
+            IS_mean, IS_std = baselines.importance_sampling_finance(black_scholes_utils.px_theta_fn, St_test, St, ST, loss)
             time_IS = time.time() - t0
             # ======================================== IS ========================================
 
@@ -495,7 +529,7 @@ def option_pricing(args):
             # ======================================== BQ ========================================
             t0 = time.time()
             if 'stein' not in args.kernel_x:
-                BQ_mean, BQ_std = bayesian_monte_carlo_no_stein_vectorized_on_T_test(rng_key, St_test, ST.reshape([N * T, ]), loss.reshape([N * T, ]), log_normal_RBF)
+                BQ_mean, BQ_std = Bayesian_Monte_Carlo_no_stein_vectorized_on_T_test(rng_key, St_test, ST.reshape([N * T, ]), loss.reshape([N * T, ]), log_normal_RBF)
             elif 'stein' in args.kernel_x:
                 BQ_mean, BQ_std = np.nan, np.nan
             time_BQ = time.time() - t0
@@ -504,10 +538,10 @@ def option_pricing(args):
             # ======================================== CBQ ========================================
             t0 = time.time()
             if 'stein' not in args.kernel_x:
-                # I_BQ_mean, I_BQ_std = bayesian_monte_carlo_no_stein(rng_key, St, ST, loss, log_normal_RBF)
-                I_BQ_mean, I_BQ_std = bayesian_monte_carlo_no_stein_vectorized(rng_key, St, ST, loss, log_normal_RBF)
+                # I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_no_stein(rng_key, St, ST, loss, log_normal_RBF)
+                I_BQ_mean, I_BQ_std = Bayesian_Monte_Carlo_no_stein_vectorized(rng_key, St, ST, loss, log_normal_RBF)
             elif 'stein' in args.kernel_x:
-                I_BQ_mean, I_BQ_std  = bayesian_monte_carlo_stein(rng_key, St, ST, loss, stein_Matern)
+                I_BQ_mean, I_BQ_std  = Bayesian_Monte_Carlo_stein(rng_key, St, ST, loss, stein_Matern)
             else:
                 raise NotImplementedError(args.kernel_x)
             t1 = time.time()
@@ -531,24 +565,25 @@ def option_pricing(args):
 
 def main(args):
     seed = args.seed
-    # seed = 0
-    rng_key = jax.random.PRNGKey(seed)
-
-    visualize_brownian = False
-    debug_BSM = False
-    if visualize_brownian:
-        n = 100.
-        T = 1.
-        dt = T / n
-        plt.figure()
-        for i in range(10):
-            St = black_scholes_utils.Geometric_Brownian(n, dt, rng_key)
-            plt.plot(St)
-        # plt.show()
-    elif debug_BSM:
-        black_scholes_utils.BSM_butterfly_analytic()
-    else:
-        pass
+    
+    # ======================================== Debug code ========================================
+    # rng_key = jax.random.PRNGKey(seed)
+    # visualize_brownian = False
+    # debug_BSM = False
+    # if visualize_brownian:
+    #     n = 100.
+    #     T = 1.
+    #     dt = T / n
+    #     plt.figure()
+    #     for i in range(10):
+    #         St = black_scholes_utils.Geometric_Brownian(n, dt, rng_key)
+    #         plt.plot(St)
+    #     # plt.show()
+    # elif debug_BSM:
+    #     black_scholes_utils.BSM_butterfly_analytic()
+    # else:
+    #     pass
+    # ======================================== Debug code ========================================
     option_pricing(args)
     return
 

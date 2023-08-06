@@ -5,6 +5,16 @@ import matplotlib.pyplot as plt
 
 
 def save(args, T, N, rmse_BMC, rmse_KMS, rmse_LSMC, calibration_1, calibration_2):
+    methods = ["CBQ", "KMS", "LSMC", "IS"]
+    rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, np.nan]
+
+    print("\n\n=======================================")
+    print(f"T = {T} and N = {N}")
+    print("=======================================")
+    print(" ".join([f"{method:<11}" for method in methods]))
+    print(" ".join([f"{value:<6.5f}" for value in rmse_values]))
+    print("=======================================\n\n")
+
     rmse_dict = {}
     rmse_dict["BMC"] = rmse_BMC
     rmse_dict["KMS"] = rmse_KMS
