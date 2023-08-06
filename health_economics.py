@@ -52,9 +52,14 @@ def get_config():
 
 def f1(theta, x):
     """
-    :param theta: (T, 1)
-    :param x: (T, N, 9)
-    :return: (T, N)
+    Compute f1.
+
+    Args:
+        theta: (T, )
+        x: (T, N, 9)
+
+    Returns:
+        f(x, theta): (T, N)
     """
     lamba_ = 1e4
     # lamba_ = 1.0
@@ -68,9 +73,14 @@ def f1(theta, x):
 
 def f2(theta, x):
     """
-    :param theta: (T, 1)
-    :param x: (T, N, 9)
-    :return: (T, N)
+    Compute f2.
+
+    Args:
+        theta: (T, )
+        x: (T, N, 9)
+
+    Returns:
+        f(x, theta): (T, N)
     """
     lamba_ = 1e4
     # lambda * (Theta_5 * Theta_6 * Theta_7 + Theta_8 * Theta_9 * Theta_10) - (Theta_1 + Theta_2 * Theta_3 * Theta_4)
@@ -83,14 +93,19 @@ def f2(theta, x):
 
 def conditional_distribution(joint_mean, joint_covariance, theta, dimensions_x, dimensions_theta):
     """
-    :param joint_mean: (19,)
-    :param joint_covariance: (19, 19)
-    :param theta: (N, len(dimensions_theta))
-    :param dimensions_x: list
-    :param dimensions_theta: list
-    :return: (N, len(dimensions_x))
-    """
+    Compute conditional distribution p(x | theta).
 
+    Args:
+        joint_mean: (19,)
+        joint_covariance: (19, 19)
+        theta: (N, len(dimensions_theta))
+        dimensions_x: list
+        dimensions_theta: list
+
+    Returns:
+        mean_x_given_theta: shape (N, len(dimensions_x))
+        cov_x_given_theta: shape (N, len(dimensions_x), len(dimensions_x))
+    """
     dimensions_x = jnp.array(dimensions_x)
     dimensions_theta = jnp.array(dimensions_theta)
 
@@ -109,6 +124,20 @@ def conditional_distribution(joint_mean, joint_covariance, theta, dimensions_x, 
 
 
 def Bayesian_Monte_Carlo_Matern_vectorized(rng_key, U, X, fX):
+    """
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Vectorized over Theta.
+
+    Args:
+        rng_key: random number generator
+        U: shape (T, N, D)
+        X: shape (T, N, D)
+        f_X: shape (T, N)
+
+    Returns:
+        I_BQ_mean: (T, )
+        I_BQ_std: (T, )
+    """
     scale = 1000
     fX_standardized = fX / scale
     vmap_func = jax.vmap(Bayesian_Monte_Carlo_Matern, in_axes=(None, 0, 0, 0))
@@ -118,13 +147,18 @@ def Bayesian_Monte_Carlo_Matern_vectorized(rng_key, U, X, fX):
 
 def Bayesian_Monte_Carlo_Matern(rng_key, u, x, fx):
     """
-    :param u: (N, D)
-    :param sigma_x_theta: (D, D)
-    :param mu_x_theta: (D, )
-    :param rng_key:
-    :param x: (N, D)
-    :param fx: (N, )
-    :return:
+    First stage of CBQ, computes the posterior mean and variance of the integral for a single instance of theta.
+    Not vectorized over Theta.
+
+    Args:
+        rng_key: random number generator
+        u: shape (N, D)
+        x: shape (N, D)
+        fx: shape (N, )
+        
+    Returns:
+        I_BQ_mean: float
+        I_BQ_std: float
     """
     N, D = x.shape[0], x.shape[1]
     eps = 1e-6
@@ -157,11 +191,21 @@ def Bayesian_Monte_Carlo_Matern(rng_key, u, x, fx):
 
 def GP(I_mean, I_std, Theta, Theta_test, eps):
     """
-    :param I_mean: (T, )
-    :param I_std: (T, )
-    :param Theta: (T, D)
-    :param Theta_test: (T_test, D)
-    :return:
+    Second stage of CBQ, computes the posterior mean and variance of I(Theta_test).
+    The kernel hyperparameters are selected by minimizing the negative log-likelihood (NLL).
+
+    Args:
+        rng_key: random number generator
+        I_mean: (T, )
+        I_std: (T, )
+        Theta: (T, D)
+        Theta_test: (T_test, D)
+        eps: float
+        kernel_fn: Matern or RBF
+
+    Returns:
+        mu_Theta_test: (T_test, )
+        std_Theta_test: (T_test, )
     """
     T, D = Theta.shape[0], Theta.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0])
@@ -186,12 +230,12 @@ def GP(I_mean, I_std, Theta, Theta_test, eps):
     K_test_train = A * my_Matern(Theta_test, Theta, l)
     K_test_test = A * my_Matern(Theta_test, Theta_test, l) + eps * jnp.eye(Theta_test.shape[0])
 
-    mu_x_theta = K_test_train @ K_train_train_inv @ I_mean
-    var_x_theta = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
-    var_x_theta = jnp.abs(var_x_theta)
-    std_x_theta = jnp.sqrt(var_x_theta)
+    mu_Theta_test = K_test_train @ K_train_train_inv @ I_mean
+    var_Theta_test = K_test_test - K_test_train @ K_train_train_inv @ K_test_train.T
+    var_Theta_test = jnp.abs(var_Theta_test)
+    std_Theta_test = jnp.sqrt(var_Theta_test)
     pause = True
-    return mu_x_theta, std_x_theta
+    return mu_Theta_test, std_Theta_test
 
 
 def main(args):
@@ -290,8 +334,9 @@ def main(args):
         rng_key, _ = jax.random.split(rng_key)
         Theta1 = jnp.linspace(Theta1_test.min(), Theta1_test.max(), T)[:, None]
         Theta2 = jnp.linspace(Theta2_test.min(), Theta2_test.max(), T)[:, None]
-
         for N in tqdm(N_array):
+            # ======================================== Collecting samples and function evaluations ========================================
+
             f1_p_X_Theta_mean, f1_p_X_Theta_std = f1_cond_dist_fn(theta=Theta1)
             f2_p_X_Theta_mean, f2_p_X_Theta_std = f2_cond_dist_fn(theta=Theta2)
             # X1, X2 shape is (T, N, 9)
@@ -319,6 +364,7 @@ def main(args):
                 X2_temp = f2_p_X_Theta_mean[i, :] + jnp.matmul(L2, u2_temp.T).T
                 X2 = X2.at[i, :, :].set(X2_temp)
                 U2 = U2.at[i, :, :].set(u2_temp)
+                # ======================================== Collecting samples and function evaluations Ends ========================================
 
             # f_X shape is (T, N)
             f1_X = f1(Theta1, X1)
@@ -449,17 +495,6 @@ def main(args):
             rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
 
             health_economics_utils.save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
-
-            methods = ["CBQ", "KMS", "LSMC", "IS"]
-            rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, np.nan]
-
-            print("\n\n=======================================")
-            print(f"T = {T} and N = {N}")
-            print("=======================================")
-            print(" ".join([f"{method:<11}" for method in methods]))
-            print(" ".join([f"{value:<6.5f}" for value in rmse_values]))
-            print("=======================================\n\n")
-
             # ======================================== Debug code ========================================
             # plt.figure()
             # Theta1_test_ = Theta1_test.squeeze()
