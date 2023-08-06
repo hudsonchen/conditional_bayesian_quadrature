@@ -28,4 +28,4 @@ conda activate /lustre/home/ucabzc9/.conda/envs/cbq
 which pip
 which python
 
-python /home/ucabzc9/Scratch/CBQ/finance.py $JOB_PARAMS
+python /home/ucabzc9/Scratch/CBQ/black_scholes.py $JOB_PARAMS

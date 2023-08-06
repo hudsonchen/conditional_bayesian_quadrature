@@ -445,8 +445,9 @@ def option_pricing(args):
     rng_key, _ = jax.random.split(rng_key)
 
     T_array = jnp.array([5, 20, 30])
-    N_array = jnp.array([10, 50, 100])
-    # N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
+    # T_array = jnp.array([30])
+    # N_array = jnp.array([50, 100])
+    N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
     test_num = 200
     St_test = jnp.linspace(20., 120., test_num)[:, None]
@@ -462,7 +463,12 @@ def option_pricing(args):
 
             # ======================================== KMS ========================================
             I_MC_mean = loss.mean(1)
-            I_MC_std = loss.std(1)
+            M = 100
+            rng_key, _ = jax.random.split(rng_key)
+            samples = [loss[:, jax.random.choice(rng_key, N, (N//2, ), replace=False)].mean(1)[:, None] for _ in range(M)]
+            stacked_samples = jnp.hstack(samples)
+            I_MC_std = jnp.std(stacked_samples, axis=1)
+
             time0 = time.time()
             if args.baseline_use_variance:
                 KMS_mean, KMS_std = baselines.kernel_mean_shrinkage(rng_key, I_MC_mean, I_MC_std, St, St_test, eps=0., kernel_fn=my_RBF)
