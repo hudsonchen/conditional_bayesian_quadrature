@@ -10,7 +10,7 @@
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
             "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
-            "args" : ["--dim", "2", "--fn", "f3", "--kernel_x", "RBF", "--kernel_theta", "Matern", "--baseline_use_variance", "--nystrom"]
+            "args" : ["--dim", "2", "--fn", "f3", "--kernel_x", "RBF", "--kernel_theta", "Matern", "--baseline_use_variance"]
         },
         {
             "name": "Python: finance stein",

@@ -408,6 +408,7 @@ def main(args):
         raise ValueError('must be f1 or f2 or f3 or f4!')
 
     T_array = jnp.array([10, 50, 100])
+    # T_array = jnp.array([1000])
     # N_array = jnp.array([10, 50, 100])
     N_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
@@ -581,7 +582,8 @@ def create_dir(args):
     if args.seed is None:
         args.seed = int(time.time())
     args.save_path += f'results/sensitivity_conjugate/'
-    args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.fn}__Kx_{args.kernel_x}__Ktheta_{args.kernel_theta}__qmc_{args.qmc}__usevar_{args.baseline_use_variance}"
+    args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.fn}__Kx_{args.kernel_x}__Ktheta_{args.kernel_theta}"
+    args.save_path += f"__qmc_{args.qmc}__usevar_{args.baseline_use_variance}__nystrom_{args.nystrom}"
     os.makedirs(args.save_path, exist_ok=True)
     return args
 
