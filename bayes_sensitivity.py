@@ -407,8 +407,8 @@ def main(args):
     else:
         raise ValueError('must be f1 or f2 or f3 or f4!')
 
-    # T_array = jnp.array([10, 50, 100])
-    T_array = jnp.array([1000])
+    T_array = jnp.array([10, 50, 100])
+    # T_array = jnp.array([1000])
     # N_array = jnp.array([10, 50, 100])
     N_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
@@ -540,13 +540,13 @@ def main(args):
             # ======================================== KMS ========================================
 
             # ======================================== BQ ========================================
-            # time0 = time.time()
-            # rng_key, _ = jax.random.split(rng_key)
-            # BQ_mean, BQ_std = Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(args, rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
-            #                                 mu_x_theta_test, var_x_theta_test)
-            # time_BQ = time.time() - time0
-            time_BQ = time_CBQ
-            BQ_mean, BQ_std = CBQ_mean, CBQ_std
+            time0 = time.time()
+            rng_key, _ = jax.random.split(rng_key)
+            BQ_mean, BQ_std = Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(args, rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
+                                            mu_x_theta_test, var_x_theta_test)
+            time_BQ = time.time() - time0
+            # time_BQ = time_CBQ
+            # BQ_mean, BQ_std = CBQ_mean, CBQ_std
             # ======================================== BQ ========================================
 
             # ======================================== LSMC ========================================
