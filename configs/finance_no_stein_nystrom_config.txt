@@ -1,0 +1,11 @@
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6101
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6106
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6106
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6104
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6105
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6106
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6107
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6108
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 6109
+--kernel_x log_normal_rbf --kernel_theta rbf --baseline_use_variance --nystrom --seed 61010
+
