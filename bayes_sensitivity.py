@@ -506,9 +506,9 @@ def main(args):
 
             # ======================================== CBQ ========================================
             time0 = time.time()
-            if args.kernel_x == "RBF":
+            if args.kernel_x == "rbf":
                 I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_RBF_vectorized_on_T(rng_key, X, f_X, mu_x_theta_all, var_x_theta_all)
-            elif args.kernel_x == "Matern":
+            elif args.kernel_x == "matern":
                 if D > 2:
                     raise NotImplementedError("Matern kernel is only implemented for D=2")
                 I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_Matern_vectorized_on_T(rng_key, u, X, f_X, mu_x_theta_all, var_x_theta_all)
@@ -520,10 +520,10 @@ def main(args):
             _, _ = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
             
             time0 = time.time()
-            if args.kernel_theta == "RBF":
+            if args.kernel_theta == "rbf":
                 CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
-            elif args.kernel_theta == "Matern":
-                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, 0.5 * I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
+            elif args.kernel_theta == "matern":
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
             else:
                 raise NotImplementedError(f"Unknown kernel {args.kernel_theta}")
             time_CBQ += time.time() - time0

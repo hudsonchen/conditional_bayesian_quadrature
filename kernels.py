@@ -8,12 +8,17 @@ import time
 
 def stein_Matern(x, y, l, d_log_px, d_log_py):
     """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
+    Stein Matern kernel.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+        d_log_px: (N, D)
+        d_log_py: (M, D)
+
+    Returns:
+        kernel matrix: (N, M)
     """
     N, D = x.shape
     M = y.shape[0]
@@ -49,12 +54,17 @@ def stein_Matern(x, y, l, d_log_px, d_log_py):
 
 def stein_Gaussian(x, y, l, d_log_px, d_log_py):
     """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :param d_log_px: N*D
-    :param d_log_py: M*D
-    :return: N*M
+    Stein Gaussian kernel.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+        d_log_px: (N, D)
+        d_log_py: (M, D)
+        
+    Returns:
+        kernel matrix: (N, M)
     """
     N, D = x.shape
     M = y.shape[0]
@@ -91,10 +101,15 @@ def stein_Gaussian(x, y, l, d_log_px, d_log_py):
 @jax.jit
 def my_Matern(x, y, l):
     """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :return: N*M
+    Matern kernel.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        kernel matrix: (N, M)
     """
     kernel = tfp.math.psd_kernels.MaternThreeHalves(amplitude=1., length_scale=l)
     K = kernel.matrix(x, y)
@@ -104,10 +119,15 @@ def my_Matern(x, y, l):
 # @jax.jit
 def dx_Matern(x, y, l):
     """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :return: N*M*D
+    Matern kernel derivative with respect to the first input.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        derivative of kernel matrix: (N, M, D)
     """
     N, D = x.shape
     M = y.shape[0]
@@ -123,10 +143,15 @@ def dx_Matern(x, y, l):
 # @jax.jit
 def dy_Matern(x, y, l):
     """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :return: N*M*D
+    Matern kernel derivative with respect to the second input.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        derivative of kernel matrix: (N, M, D)
     """
     N, D = x.shape
     M = y.shape[0]
@@ -142,10 +167,16 @@ def dy_Matern(x, y, l):
 # @jax.jit
 def dxdy_Matern(x, y, l):
     """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :return: N*M
+    The inner product of dx_Matern and dy_Matern
+    A fully vecotrized implementation.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        inner product (N, M)
     """
     N, D = x.shape
     M = y.shape[0]
@@ -166,10 +197,15 @@ def dxdy_Matern(x, y, l):
 @jax.jit
 def my_RBF(x, y, l):
     """
-    :param x: N*D
-    :param y: M*D
-    :param l: scalar
-    :return: N*M
+    RBF kernel.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        kernel matrix: (N, M)
     """
     kernel = tfp.math.psd_kernels.ExponentiatedQuadratic(amplitude=1., length_scale=l)
     K = kernel.matrix(x, y)
@@ -185,6 +221,17 @@ sign_func = jax.vmap(jnp.greater, in_axes=(None, 0), out_axes=1)
 
 
 def my_Laplace(x, y, l):
+    """
+    Laplace kernel.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        kernel matrix: (N, M)
+    """
     r = distance(x, y).squeeze()
     return jnp.exp(- r / l)
 
@@ -214,9 +261,13 @@ def kme_Matern_Gaussian(l, y):
     """
     The implementation of the kernel mean embedding of the Matern kernel with Gaussian distribution
     Only in one dimension, and the Gaussian distribution is N(0, 1)
-    :param l:
-    :param y:
-    :return:
+    
+    Args:
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        kernel mean embedding: (M, )
     """
     E10 = 1 - jnp.sqrt(3) * y / l
     E11 = jnp.sqrt(3) / l
@@ -244,11 +295,17 @@ def kme_Matern_Gaussian(l, y):
 @jax.jit
 def kme_RBF_Gaussian(mu, Sigma, l, y):
     """
-    :param mu: Gaussian mean, (D, )
-    :param Sigma: Gaussian covariance, (D, D)
-    :param l: lengthscale, scalar
-    :param y: sample: (N, D)
-    :return:
+    The implementation of the kernel mean embedding of the RBF kernel with Gaussian distribution
+    A fully vectorized implementation.
+
+    Args:
+        mu: Gaussian mean, (D, )
+        Sigma: Gaussian covariance, (D, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        kernel mean embedding: (M, )
     """
     kme_RBF_Gaussian_func_ = partial(kme_RBF_Gaussian_func, mu, Sigma, l)
     kme_RBF_Gaussian_vmap_func = jax.vmap(kme_RBF_Gaussian_func_)
@@ -258,13 +315,18 @@ def kme_RBF_Gaussian(mu, Sigma, l, y):
 @jax.jit
 def kme_RBF_Gaussian_func(mu, Sigma, l, y):
     """
-    :param mu: Gaussian mean, (D, )
-    :param Sigma: Gaussian covariance, (D, D)
-    :param l: lengthscale, scalar
-    :param y: sample: D,
-    :return: scalar
+    The implementation of the kernel mean embedding of the RBF kernel with Gaussian distribution.
+    Not vectorized.
+
+    Args:
+        mu: Gaussian mean, (D, )
+        Sigma: Gaussian covariance, (D, D)
+        y: (D, )
+        l: scalar
+
+    Returns:
+        kernel mean embedding: scalar
     """
-    # From the kernel mean embedding document
     D = mu.shape[0]
     l_ = l ** 2
     Lambda = jnp.eye(D) * l_
@@ -276,6 +338,17 @@ def kme_RBF_Gaussian_func(mu, Sigma, l, y):
 
 @jax.jit
 def kme_double_RBF_Gaussian(mu, Sigma, l):
+    """
+    The implementation of the initial of the RBF kernel with Gaussian distribution.
+
+    Args:
+        mu: Gaussian mean, (D, )
+        Sigma: Gaussian covariance, (D, D)
+        l: scalar
+
+    Returns:
+        initial error: scalar
+    """
     l_ = l ** 2
     D = mu.shape[0]
     Lambda = jnp.eye(D) * l_
@@ -284,13 +357,37 @@ def kme_double_RBF_Gaussian(mu, Sigma, l):
     part2 = jnp.linalg.det(jnp.eye(D) + Sigma @ jnp.linalg.inv(Lambda + Sigma))
     return part1 ** (-0.5) * part2 ** (-0.5)
 
+
 @jax.jit
 def log_normal_RBF(x, y, l, d_log_px, d_log_py):
+    """
+    Log normal RBF kernel.
+
+    Args:
+        x: (N, D)
+        y: (M, D)
+        l: scalar
+
+    Returns:
+        kernel matrix: (N, M)
+    """
     return my_RBF(jnp.log(x), jnp.log(y), l)
 
 
 @jax.jit
 def kme_log_normal_RBF(y, l, a, b):
+    """
+    The implementation of the kernel mean embedding of the log RBF kernel with log normal distribution.
+
+    Args:
+        y: (M, D)
+        a: mean for the log normal distribution, scalar
+        b: std for the log normal distribution, scalar
+        l: scalar
+
+    Returns:
+        kernel mean embedding: (M, )
+    """
     part1 = jnp.exp(-(a ** 2 + jnp.log(y) ** 2) / (2 * (b ** 2 + l ** 2)))
     part2 = jnp.power(y, a / (b ** 2 + l ** 2))
     part3 = b * jnp.sqrt(b ** (-2) + l ** (-2))
@@ -299,6 +396,17 @@ def kme_log_normal_RBF(y, l, a, b):
 
 @jax.jit
 def kme_double_log_normal_RBF(l, a, b):
+    """
+    The implementation of the initial error of the log RBF kernel with log normal distribution.
+
+    Args:
+        a: mean for the log normal distribution, scalar
+        b: std for the log normal distribution, scalar
+        l: scalar
+
+    Returns:
+        initial error: scalar
+    """
     dummy = b ** 2 * jnp.sqrt(b ** (-2) + l ** (-2)) * jnp.sqrt(b ** (-2) + 1. / (b ** 2 + l ** 2))
     return 1. / dummy
 
@@ -319,9 +427,20 @@ def kme_double_log_normal_RBF(l, a, b):
 
 @jax.jit
 def nystrom_inv(matrix, eps=1e-6):
+    """
+    Nystrom approximation of the inverse of a matrix.
+
+    Args:
+        matrix: (N, N)
+        eps: scalar
+
+    Returns:
+        approx_inv: (N, N)
+    """
     rng_key = jax.random.PRNGKey(int(time.time()))
     n = matrix.shape[0]
     m = int(n / 2)
+    matrix = matrix - eps * jnp.eye(n)
     matrix_mean = jnp.mean(matrix)
     matrix = matrix / matrix_mean  # Scale the matrix to avoid numerical issues
 
