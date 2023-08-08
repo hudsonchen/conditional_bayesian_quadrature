@@ -14,7 +14,7 @@ pip install -r requirements.txt
 
 To reproduce the results for Bayesian sensitivity analysis (Figure 2 (Left & Middle)), run the following command:
 
-python bayes_sensitivity.py --dim 2 --fn f3 --kernel_x RBF --kernel_theta Matern
+python bayes_sensitivity.py --dim 2 --fn f3 --kernel_x rbf --kernel_theta matern
 
 You can vary the dimension by altering the argument 'dim --2' to reproduce Figure 2 (Right).
 
