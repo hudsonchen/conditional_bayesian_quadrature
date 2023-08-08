@@ -480,8 +480,8 @@ def option_pricing(args):
     rng_key = jax.random.PRNGKey(seed)
     rng_key, _ = jax.random.split(rng_key)
 
-    T_array = jnp.array([10, 20, 30])
-    # T_array = jnp.array([30])
+    # T_array = jnp.array([10, 20, 30])
+    T_array = jnp.array([30])
     # N_array = jnp.array([50, 100])
     N_array = jnp.concatenate((jnp.array([5]), jnp.arange(5, 105, 5)))
 
