@@ -52,6 +52,7 @@ def get_config():
     parser.add_argument('--save_path', type=str, default='./')
     parser.add_argument('--data_path', type=str, default='./data')
     parser.add_argument('--baseline_use_variance', action='store_true', default=False)
+    parser.add_argument('--nystrom', action='store_true', default=False)
     args = parser.parse_args()
     return args
 
@@ -183,11 +184,11 @@ def train(theta, x, x_scale, fx, d_log_px, dx_log_px_fn, rng_key, Kx):
     return l, c, A
 
 
-def Bayesian_Monte_Carlo_no_stein_inner(theta, Xi, fXi, Kx, lx, eps, sigma, T_finance, t_finance):
+def Bayesian_Monte_Carlo_no_stein_inner(theta, Xi, fXi, Kx, lx, eps, sigma, T_finance, t_finance, invert_fn=jnp.linalg.inv):
     Xi = Xi[:, None]
     N = Xi.shape[0]
     K = Kx(Xi, Xi, lx, None, None) + eps * jnp.eye(N)
-    K_inv = jnp.linalg.inv(K)
+    K_inv = invert_fn(K)
     a = -sigma ** 2 * (T_finance - t_finance) / 2 + jnp.log(theta)
     b = jnp.sqrt(sigma ** 2 * (T_finance - t_finance))
     phi = kme_log_normal_RBF(Xi, lx, a, b)
@@ -338,7 +339,7 @@ def Bayesian_Monte_Carlo_stein(rng_key, Theta, X, fX, Kx):
     return I_BQ_mean, I_BQ_std
     
 
-def Bayesian_Monte_Carlo_no_stein_vectorized_on_T_test(rng_key, Theta_test, X, fX, Kx):
+def Bayesian_Monte_Carlo_no_stein_vectorized_on_T_test(args, rng_key, Theta_test, X, fX, Kx):
     """
     The BQ baseline, also described as putting a GP prior directly on (x, \theta) -> f(x, \theta)
     Vectorized over Theta_test.
@@ -359,9 +360,12 @@ def Bayesian_Monte_Carlo_no_stein_vectorized_on_T_test(rng_key, Theta_test, X, f
     t_finance = 1
     eps = 1e-6
     lx = 0.1
-
-    vmap_func = jax.vmap(Bayesian_Monte_Carlo_no_stein_inner, in_axes=(0, None, None, None, None, None, None, None, None))
-    BQ_mean, BQ_std = vmap_func(Theta_test, X, fX, Kx, lx, eps, sigma, T_finance, t_finance)
+    if args.nystrom:
+        invert_fn = nystrom_inv
+    else:
+        invert_fn = jnp.linalg.inv
+    vmap_func = jax.vmap(Bayesian_Monte_Carlo_no_stein_inner, in_axes=(0, None, None, None, None, None, None, None, None, None))
+    BQ_mean, BQ_std = vmap_func(Theta_test, X, fX, Kx, lx, eps, sigma, T_finance, t_finance, invert_fn)
     return BQ_mean, BQ_std
 
 
@@ -529,7 +533,7 @@ def option_pricing(args):
             # ======================================== BQ ========================================
             t0 = time.time()
             if 'stein' not in args.kernel_x:
-                BQ_mean, BQ_std = Bayesian_Monte_Carlo_no_stein_vectorized_on_T_test(rng_key, St_test, ST.reshape([N * T, ]), loss.reshape([N * T, ]), log_normal_RBF)
+                BQ_mean, BQ_std = Bayesian_Monte_Carlo_no_stein_vectorized_on_T_test(args, rng_key, St_test, ST.reshape([N * T, ]), loss.reshape([N * T, ]), log_normal_RBF)
             elif 'stein' in args.kernel_x:
                 BQ_mean, BQ_std = np.nan, np.nan
             time_BQ = time.time() - t0
@@ -595,7 +599,7 @@ def create_dir(args):
         args.save_path += f'results/finance_stein/'
     else:
         args.save_path += f'results/finance/'
-    args.save_path += f"usevar_{args.baseline_use_variance}__seed_{args.seed}"
+    args.save_path += f"usevar_{args.baseline_use_variance}__nystrom_{args.nystrom}__seed_{args.seed}"
     os.makedirs(args.save_path, exist_ok=True)
     os.makedirs(f"{args.save_path}/figures/", exist_ok=True)
     return args

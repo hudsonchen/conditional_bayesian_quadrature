@@ -32,7 +32,7 @@
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
             "python": "/home/zongchen/miniconda3/envs/cbq/bin/python",
-            "args": ["--kernel_theta", "rbf", "--kernel_x", "log_normal_rbf", "--baseline_use_variance"]
+            "args": ["--kernel_theta", "rbf", "--kernel_x", "log_normal_rbf", "--baseline_use_variance", "--nystrom"]
         },
         {
             "name": "Python: SIR",

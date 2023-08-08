@@ -407,12 +407,12 @@ def main(args):
     else:
         raise ValueError('must be f1 or f2 or f3 or f4!')
 
-    T_array = jnp.array([50])
-    # T_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    # T_array = jnp.array([50])
+    T_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     # T_array = jnp.array([1000])
     # N_array = jnp.array([10, 50, 100])
-    # N_array = jnp.array([1000])
-    N_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    N_array = jnp.array([1000])
+    # N_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
     Theta_test = jax.random.uniform(rng_key, shape=(T_test, D), minval=-1.0, maxval=1.0)

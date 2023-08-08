@@ -322,7 +322,6 @@ def nystrom_inv(matrix, eps=1e-6):
     rng_key = jax.random.PRNGKey(int(time.time()))
     n = matrix.shape[0]
     m = int(n / 2)
-    matrix = matrix - eps * jnp.eye(n)
     matrix_mean = jnp.mean(matrix)
     matrix = matrix / matrix_mean  # Scale the matrix to avoid numerical issues
 
