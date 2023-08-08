@@ -351,7 +351,6 @@ def GP(rng_key, I_mean, I_std, Theta, Theta_test, eps, kernel_fn):
     T, D = Theta.shape[0], Theta.shape[1]
     l_array = jnp.array([0.3, 1.0, 2.0, 3.0]) * D
 
-    sigma_array = jnp.array([0.0])
     A_array = 0 * l_array
     nll_array = jnp.zeros([len(l_array), 1])
 
@@ -407,11 +406,11 @@ def main(args):
     else:
         raise ValueError('must be f1 or f2 or f3 or f4!')
 
-    # T_array = jnp.array([50])
-    T_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
+    T_array = jnp.array([50])
+    # T_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     # T_array = jnp.array([1000])
-    # N_array = jnp.array([10, 50, 100])
-    N_array = jnp.array([1000])
+    N_array = jnp.array([10, 50, 100])
+    # N_array = jnp.array([1000])
     # N_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
 
     # This is the test point
@@ -524,7 +523,7 @@ def main(args):
             if args.kernel_theta == "RBF":
                 CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_RBF)
             elif args.kernel_theta == "Matern":
-                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
+                CBQ_mean, CBQ_std = GP(rng_key, I_BQ_mean_array, 0.5 * I_BQ_std_array, Theta, Theta_test, eps=I_BQ_std_array.mean(), kernel_fn=my_Matern)
             else:
                 raise NotImplementedError(f"Unknown kernel {args.kernel_theta}")
             time_CBQ += time.time() - time0
@@ -547,8 +546,6 @@ def main(args):
             BQ_mean, BQ_std = Bayesian_Monte_Carlo_RBF_vectorized_on_T_test(args, rng_key, X.reshape([N * T, D]), f_X.reshape([N * T]), 
                                             mu_x_theta_test, var_x_theta_test)
             time_BQ = time.time() - time0
-            # time_BQ = time_CBQ
-            # BQ_mean, BQ_std = CBQ_mean, CBQ_std
             # ======================================== BQ ========================================
 
             # ======================================== LSMC ========================================
@@ -587,7 +584,7 @@ def create_dir(args):
         args.seed = int(time.time())
     args.save_path += f'results/sensitivity_conjugate/'
     args.save_path += f"seed_{args.seed}__dim_{args.dim}__function_{args.fn}__Kx_{args.kernel_x}__Ktheta_{args.kernel_theta}"
-    args.save_path += f"__qmc_{args.qmc}__usevar_{args.baseline_use_variance}__nystrom_{args.nystrom}"
+    args.save_path += f"__qmc_{args.qmc}__usevar_{args.baseline_use_variance}__nystrom_{args.nystrom}_coeff_0.5"
     os.makedirs(args.save_path, exist_ok=True)
     return args
 
