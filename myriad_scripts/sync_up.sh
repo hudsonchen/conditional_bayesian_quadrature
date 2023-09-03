@@ -17,4 +17,4 @@ rsync -ruP ucabzc9@myriad.rc.ucl.ac.uk:/home/ucabzc9/Scratch/CBQ/results/finance
 
 rsync -ruP hudson_ucl:/home/zongchen/fx_bayesian_quaduature/CBQ/rebuttal_figures/ "/Users/hudsonchen/Library/Mobile Documents/com~apple~CloudDocs/research/fx_bayesian_quaduature/CBQ/rebuttal_figures"
 rsync -ruP hudson_ucl:/home/zongchen/fx_bayesian_quaduature/CBQ/rebuttal_figures/ "/Users/bytedance/Library/Mobile Documents/com~apple~CloudDocs/research/fx_bayesian_quaduature/CBQ/rebuttal_figures"
-rsync -ruP "/Users/hudsonchen/Library/Mobile Documents/com~apple~CloudDocs/research/fx_bayesian_quaduature/CBQ/results_server/sensitivity_conjugate_old/" hudson_ucl:/home/zongchen/fx_bayesian_quaduature/CBQ/results_server/sensitivity_conjugate_old 
+rsync -ruP hudson_ucl:/home/zongchen/fx_bayesian_quaduature/CBQ/plotting/figures/ "/Users/bytedance/Library/Mobile Documents/com~apple~CloudDocs/research/fx_bayesian_quaduature/CBQ/plotting/figures"
