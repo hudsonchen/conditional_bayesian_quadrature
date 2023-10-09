@@ -253,12 +253,10 @@ def peak_infected_number(infections):
 
 
 def SIR(args, rng_key):
-    N_array = jnp.array([10, 20, 30])
-    # N_array = jnp.arange(5, 45, 5)
-    T_array = jnp.array([100])
-    # T_array = jnp.arange(5, 45, 5)
+    N_array = jnp.array([10, 20, 30, 40, 50])
+    T_array = jnp.array([5, 25, 35])
+    T_test = 3
     # T_test = 100
-    T_test = 100
 
     population = float(1e5)
     X_real, gamma_real = 0.25, 0.05
@@ -267,7 +265,7 @@ def SIR(args, rng_key):
     scale = 1. / rate
     Time = 150
     dt = 1.0
-    SamplesNum = 10000
+    SamplesNum = 10
 
     generate_data_fn = partial(SIR_utils.generate_data, gamma=gamma_real, population=population,
                                Time=Time, dt=dt, rng_key=rng_key)
@@ -353,7 +351,7 @@ def SIR(args, rng_key):
             # ======================================== Collecting samples and function evaluations Ends ========================================
 
             # ======================================== CBQ ========================================
-            I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_vectorized(rng_key, X_array, f_X_array, d_log_pX_array, stein_Matern)
+            I_BQ_mean_array, I_BQ_std_array = Bayesian_Monte_Carlo_vectorized(rng_key, X_array, f_X_array, d_log_pX_array)
 
             I_BQ_std_array = jnp.nan_to_num(I_BQ_std_array, nan=0.)
             I_BQ_std_array = jnp.ones_like(I_BQ_std_array) * jnp.mean(I_BQ_std_array)
@@ -395,6 +393,7 @@ def SIR(args, rng_key):
             calibration = SIR_utils.calibrate(ground_truth_array, I_CBQ_mean, I_CBQ_std)
 
             SIR_utils.save(args, T, N, I_CBQ_mean, KMS_mean, LSMC_mean, IS_mean, ground_truth_array, time_CBQ, time_KMS, time_LSMC, time_IS, calibration)
+
 
     return
 

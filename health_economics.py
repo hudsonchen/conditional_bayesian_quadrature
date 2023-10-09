@@ -238,6 +238,36 @@ def GP(I_mean, I_std, Theta, Theta_test, eps):
     return mu_Theta_test, std_Theta_test
 
 
+def MOBQ(rng_key, u, theta, theta_test, fx):
+    """
+    Multi-output Bayesian Quadrature
+
+    Args:
+        rng_key: random number generator
+        u: shape (N, D)
+        theta: shape (N, 1)
+        theta_test: shape (N_test, 1)
+        fx: shape (N, )
+    """
+    N, D = u.shape[0], u.shape[1]
+    eps = 1e-6
+
+    K_U_u_u = jnp.zeros([N, N])
+    kme_U = jnp.zeros([N, 1])
+
+    l_array = jnp.array([1.0] * 9)
+    for i in range(D):
+        l = l_array[i]
+        u_i = u[:, i][:, None]
+        K_U_u_u += my_Matern(u_i, u_i, l)
+        kme_U += kme_Matern_Gaussian(l, u_i)
+
+    K_Theta_theta_theta = my_Matern(theta, theta, l)
+    K_Theta_theta_test_theta = my_Matern(theta_test, theta, l)
+    MOBQ_mean = (kme_U.T * K_Theta_theta_test_theta) @ jnp.linalg.inv(K_U_u_u * K_Theta_theta_theta + eps * jnp.eye(N)) @ fx
+    return MOBQ_mean
+
+
 def main(args):
     seed = args.seed
     rng_key = jax.random.PRNGKey(seed)
@@ -323,7 +353,7 @@ def main(args):
     # ======================================== Code to generate test points Ends ========================================
 
     # T_array = jnp.array([10, 20, 30])
-    T_array = jnp.array([10, 50, 100])
+    T_array = jnp.array([10, 30, 50])
     # T_array = jnp.concatenate((jnp.array([3, 5]), jnp.arange(10, 150, 10)))
     #·
     # N_array = jnp.array([10, 30])
@@ -404,61 +434,43 @@ def main(args):
             #     ======================================== Debug code ========================================
 
             # ======================================== CBQ ========================================
+            time0 = time.time()
             I1_BQ_mean, I1_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, U1, X1, f1_X)
             CBQ_mean_1, CBQ_std_1 = GP(I1_BQ_mean, I1_BQ_std, Theta1, Theta1_test, eps=I1_BQ_std.mean())
+            time_CBQ = time.time() - time0
             # ======================================== CBQ ========================================
 
             # ======================================== LSMC ========================================
+            time0 = time.time()
             if args.baseline_use_variance:
                 LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test, baseline_use_variance=True)
             else:
                 LSMC_mean_1, LSMC_std_1 = baselines.polynomial(Theta1, X1, f1_X, Theta1_test, baseline_use_variance=False)
+            time_LSMC = time.time() - time0
             # ======================================== LSMC ========================================
 
             # ======================================== KMS ========================================
+            time0 = time.time()
             I1_MC_mean = f1_X.mean(1)
             I1_MC_std = f1_X.std(1)
             if args.baseline_use_variance:
                 KMS_mean_1, KMS_std_1 = baselines.kernel_mean_shrinkage(rng_key, I1_MC_mean, I1_MC_std, Theta1, Theta1_test, eps=0., kernel_fn=my_RBF)
             else:
                 KMS_mean_1, KMS_std_1 = baselines.kernel_mean_shrinkage(rng_key, I1_MC_mean, None, Theta1, Theta1_test, eps=0., kernel_fn=my_RBF)
+            time_KMS = time.time() - time0
             # ======================================== KMS ========================================
+
+            # ======================================== MOBQ ========================================
+            time0 = time.time()
+            MOBQ_mean_1 = MOBQ(rng_key, U1.reshape([T * N, 9]), jnp.repeat(Theta1, N, axis=1).reshape([T * N, 1]), 
+                               Theta1_test, f1_X.reshape([T * N, ]))
+            time_MOBQ = time.time() - time0
+            # ======================================== MOBQ ========================================
 
             # ======================================== Code for f1 Ends ========================================
 
             # ======================================== Code for f2 Starts ========================================
-            # ======================================== Debug code ========================================
-            # for i in range(T):
-            #     rng_key, _ = jax.random.split(rng_key)
-            #     X2_i = X2[i, :, :]
-            #     f2_X_i = f2_X[i, :]
-            #     u2_i = u2[i, :, :]
-            #     scale = 1000.0
-            #     f2_X_i_standardized = f2_X_i / scale
-            #     I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern(rng_key, u2_i, X2_i, f2_X_i_standardized)
-            #     I2_BQ_mean = I2_BQ_mean * scale
-            #     f2_mc_mean = f2_X_i.mean()
-            #     I2_BQ_std *= 10
-
-            #     I2_BQ_mean_array = I2_BQ_mean_array.at[i].set(I2_BQ_mean)
-            #     I2_BQ_std_array = I2_BQ_std_array.at[i].set(I2_BQ_std)
-            #     I2_MC_mean_array = I2_MC_mean_array.at[i].set(f2_mc_mean)
-
-            #     
-            #     rng_key, _ = jax.random.split(rng_key)
-            #     X_temp_large = jax.random.multivariate_normal(rng_key, f2_p_X_Theta_mean[i, :], f2_p_X_Theta_sigma,
-            #                                                   shape=(large_sample_size,))
-            #     f2_X_large = f2(Theta1[i, :][None, :], X_temp_large[None, :])
-            #     f2_mc_mean_large = f2_X_large.mean()
-            #     print====================
-            #     print('Large sample MC', f2_mc_mean_large)
-            #     print(f'MC with {N} number of X', f2_mc_mean)
-            #     print(f'CBQ with {N} number of X', I2_BQ_mean)
-            #     print(f'CBQ uncertainty {I2_BQ_std}')
-            #     print(f====================
-            #     pause = True
-            #     ======================================== Debug code ========================================
-
+            
             # ======================================== CBQ ========================================
             I2_BQ_mean, I2_BQ_std = Bayesian_Monte_Carlo_Matern_vectorized(rng_key, U2, X2, f2_X)
             CBQ_mean_2, CBQ_std_2 = GP(I2_BQ_mean, I2_BQ_std, Theta2, Theta2_test, eps=I2_BQ_std.mean())
@@ -480,6 +492,12 @@ def main(args):
                 KMS_mean_2, KMS_std_2 = baselines.kernel_mean_shrinkage(rng_key, I2_MC_mean, None, Theta2, Theta2_test, eps=0., kernel_fn=my_RBF)
             # ======================================== KMS ========================================
 
+            # ======================================== MOBQ ========================================
+            MOBQ_mean_2 = MOBQ(rng_key, U2.reshape([T * N, 9]), jnp.repeat(Theta2, N, axis=1).reshape([T * N, 1]), 
+                               Theta2_test, f2_X.reshape([T * N, ]))
+            # ======================================== MOBQ ========================================
+
+
             # ======================================== Code for f2 Ends ========================================
 
             calibration_1 = health_economics_utils.calibrate(ground_truth_1, CBQ_mean_1, jnp.diag(CBQ_std_1))
@@ -489,12 +507,16 @@ def main(args):
             CBQ_value = jnp.maximum(CBQ_mean_1, CBQ_mean_2)
             KMS_value = jnp.maximum(KMS_mean_1, KMS_mean_2)
             LSMC_value = jnp.maximum(LSMC_mean_1, LSMC_mean_2)
+            MOBQ_value = jnp.maximum(MOBQ_mean_1, MOBQ_mean_2)
 
             rmse_CBQ = jnp.sqrt(jnp.mean((CBQ_value - true_value) ** 2))
             rmse_KMS = jnp.sqrt(jnp.mean((KMS_value - true_value) ** 2))
             rmse_LSMC = jnp.sqrt(jnp.mean((LSMC_value - true_value) ** 2))
+            rmse_MOBQ = jnp.sqrt(jnp.mean((MOBQ_value - true_value) ** 2))
 
-            health_economics_utils.save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2)
+            health_economics_utils.save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, rmse_MOBQ, 
+                                        time_CBQ, time_KMS, time_LSMC, time_MOBQ, 
+                                        calibration_1, calibration_2)
             # ======================================== Debug code ========================================
             # plt.figure()
             # Theta1_test_ = Theta1_test.squeeze()

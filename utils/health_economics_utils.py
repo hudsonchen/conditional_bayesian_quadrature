@@ -4,9 +4,10 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 
 
-def save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2):
-    methods = ["CBQ", "KMS", "LSMC", "IS"]
-    rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, jnp.nan]
+def save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, rmse_MOBQ, time_CBQ, time_KMS, time_LSMC, time_MOBQ, 
+         calibration_1, calibration_2):
+    methods = ["CBQ", "KMS", "LSMC", "MOBQ"]
+    rmse_values = [rmse_CBQ, rmse_KMS, rmse_LSMC, rmse_MOBQ]
 
     print("\n\n=======================================")
     print(f"T = {T} and N = {N}")
@@ -19,9 +20,18 @@ def save(args, T, N, rmse_CBQ, rmse_KMS, rmse_LSMC, calibration_1, calibration_2
     rmse_dict["CBQ"] = rmse_CBQ
     rmse_dict["KMS"] = rmse_KMS
     rmse_dict["LSMC"] = rmse_LSMC
+    rmse_dict["MOBQ"] = rmse_MOBQ
     with open(f"{args.save_path}/rmse_dict_T_{T}_N_{N}", 'wb') as f:
         pickle.dump(rmse_dict, f)
 
+    time_dict = {}
+    time_dict["CBQ"] = time_CBQ
+    time_dict["KMS"] = time_KMS
+    time_dict["LSMC"] = time_LSMC
+    time_dict["MOBQ"] = time_MOBQ
+    with open(f"{args.save_path}/time_dict_T_{T}_N_{N}", 'wb') as f:
+        pickle.dump(time_dict, f)
+    
     jnp.save(f"{args.save_path}/calibration_1_T_{T}_N_{N}", calibration_1)
     jnp.save(f"{args.save_path}/calibration_2_T_{T}_N_{N}", calibration_2)
     return
